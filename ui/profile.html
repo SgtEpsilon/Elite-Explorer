@@ -1,0 +1,154 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>Elite Explorer — Profile</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Rajdhani:wght@400;500;600;700&family=Share+Tech+Mono&family=Orbitron:wght@400;500;700&family=Exo+2:wght@200;300;400&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="styles.css">
+</head>
+<body>
+
+<div id="topbar">
+  <span class="tb-logo">&#9672; Explorer</span>
+  <div class="tb-sep"></div>
+  <span class="tb-cmdr" id="tb-cmdr">&#8212;</span>
+  <div class="tb-sep"></div>
+  <span class="tb-sys" id="tb-sys">&#8212;</span><span id="tb-discovery-star" title="First Discovery!" style="display:none;color:var(--gold);margin-left:4px;font-size:0.85em;">&#9733;</span>
+  <div class="tab-nav">
+    <a class="tab-btn" href="index.html">Live</a>
+    <a class="tab-btn active" href="profile.html">Profile</a>
+    <a class="tab-btn" href="history.html">History</a>
+  </div>
+  <span class="tb-credits" id="tb-credits"></span>
+  <button id="options-btn" title="Options">&#9881;</button>
+</div>
+
+<div id="app-wrapper" style="display:flex;flex-direction:column;height:calc(100vh - 44px);">
+
+  <div id="view-profile" class="active">
+    <div id="prof-no-data">
+      <div class="icon">&#9672;</div>
+      <div class="msg">No Commander Data Yet</div>
+      <div class="sub">Run "Scan All Journals" from Options &#9881; to populate this view</div>
+    </div>
+    <div id="prof-content" style="display:none;">
+      <div class="ident-card">
+        <div class="ident-avatar">&#9672;</div>
+        <div>
+          <div class="ident-name" id="prof-name">CMDR &#8212;</div>
+          <div class="ident-ship">
+            <span id="prof-ship-type" style="color:var(--text-dim)">&#8212;</span>
+            <span style="color:var(--text-mute)"> &middot; </span>
+            <span id="prof-ship-name" style="color:var(--cyan)">&#8212;</span>
+            <span style="color:var(--text-mute)"> &middot; </span>
+            <span id="prof-ship-ident" style="color:var(--text-mute)">&#8212;</span>
+          </div>
+          <div class="ident-kv-row">
+            <div><div class="ident-kv-val" id="prof-credits">&#8212;</div><div class="ident-kv-lbl">Credits</div></div>
+            <div><div class="ident-kv-val" style="color:var(--text-dim)" id="prof-mode">&#8212;</div><div class="ident-kv-lbl">Game Mode</div></div>
+            <div><div class="ident-kv-val" style="color:var(--cyan2)"><span id="prof-system">&#8212;</span><span id="prof-discovery-badge" title="First Discovery — you found this system!" style="display:none;margin-left:6px;color:var(--gold);font-size:0.9em;">&#9733;</span></div><div class="ident-kv-lbl">Current System</div></div>
+            <div><div class="ident-kv-val" id="prof-jump" style="color:var(--cyan)">&#8212;</div><div class="ident-kv-lbl">Jump Range</div></div>
+          </div>
+        </div>
+      </div>
+      <div class="prof-section" style="background:var(--panel);">
+        <div class="prof-title">Commander Ranks</div>
+        <div class="ranks-grid" id="prof-ranks-grid"></div>
+      </div>
+      <div class="prof-section" style="background:var(--panel);">
+        <div class="prof-title">Superpower Reputation</div>
+        <div class="rep-grid">
+          <div class="rep-card rep-empire">
+            <div class="rep-name">Empire</div><div class="rep-num" id="rep-empire-num">&#8212;</div>
+            <div class="rep-sub" id="rep-empire-lbl">&#8212;</div>
+            <div class="rep-track"><div class="rep-fill" id="rep-empire-bar" style="width:0%"></div></div>
+          </div>
+          <div class="rep-card rep-federation">
+            <div class="rep-name">Federation</div><div class="rep-num" id="rep-fed-num">&#8212;</div>
+            <div class="rep-sub" id="rep-fed-lbl">&#8212;</div>
+            <div class="rep-track"><div class="rep-fill" id="rep-fed-bar" style="width:0%"></div></div>
+          </div>
+          <div class="rep-card rep-alliance">
+            <div class="rep-name">Alliance</div><div class="rep-num" id="rep-all-num">&#8212;</div>
+            <div class="rep-sub" id="rep-all-lbl">&#8212;</div>
+            <div class="rep-track"><div class="rep-fill" id="rep-all-bar" style="width:0%"></div></div>
+          </div>
+          <div class="rep-card rep-independent">
+            <div class="rep-name">Independent</div><div class="rep-num" id="rep-ind-num">&#8212;</div>
+            <div class="rep-sub" id="rep-ind-lbl">&#8212;</div>
+            <div class="rep-track"><div class="rep-fill" id="rep-ind-bar" style="width:0%"></div></div>
+          </div>
+        </div>
+      </div>
+      <div class="prof-section" style="background:var(--bg2);">
+        <div class="prof-title">Lifetime Statistics</div>
+        <div class="stats-cols" id="prof-stats-cols"></div>
+      </div>
+    </div>
+  </div><!-- /view-profile -->
+
+</div><!-- /app-wrapper -->
+
+<!-- OPTIONS PANEL -->
+<div id="options-overlay"></div>
+<div id="options-panel">
+  <div id="options-header">
+    <span style="font-family:var(--display);font-size:0.75em;letter-spacing:0.25em;color:var(--gold)">OPTIONS</span>
+    <button id="options-close">&#10005;</button>
+  </div>
+  <div id="options-body">
+    <div class="opt-section">
+      <div class="opt-section-title">Journal Scan</div>
+      <button class="opt-action-btn" id="opt-scan-btn">
+        <span class="opt-btn-icon">&#11041;</span>
+        <div><div class="opt-btn-label">Scan All Journals</div><div class="opt-btn-sub">Re-process all Elite journal files</div></div>
+      </button>
+    </div>
+    <div class="opt-section">
+      <div class="opt-section-title">Journal Folder</div>
+      <div class="opt-path-row">
+        <input class="opt-input" id="opt-journal-path" type="text" placeholder="Auto-detected" spellcheck="false"/>
+        <button class="opt-icon-btn" id="opt-browse-btn" title="Browse">&#9645;</button>
+        <button class="opt-icon-btn" id="opt-open-btn" title="Open in Explorer">&#8599;</button>
+      </div>
+      <div class="opt-hint" id="opt-path-hint">Leave blank to use the default path for your OS</div>
+    </div>
+    <div class="opt-section">
+      <div class="opt-section-title">Theme</div>
+      <div class="opt-theme-grid">
+        <div class="opt-theme-swatch active" data-theme="default"><div class="swatch-bar" style="background:#c8972a"></div><div class="swatch-bar" style="background:#2ecfcf"></div><span>Default</span></div>
+        <div class="opt-theme-swatch" data-theme="red"><div class="swatch-bar" style="background:#e05252"></div><div class="swatch-bar" style="background:#cf7a3e"></div><span>Red Alert</span></div>
+        <div class="opt-theme-swatch" data-theme="green"><div class="swatch-bar" style="background:#4caf7d"></div><div class="swatch-bar" style="background:#a0cf3e"></div><span>Viridian</span></div>
+        <div class="opt-theme-swatch" data-theme="purple"><div class="swatch-bar" style="background:#a855f7"></div><div class="swatch-bar" style="background:#cf3ecf"></div><span>Nebula</span></div>
+      </div>
+    </div>
+    <div class="opt-section">
+      <div class="sl-group">
+        <div class="sl-group-title">Scale &amp; Size</div>
+        <div class="sl-row"><div class="sl-header"><span class="sl-label">UI Scale</span><span class="sl-val" id="sv-scale">100%</span></div><input type="range" class="sl-input" id="sl-scale" min="70" max="130" step="1" value="100"></div>
+        <div class="sl-row"><div class="sl-header"><span class="sl-label">Font Size</span><span class="sl-val" id="sv-font">12px</span></div><input type="range" class="sl-input" id="sl-font" min="9" max="32" step="0.5" value="12"></div>
+        <div class="sl-row"><div class="sl-header"><span class="sl-label">Row Density</span><span class="sl-val" id="sv-density">Normal</span></div><input type="range" class="sl-input" id="sl-density" min="1" max="5" step="1" value="3"></div>
+      </div>
+      <div class="sl-group">
+        <div class="sl-group-title">Panel Layout</div>
+        <div class="sl-row"><div class="sl-header"><span class="sl-label">Left Panel Width</span><span class="sl-val" id="sv-left">220px</span></div><input type="range" class="sl-input" id="sl-left" min="160" max="360" step="5" value="220"></div>
+        <div class="sl-row"><div class="sl-header"><span class="sl-label">Right Panel Width</span><span class="sl-val" id="sv-right">320px</span></div><input type="range" class="sl-input" id="sl-right" min="200" max="500" step="5" value="320"></div>
+        <div class="sl-row"><div class="sl-header"><span class="sl-label">Bottom Bar Height</span><span class="sl-val" id="sv-bottom">120px</span></div><input type="range" class="sl-input" id="sl-bottom" min="95" max="240" step="5" value="120"></div>
+      </div>
+      <div class="sl-group">
+        <div class="sl-group-title">Atmosphere</div>
+        <div class="sl-row"><div class="sl-header"><span class="sl-label">Brightness</span><span class="sl-val" id="sv-bright">100%</span></div><input type="range" class="sl-input" id="sl-bright" min="40" max="160" step="2" value="100"></div>
+        <div class="sl-row"><div class="sl-header"><span class="sl-label">Panel Opacity</span><span class="sl-val" id="sv-opacity">100%</span></div><input type="range" class="sl-input" id="sl-opacity" min="30" max="100" step="2" value="100"></div>
+        <div class="sl-row"><div class="sl-header"><span class="sl-label">Scanlines</span><span class="sl-val" id="sv-scan">Low</span></div><input type="range" class="sl-input" id="sl-scan" min="0" max="5" step="1" value="1"></div>
+        <div class="sl-row"><div class="sl-header"><span class="sl-label">Glow Intensity</span><span class="sl-val" id="sv-glow">100%</span></div><input type="range" class="sl-input" id="sl-glow" min="0" max="200" step="5" value="100"></div>
+        <div class="sl-row"><div class="sl-header"><span class="sl-label">Border Sharpness</span><span class="sl-val" id="sv-border">Medium</span></div><input type="range" class="sl-input" id="sl-border" min="0" max="4" step="1" value="2"></div>
+      </div>
+      <button class="sl-reset" id="sl-reset-all">&#8635; Reset All Display Settings</button>
+    </div>
+  </div>
+</div>
+
+<script src="script.js"></script>
+</body>
+</html>
