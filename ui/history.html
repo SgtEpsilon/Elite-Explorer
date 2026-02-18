@@ -1,0 +1,221 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>Elite Explorer — History</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Rajdhani:wght@400;500;600;700&family=Share+Tech+Mono&family=Orbitron:wght@400;500;700&family=Exo+2:wght@200;300;400&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="styles.css">
+<style>
+  #view-history { display: flex; flex-direction: column; }
+
+  /* Toolbar */
+  #hist-toolbar {
+    display: flex; align-items: center; gap: 12px;
+    padding: 8px 16px;
+    border-bottom: 1px solid var(--border);
+    background: var(--bg2);
+    flex-shrink: 0;
+  }
+
+  /* Progress bar */
+  #hist-progress-wrap {
+    display: none; align-items: center; gap: 8px;
+    padding: 4px 16px;
+    background: var(--bg);
+    border-bottom: 1px solid var(--border);
+    flex-shrink: 0;
+  }
+  #hist-progress-track {
+    flex: 1; height: 3px; background: var(--border2); border-radius: 2px; overflow: hidden;
+  }
+  #hist-progress-bar {
+    height: 100%; width: 0%; background: var(--gold); transition: width 0.15s ease;
+  }
+
+  /* Scanning placeholder */
+  #hist-scanning {
+    display: none; flex-direction: column; align-items: center;
+    justify-content: center; height: 60vh; gap: 12px; color: var(--text-mute);
+  }
+
+  /* Table */
+  #hist-table { width: 100%; border-collapse: collapse; font-size: 0.8em; }
+  #hist-table thead tr {
+    position: sticky; top: 0; background: var(--bg2); z-index: 1;
+    border-bottom: 1px solid var(--border);
+  }
+  #hist-table th {
+    padding: 6px 10px; text-align: left;
+    font-family: var(--display); font-weight: 400;
+    font-size: 0.75em; letter-spacing: 0.15em; color: var(--text-dim);
+  }
+  .hist-row td { padding: 5px 10px; border-bottom: 1px solid rgba(255,255,255,0.03); }
+  .hist-row-alt { background: rgba(255,255,255,0.015); }
+  .hist-row:hover td { background: rgba(255,255,255,0.035) !important; }
+
+  .hist-col-disco  { width: 28px; text-align: center; }
+  .hist-col-sys    { font-family: var(--mono); color: var(--text); white-space: nowrap; }
+  .hist-col-ts     { font-family: var(--mono); font-size: 0.85em; color: var(--text-dim); white-space: nowrap; }
+  .hist-col-dist   { text-align: right; font-family: var(--mono); color: var(--cyan); }
+  .hist-col-star   { font-size: 0.85em; color: var(--text-dim); }
+  .hist-col-bodies { text-align: right; font-family: var(--mono); font-size: 0.85em; color: var(--text-mute); }
+
+  .disco-star {
+    color: var(--gold); font-size: 1.1em; line-height: 1; cursor: default;
+    animation: discoveryPulse 2.4s ease-in-out infinite;
+  }
+
+  /* Stats bar */
+  #hist-stats-bar {
+    flex-shrink: 0;
+    align-items: center; gap: 24px;
+    padding: 7px 16px;
+    border-top: 1px solid var(--border);
+    background: var(--bg2);
+    font-size: 0.75em;
+  }
+
+  /* Rescan button */
+  #hist-rescan-btn {
+    font-family: var(--mono); font-size: 0.7em; letter-spacing: 0.1em;
+    text-transform: uppercase; color: var(--text-dim);
+    background: transparent; border: 1px solid var(--border2);
+    padding: 3px 10px; cursor: pointer; transition: all 0.15s;
+  }
+  #hist-rescan-btn:hover { color: var(--cyan); border-color: var(--cyan-dim); }
+</style>
+</head>
+<body>
+
+<div id="topbar">
+  <span class="tb-logo">&#9672; Explorer</span>
+  <div class="tb-sep"></div>
+  <span class="tb-cmdr" id="tb-cmdr">&#8212;</span>
+  <div class="tb-sep"></div>
+  <span class="tb-sys" id="tb-sys">&#8212;</span><span id="tb-discovery-star" title="First Discovery!" style="display:none;color:var(--gold);margin-left:4px;font-size:0.85em;">&#9733;</span>
+  <div class="tab-nav">
+    <a class="tab-btn" href="index.html">Live</a>
+    <a class="tab-btn" href="profile.html">Profile</a>
+    <a class="tab-btn active" href="history.html">History</a>
+  </div>
+  <span class="tb-credits" id="tb-credits"></span>
+  <button id="options-btn" title="Options">&#9881;</button>
+</div>
+
+<div id="app-wrapper" style="display:flex;flex-direction:column;height:calc(100vh - 44px);">
+
+  <div id="view-history" class="active">
+
+    <!-- Toolbar -->
+    <div id="hist-toolbar">
+      <span style="font-family:var(--display);font-size:0.7em;letter-spacing:0.2em;color:var(--text-dim)">TRAVEL LOG</span>
+      <span id="hist-count" style="font-size:0.75em;color:var(--text-mute)">&#8212;</span>
+      <span id="hist-scan-status" style="font-size:0.72em;color:var(--text-mute);font-family:var(--mono);"></span>
+      <div style="flex:1"></div>
+      <label style="display:flex;align-items:center;gap:6px;font-size:0.75em;color:var(--text-dim);cursor:pointer;">
+        <input type="checkbox" id="hist-filter-disco" style="accent-color:var(--gold)"> First Discoveries Only
+      </label>
+      <input id="hist-search" type="text" placeholder="Filter systems&hellip;" spellcheck="false"
+        style="background:var(--bg);border:1px solid var(--border);color:var(--text);padding:4px 8px;font-size:0.75em;width:160px;border-radius:2px;font-family:var(--mono);">
+      <button id="hist-rescan-btn" title="Re-scan all journals">&#8635; Rescan</button>
+    </div>
+
+    <!-- Progress bar -->
+    <div id="hist-progress-wrap">
+      <div id="hist-progress-track"><div id="hist-progress-bar"></div></div>
+    </div>
+
+    <!-- Scrollable content -->
+    <div style="flex:1;overflow-y:auto;">
+
+      <!-- Empty / scanning state -->
+      <div id="hist-scanning">
+        <div style="font-size:2em;opacity:0.4">&#11041;</div>
+        <div style="font-family:var(--display);letter-spacing:0.15em;">SCANNING JOURNALS&hellip;</div>
+        <div style="font-size:0.8em;" id="hist-scanning-sub">Reading journal files</div>
+      </div>
+
+      <div id="hist-empty" style="display:flex;flex-direction:column;align-items:center;justify-content:center;height:60vh;gap:12px;color:var(--text-mute);">
+        <div style="font-size:2.5em;opacity:0.25">&#128336;</div>
+        <div style="font-family:var(--display);letter-spacing:0.15em;">NO HISTORY YET</div>
+        <div style="font-size:0.8em;">Journal data will appear here automatically on startup</div>
+      </div>
+
+      <table id="hist-table" style="display:none;">
+        <thead>
+          <tr>
+            <th></th>
+            <th>SYSTEM</th>
+            <th>TIMESTAMP</th>
+            <th style="text-align:right">JUMP DIST</th>
+            <th>STAR CLASS</th>
+            <th style="text-align:right">BODIES</th>
+          </tr>
+        </thead>
+        <tbody id="hist-tbody"></tbody>
+      </table>
+
+    </div><!-- /scroll -->
+
+    <!-- Stats bar -->
+    <div id="hist-stats-bar" style="display:none;">
+      <div><span style="color:var(--text-dim)">Total Jumps&nbsp;</span><span id="hstat-jumps" style="color:var(--cyan);font-family:var(--mono)">0</span></div>
+      <div><span style="color:var(--text-dim)">First Discoveries&nbsp;</span><span id="hstat-disco" style="color:var(--gold);font-family:var(--mono)">0</span></div>
+      <div><span style="color:var(--text-dim)">Distance Traveled&nbsp;</span><span id="hstat-dist" style="color:var(--cyan2);font-family:var(--mono)">0 ly</span></div>
+      <div><span style="color:var(--text-dim)">Farthest Single Jump&nbsp;</span><span id="hstat-farthest" style="color:var(--text);font-family:var(--mono)">0 ly</span></div>
+    </div>
+
+  </div><!-- /view-history -->
+
+</div><!-- /app-wrapper -->
+
+<!-- OPTIONS PANEL -->
+<div id="options-overlay"></div>
+<div id="options-panel">
+  <div id="options-header">
+    <span style="font-family:var(--display);font-size:0.75em;letter-spacing:0.25em;color:var(--gold)">OPTIONS</span>
+    <button id="options-close">&#10005;</button>
+  </div>
+  <div id="options-body">
+    <div class="opt-section">
+      <div class="opt-section-title">Journal Folder</div>
+      <div class="opt-path-row">
+        <input class="opt-input" id="opt-journal-path" type="text" placeholder="Auto-detected" spellcheck="false"/>
+        <button class="opt-icon-btn" id="opt-browse-btn" title="Browse">&#9645;</button>
+        <button class="opt-icon-btn" id="opt-open-btn" title="Open in Explorer">&#8599;</button>
+      </div>
+      <div class="opt-hint" id="opt-path-hint">Leave blank to use the default path for your OS</div>
+    </div>
+    <div class="opt-section">
+      <div class="opt-section-title">Theme</div>
+      <div class="opt-theme-grid">
+        <div class="opt-theme-swatch active" data-theme="default"><div class="swatch-bar" style="background:#c8972a"></div><div class="swatch-bar" style="background:#2ecfcf"></div><span>Default</span></div>
+        <div class="opt-theme-swatch" data-theme="red"><div class="swatch-bar" style="background:#e05252"></div><div class="swatch-bar" style="background:#cf7a3e"></div><span>Red Alert</span></div>
+        <div class="opt-theme-swatch" data-theme="green"><div class="swatch-bar" style="background:#4caf7d"></div><div class="swatch-bar" style="background:#a0cf3e"></div><span>Viridian</span></div>
+        <div class="opt-theme-swatch" data-theme="purple"><div class="swatch-bar" style="background:#a855f7"></div><div class="swatch-bar" style="background:#cf3ecf"></div><span>Nebula</span></div>
+      </div>
+    </div>
+    <div class="opt-section">
+      <div class="sl-group">
+        <div class="sl-group-title">Scale &amp; Size</div>
+        <div class="sl-row"><div class="sl-header"><span class="sl-label">UI Scale</span><span class="sl-val" id="sv-scale">100%</span></div><input type="range" class="sl-input" id="sl-scale" min="70" max="130" step="1" value="100"></div>
+        <div class="sl-row"><div class="sl-header"><span class="sl-label">Font Size</span><span class="sl-val" id="sv-font">12px</span></div><input type="range" class="sl-input" id="sl-font" min="9" max="32" step="0.5" value="12"></div>
+        <div class="sl-row"><div class="sl-header"><span class="sl-label">Row Density</span><span class="sl-val" id="sv-density">Normal</span></div><input type="range" class="sl-input" id="sl-density" min="1" max="5" step="1" value="3"></div>
+      </div>
+      <div class="sl-group">
+        <div class="sl-group-title">Atmosphere</div>
+        <div class="sl-row"><div class="sl-header"><span class="sl-label">Brightness</span><span class="sl-val" id="sv-bright">100%</span></div><input type="range" class="sl-input" id="sl-bright" min="40" max="160" step="2" value="100"></div>
+        <div class="sl-row"><div class="sl-header"><span class="sl-label">Panel Opacity</span><span class="sl-val" id="sv-opacity">100%</span></div><input type="range" class="sl-input" id="sl-opacity" min="30" max="100" step="2" value="100"></div>
+        <div class="sl-row"><div class="sl-header"><span class="sl-label">Scanlines</span><span class="sl-val" id="sv-scan">Low</span></div><input type="range" class="sl-input" id="sl-scan" min="0" max="5" step="1" value="1"></div>
+        <div class="sl-row"><div class="sl-header"><span class="sl-label">Glow Intensity</span><span class="sl-val" id="sv-glow">100%</span></div><input type="range" class="sl-input" id="sl-glow" min="0" max="200" step="5" value="100"></div>
+        <div class="sl-row"><div class="sl-header"><span class="sl-label">Border Sharpness</span><span class="sl-val" id="sv-border">Medium</span></div><input type="range" class="sl-input" id="sl-border" min="0" max="4" step="1" value="2"></div>
+      </div>
+      <button class="sl-reset" id="sl-reset-all">&#8635; Reset All Display Settings</button>
+    </div>
+  </div>
+</div>
+
+<script src="history-script.js"></script>
+</body>
+</html>

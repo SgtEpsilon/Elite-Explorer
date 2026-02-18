@@ -2,324 +2,10 @@
 <html lang="en">
 <head>
 <meta charset="UTF-8">
-<title>Elite Explorer</title>
+<title>Elite Explorer — Live</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link href="https://fonts.googleapis.com/css2?family=Rajdhani:wght@400;500;600;700&family=Share+Tech+Mono&family=Orbitron:wght@400;500;700&family=Exo+2:wght@200;300;400&display=swap" rel="stylesheet">
-<style>
-/* ─── DESIGN TOKENS ─────────────────────────────────────────────── */
-:root {
-  --bg:         #05080d;
-  --bg2:        #070b12;
-  --panel:      #090e18;
-  --panel2:     #0c1220;
-  --border:     #132030;
-  --border2:    #1c3048;
-  --gold:       #c8972a;
-  --gold2:      #e8b840;
-  --gold-dim:   #7a5a10;
-  --gold-glow:  rgba(200,151,42,0.15);
-  --cyan:       #2ecfcf;
-  --cyan2:      #5ee8e8;
-  --cyan-dim:   rgba(46,207,207,0.1);
-  --red:        #e05252;
-  --green:      #3dbd7a;
-  --purple:     #9b6fd4;
-  --text:       #c8d8e8;
-  --text-dim:   #5a7898;
-  --text-mute:  #2a4058;
-  --mono:       'Share Tech Mono', monospace;
-  --display:    'Orbitron', sans-serif;
-  --head:       'Rajdhani', sans-serif;
-  --body:       'Exo 2', sans-serif;
-}
-* { box-sizing: border-box; margin: 0; padding: 0; }
-html, body { width: 100%; height: 100vh; background: var(--bg); color: var(--text); font-family: var(--body); font-size:1em; overflow: hidden; }
-body::after { content: ''; position: fixed; inset: 0; background: repeating-linear-gradient(0deg, transparent, transparent 2px, rgba(0,0,0,0.04) 2px, rgba(0,0,0,0.04) 4px); pointer-events: none; z-index: 9999; }
-
-/* ─── TOPBAR ─────────────────────────────────────────────────────── */
-#topbar { display: flex; align-items: center; height: 44px; border-bottom: 1px solid var(--border); background: var(--panel); padding: 0 14px; gap: 10px; flex-shrink: 0; position: relative; z-index: 100; }
-.tb-logo { font-family: var(--display); font-size:0.8333em; font-weight: 500; letter-spacing: 0.2em; color: var(--gold); text-shadow: 0 0 16px var(--gold-glow); white-space: nowrap; margin-right: 6px; }
-.tb-sep { width: 1px; height: 20px; background: var(--border2); margin: 0 4px; }
-.tb-cmdr { font-family: var(--mono); font-size:0.8333em; color: var(--cyan); letter-spacing: 0.08em; white-space: nowrap; }
-.tb-sys { font-family: var(--mono); font-size:0.8333em; color: var(--text-dim); letter-spacing: 0.05em; }
-.tab-nav { display: flex; align-items: center; gap: 2px; margin-left: auto; }
-.tab-btn { font-family: var(--mono); font-size:0.75em; letter-spacing: 0.12em; text-transform: uppercase; color: var(--text-mute); background: transparent; border: 1px solid transparent; padding: 4px 12px; cursor: pointer; transition: all 0.18s; }
-.tab-btn:hover { color: var(--text-dim); border-color: var(--border2); }
-.tab-btn.active { color: var(--cyan); border-color: rgba(46,207,207,0.3); background: var(--cyan-dim); }
-.tb-credits { font-family: var(--mono); font-size:0.9167em; color: var(--gold2); letter-spacing: 0.04em; margin-left: 10px; }
-#options-btn { font-size:1.0833em; color: var(--text-mute); background: transparent; border: none; cursor: pointer; padding: 2px 4px; line-height: 1; transition: color 0.2s, transform 0.3s; flex-shrink: 0; margin-left: 6px; }
-#options-btn:hover { color: var(--gold); transform: rotate(45deg); }
-
-/* ─── VIEWS ──────────────────────────────────────────────────────── */
-#view-live, #view-profile { display: none; flex: 1; overflow: hidden; }
-#view-live.active { display: grid; }
-#view-profile.active { display: flex; flex-direction: column; overflow-y: auto; }
-#view-live { grid-template-columns: var(--left-w,220px) 1fr var(--right-w,320px); grid-template-rows: 1fr var(--bottom-h,120px); gap: 1px; background: var(--bg); }
-
-/* ─── PANELS ─────────────────────────────────────────────────────── */
-.panel { background: var(--panel); display: flex; flex-direction: column; overflow: hidden; }
-.panel-header { display: flex; align-items: center; gap: 8px; padding: 7px 12px; border-bottom: 1px solid var(--border); flex-shrink: 0; }
-.panel-header .label { font-family: var(--display); font-size:0.6667em; font-weight: 500; letter-spacing: 0.25em; color: var(--gold); text-transform: uppercase; }
-.panel-header .accent-line { flex: 1; height: 1px; background: linear-gradient(to right, var(--border2), transparent); }
-.panel-body { flex: 1; overflow-y: auto; padding: 10px; }
-.panel-body::-webkit-scrollbar { width: 3px; }
-.panel-body::-webkit-scrollbar-thumb { background: var(--border2); border-radius: 2px; }
-
-/* ─── LEFT PANEL ─────────────────────────────────────────────────── */
-#panel-commander { grid-column: 1; grid-row: 1 / 3; }
-.stat-group { margin-bottom: 14px; }
-.stat-group-title { font-family: var(--mono); font-size:0.75em; color: var(--text-mute); letter-spacing: 0.15em; text-transform: uppercase; margin-bottom: 6px; padding-bottom: 4px; border-bottom: 1px solid var(--border); }
-.stat-row { display: flex; justify-content: space-between; align-items: baseline; padding: 3px 0; }
-.stat-key { font-family: var(--mono); font-size:0.75em; color: var(--text-dim); letter-spacing: 0.05em; }
-.stat-val { font-family: var(--mono); font-size:0.9167em; color: var(--text); text-align: right; }
-.stat-val.highlight { color: var(--cyan); }
-.stat-val.gold { color: var(--gold); }
-.stat-val.green { color: var(--green); }
-.stat-val.red { color: var(--red); }
-.fuel-bar-wrap { margin-top: 4px; height: 4px; background: var(--border); border-radius: 2px; overflow: hidden; }
-.fuel-bar-fill { height: 100%; background: linear-gradient(to right, var(--cyan-dim), var(--cyan)); border-radius: 2px; transition: width 0.5s ease; }
-.type-badge { display: inline-block; font-family: var(--mono); font-size:0.6667em; padding: 1px 5px; border-radius: 1px; letter-spacing: 0.05em; }
-.type-badge.station { background: rgba(46,207,207,0.1); color: var(--cyan); border: 1px solid rgba(46,207,207,0.3); }
-
-/* ─── MIDDLE PANEL ───────────────────────────────────────────────── */
-#panel-system { grid-column: 2; grid-row: 1; }
-.bodies-table { width: 100%; border-collapse: collapse; }
-.bodies-table th { font-family: var(--mono); font-size:0.6667em; color: var(--text-mute); letter-spacing: 0.12em; text-transform: uppercase; text-align: left; padding: 4px 8px; border-bottom: 1px solid var(--border); white-space: nowrap; position: sticky; top: 0; background: var(--panel); z-index: 10; }
-.bodies-table td { font-family: var(--mono); font-size:0.8333em; color: var(--text); padding: 5px 8px; border-bottom: 1px solid rgba(19,32,48,0.5); vertical-align: top; line-height: 1.4; }
-.bodies-table tr.body-main:hover td { background: rgba(46,207,207,0.04); }
-.bodies-table tr.body-moon td { background: rgba(0,0,0,0.15); }
-.bodies-table tr.body-moon:hover td { background: rgba(46,207,207,0.03); }
-.body-name-cell { display: flex; align-items: center; gap: 6px; }
-.body-indent { padding-left: 18px !important; }
-.moon-indicator { display: inline-block; width: 1px; height: 12px; background: var(--border2); margin-right: 4px; margin-left: 8px; vertical-align: middle; }
-.body-icon { width: 20px; height: 20px; border-radius: 50%; flex-shrink: 0; }
-.body-icon.star { background: radial-gradient(circle at 35% 35%, #fff4cc, #f5a623 60%, #8a4a00); box-shadow: 0 0 8px rgba(245,166,35,0.5); }
-.body-icon.hmc  { background: radial-gradient(circle at 35% 35%, #5e8fbf, #2a5a8a 60%, #0d1e33); box-shadow: 0 0 6px rgba(42,90,138,0.4); }
-.body-icon.rocky{ background: radial-gradient(circle at 35% 35%, #8a7a6a, #5a4a3a 60%, #2a1a0a); }
-.body-icon.gas  { background: radial-gradient(circle at 35% 35%, #c8a87a, #9a7040 60%, #4a3010); }
-.body-icon.icy  { background: radial-gradient(circle at 35% 35%, #d0e8f5, #7ab0d0 60%, #2a5070); }
-.body-icon.moon { background: radial-gradient(circle at 35% 35%, #7a7a7a, #4a4a4a 60%, #1a1a1a); width:14px; height:14px; }
-.body-icon.station { background: rgba(46,207,207,0.1); border: 1px solid rgba(46,207,207,0.3); border-radius: 2px; width:16px; height:16px; }
-.body-class { font-size:0.75em; color: var(--text-dim); }
-.val-cell { text-align: right; color: var(--gold); }
-.val-cell.muted { color: var(--text-dim); }
-.info-text { font-size:0.75em; color: var(--text-dim); line-height: 1.5; max-width: 280px; }
-.info-tag { display: inline-block; font-size:0.6667em; padding: 1px 4px; margin: 1px 1px 0 0; border-radius: 1px; background: rgba(200,151,42,0.08); color: var(--gold-dim); border: 1px solid rgba(200,151,42,0.2); }
-.info-tag.poi { background: rgba(46,207,207,0.08); color: rgba(46,207,207,0.6); border-color: rgba(46,207,207,0.2); }
-
-/* ─── RIGHT PANEL ────────────────────────────────────────────────── */
-#panel-scan { grid-column: 3; grid-row: 1; }
-.scan-total-bar { display: flex; justify-content: space-between; align-items: center; padding: 6px 10px; background: var(--panel2); border-bottom: 1px solid var(--border); flex-shrink: 0; }
-.scan-total-label { font-family: var(--mono); font-size:0.6667em; color: var(--text-mute); letter-spacing: 0.1em; }
-.scan-total-val { font-family: var(--mono); font-size:1.0833em; color: var(--gold); text-shadow: 0 0 8px var(--gold-glow); }
-.scan-table { width: 100%; border-collapse: collapse; }
-.scan-table th { font-family: var(--mono); font-size:0.6667em; color: var(--text-mute); letter-spacing: 0.1em; padding: 3px 6px; text-align: left; border-bottom: 1px solid var(--border); position: sticky; top: 0; background: var(--panel); }
-.scan-table td { font-family: var(--mono); font-size:0.75em; color: var(--text); padding: 4px 6px; border-bottom: 1px solid rgba(19,32,48,0.4); vertical-align: middle; }
-.scan-table tr:hover td { background: rgba(46,207,207,0.03); }
-.mapped-icon { display: inline-block; width: 8px; height: 8px; border-radius: 50%; vertical-align: middle; }
-.mapped-icon.yes { background: var(--green); box-shadow: 0 0 4px var(--green); }
-.mapped-icon.no  { background: var(--border2); }
-.scan-val { color: var(--gold); text-align: right; }
-
-/* ─── BOTTOM PANELS ──────────────────────────────────────────────── */
-#panel-progress { grid-column: 2; grid-row: 2; background: var(--panel); border-top: 1px solid var(--border); display: flex; flex-direction: column; }
-.progress-track { height: 2px; background: var(--border); flex-shrink: 0; }
-.progress-fill { height: 100%; background: linear-gradient(to right, var(--cyan-dim), var(--cyan)); width: 0%; transition: width 0.3s ease; }
-.progress-info { font-family: var(--mono); font-size:0.75em; color: var(--text-dim); padding: 4px 10px 0; flex-shrink: 0; }
-#panel-log { grid-column: 3; grid-row: 2; }
-#log-entries { font-family: var(--mono); font-size:0.75em; line-height: 1.6; color: var(--text-dim); padding: 6px 10px; overflow-y: auto; flex: 1; }
-#log-entries::-webkit-scrollbar { width: 2px; }
-#log-entries::-webkit-scrollbar-thumb { background: var(--border2); }
-.log-entry { display: flex; gap: 8px; padding: 1px 0; animation: fadeIn 0.3s ease; }
-@keyframes fadeIn { from { opacity: 0; transform: translateY(2px); } to { opacity: 1; transform: translateY(0); } }
-.log-ts { color: var(--text-mute); white-space: nowrap; }
-.log-msg.info  { color: var(--text-dim); }
-.log-msg.good  { color: var(--green); }
-.log-msg.warn  { color: var(--gold); }
-.log-msg.error { color: var(--red); }
-#panel-summary { grid-column: 1; grid-row: 2; background: var(--panel); padding: 10px; display: flex; flex-direction: column; gap: 6px; }
-.summary-title { font-family: var(--mono); font-size:0.6667em; color: var(--text-mute); letter-spacing: 0.15em; text-transform: uppercase; border-bottom: 1px solid var(--border); padding-bottom: 4px; }
-.summary-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 4px 8px; }
-.summary-num { font-family: var(--mono); font-size:1.1667em; color: var(--cyan); line-height: 1; }
-.summary-lbl { font-family: var(--mono); font-size:0.6667em; color: var(--text-mute); letter-spacing: 0.05em; }
-.empty-state { display: flex; flex-direction: column; align-items: center; justify-content: center; height: 100%; gap: 8px; color: var(--text-mute); }
-.empty-state .icon { font-size:2.3333em; opacity: 0.3; }
-.empty-state .msg { font-family: var(--mono); font-size:0.75em; letter-spacing: 0.12em; text-transform: uppercase; }
-
-/* ═══════════════════════════════════════════════════════
-   PROFILE VIEW
-═══════════════════════════════════════════════════════ */
-#view-profile { background: var(--bg2); }
-.prof-section { padding: 20px 24px; border-bottom: 1px solid var(--border); }
-.prof-title { font-family: var(--display); font-size:0.6667em; font-weight: 500; letter-spacing: 0.3em; color: var(--gold); text-transform: uppercase; margin-bottom: 16px; display: flex; align-items: center; gap: 10px; }
-.prof-title::after { content: ''; flex: 1; height: 1px; background: linear-gradient(to right, var(--border2), transparent); }
-.ident-card { display: flex; align-items: center; gap: 20px; padding: 20px 24px; background: var(--panel2); border-left: 3px solid var(--cyan); }
-.ident-avatar { font-size:2.6667em; color: var(--gold); text-shadow: 0 0 20px var(--gold-glow); flex-shrink: 0; width: 56px; text-align: center; }
-.ident-name { font-family: var(--head); font-size:1.8333em; font-weight: 700; color: var(--text); letter-spacing: 0.08em; margin-bottom: 3px; }
-.ident-ship { font-family: var(--mono); font-size:0.8333em; margin-bottom: 10px; color: var(--text-dim); }
-.ident-kv-row { display: flex; gap: 24px; }
-.ident-kv-val { font-family: var(--mono); font-size:1.1667em; color: var(--gold2); line-height: 1.1; }
-.ident-kv-lbl { font-family: var(--mono); font-size:0.5833em; color: var(--text-mute); letter-spacing: 0.12em; text-transform: uppercase; margin-top: 2px; }
-.ranks-grid { display: grid; grid-template-columns: repeat(7, 1fr); gap: 10px; }
-.rank-card { background: var(--panel2); border: 1px solid var(--border); padding: 12px 14px; position: relative; overflow: hidden; }
-.rank-card::before { content: ''; position: absolute; top: 0; left: 0; right: 0; height: 2px; }
-.rank-card.combat::before  { background: linear-gradient(to right, var(--red), transparent); }
-.rank-card.trade::before   { background: linear-gradient(to right, var(--green), transparent); }
-.rank-card.explore::before { background: linear-gradient(to right, var(--cyan), transparent); }
-.rank-card.empire::before  { background: linear-gradient(to right, #c09060, transparent); }
-.rank-card.fed::before     { background: linear-gradient(to right, #6090c8, transparent); }
-.rank-card.cqc::before     { background: linear-gradient(to right, var(--purple), transparent); }
-.rank-card.exobio::before  { background: linear-gradient(to right, #60c890, transparent); }
-.rank-label { font-family: var(--mono); font-size:0.5833em; color: var(--text-mute); letter-spacing: 0.15em; text-transform: uppercase; margin-bottom: 5px; }
-.rank-name  { font-family: var(--head); font-size:1.0833em; font-weight: 600; color: var(--text); margin-bottom: 8px; line-height: 1.2; }
-.rank-bar-wrap { height: 3px; background: var(--border); border-radius: 1px; overflow: hidden; margin-bottom: 3px; }
-.rank-bar { height: 100%; border-radius: 1px; transition: width 1.2s cubic-bezier(0.4,0,0.2,1); }
-.rank-card.combat .rank-bar  { background: var(--red); }
-.rank-card.trade .rank-bar   { background: var(--green); }
-.rank-card.explore .rank-bar { background: var(--cyan); }
-.rank-card.empire .rank-bar  { background: #c09060; }
-.rank-card.fed .rank-bar     { background: #6090c8; }
-.rank-card.cqc .rank-bar     { background: var(--purple); }
-.rank-card.exobio .rank-bar  { background: #60c890; }
-.rank-pct { font-family: var(--mono); font-size:0.5833em; color: var(--text-mute); text-align: right; }
-.rep-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 10px; }
-.rep-card { background: var(--panel2); border: 1px solid var(--border); padding: 14px; }
-.rep-name { font-family: var(--mono); font-size:0.5833em; letter-spacing: 0.15em; text-transform: uppercase; margin-bottom: 8px; }
-.rep-num  { font-family: var(--head); font-size:1.6667em; font-weight: 300; line-height: 1; margin-bottom: 4px; }
-.rep-sub  { font-family: var(--mono); font-size:0.5833em; color: var(--text-mute); margin-bottom: 8px; }
-.rep-track { height: 3px; background: var(--border); border-radius: 1px; overflow: hidden; }
-.rep-fill  { height: 100%; border-radius: 1px; transition: width 1.2s ease; }
-.rep-empire     .rep-name, .rep-empire     .rep-num { color: #c09060; }
-.rep-federation .rep-name, .rep-federation .rep-num { color: #6090c8; }
-.rep-alliance   .rep-name, .rep-alliance   .rep-num { color: #60c860; }
-.rep-independent .rep-name, .rep-independent .rep-num { color: var(--text-dim); }
-.rep-empire     .rep-fill { background: #c09060; }
-.rep-federation .rep-fill { background: #6090c8; }
-.rep-alliance   .rep-fill { background: #60c860; }
-.rep-independent .rep-fill { background: var(--text-dim); }
-.stats-cols { display: grid; grid-template-columns: repeat(5, 1fr); gap: 14px; }
-.stat-block { background: var(--panel); border: 1px solid var(--border); padding: 14px; }
-.stat-block-title { font-family: var(--display); font-size:0.5833em; font-weight: 500; letter-spacing: 0.2em; text-transform: uppercase; margin-bottom: 10px; padding-bottom: 6px; border-bottom: 1px solid var(--border2); }
-.stat-block-title.c-cyan   { color: var(--cyan); }
-.stat-block-title.c-gold   { color: var(--gold); }
-.stat-block-title.c-green  { color: var(--green); }
-.stat-block-title.c-red    { color: var(--red); }
-.stat-block-title.c-purple { color: var(--purple); }
-.mini-stat { display: flex; justify-content: space-between; align-items: baseline; padding: 4px 0; border-bottom: 1px solid rgba(19,32,48,0.5); }
-.mini-stat:last-child { border-bottom: none; }
-.ms-key { font-family: var(--mono); font-size:0.6667em; color: var(--text-mute); letter-spacing: 0.05em; }
-.ms-val { font-family: var(--mono); font-size:0.75em; color: var(--text); text-align: right; }
-#prof-no-data { display: flex; flex-direction: column; align-items: center; justify-content: center; height: 100%; gap: 12px; color: var(--text-mute); padding: 60px; }
-#prof-no-data .icon { font-size:3em; opacity: 0.25; }
-
-/* ─── DISPLAY SLIDERS ────────────────────────────────────────────── */
-.opt-slider-row {
-  display: flex; flex-direction: column; gap: 5px; margin-bottom: 12px;
-}
-.opt-slider-row:last-child { margin-bottom: 0; }
-.opt-slider-header {
-  display: flex; justify-content: space-between; align-items: baseline;
-}
-.opt-slider-label {
-  font-family: var(--mono); font-size:0.75em; color: var(--text-dim); letter-spacing: 0.08em;
-}
-.opt-slider-val {
-  font-family: var(--mono); font-size:0.75em; color: var(--cyan); letter-spacing: 0.05em; min-width: 36px; text-align: right;
-}
-.opt-slider {
-  -webkit-appearance: none; appearance: none;
-  width: 100%; height: 3px;
-  background: var(--border2); border-radius: 2px; outline: none; cursor: pointer;
-}
-.opt-slider::-webkit-slider-thumb {
-  -webkit-appearance: none; appearance: none;
-  width: 12px; height: 12px; border-radius: 50%;
-  background: var(--cyan); border: 2px solid var(--bg);
-  box-shadow: 0 0 6px rgba(46,207,207,0.4);
-  cursor: pointer; transition: box-shadow 0.15s;
-}
-.opt-slider::-webkit-slider-thumb:hover {
-  box-shadow: 0 0 10px rgba(46,207,207,0.7);
-}
-.opt-slider::-webkit-slider-runnable-track {
-  background: linear-gradient(to right, rgba(46,207,207,0.3) var(--pct,0%), var(--border2) var(--pct,0%));
-  border-radius: 2px;
-}
-.opt-reset-btn {
-  font-family: var(--mono); font-size:0.6667em; letter-spacing: 0.1em; text-transform: uppercase;
-  color: var(--text-mute); background: transparent; border: 1px solid var(--border2);
-  padding: 3px 10px; cursor: pointer; transition: all 0.15s; align-self: flex-start; margin-top: 4px;
-}
-.opt-reset-btn:hover { color: var(--text-dim); border-color: var(--border2); }
-.opt-divider { height: 1px; background: var(--border); margin: 4px 0 12px; }
-#prof-no-data .msg  { font-family: var(--mono); font-size:0.8333em; letter-spacing: 0.15em; text-transform: uppercase; }
-#prof-no-data .sub  { font-family: var(--mono); font-size:0.75em; color: var(--text-mute); opacity: 0.6; }
-
-/* ─── OPTIONS ────────────────────────────────────────────────────── */
-#options-overlay { display: none; position: fixed; inset: 0; background: rgba(0,0,0,0.45); z-index: 3000; backdrop-filter: blur(2px); }
-#options-overlay.open { display: block; }
-#options-panel { position: fixed; top: 0; right: 0; bottom: 0; width: 300px; background: var(--panel); border-left: 1px solid var(--border2); z-index: 3001; display: flex; flex-direction: column; transform: translateX(100%); transition: transform 0.28s cubic-bezier(0.4,0,0.2,1); overflow: hidden; }
-#options-panel.open { transform: translateX(0); }
-#options-header { display: flex; align-items: center; justify-content: space-between; padding: 12px 16px; border-bottom: 1px solid var(--border2); background: var(--panel2); flex-shrink: 0; }
-#options-close { font-family: var(--mono); font-size:0.9167em; color: var(--text-dim); background: transparent; border: none; cursor: pointer; padding: 2px 6px; transition: color 0.15s; }
-#options-close:hover { color: var(--text); }
-#options-body { flex: 1; overflow-y: auto; padding: 14px 16px; display: flex; flex-direction: column; gap: 20px; }
-#options-body::-webkit-scrollbar { width: 3px; }
-#options-body::-webkit-scrollbar-thumb { background: var(--border2); }
-.opt-section-title { font-family: var(--display); font-size:0.5833em; letter-spacing: 0.25em; color: var(--gold); text-transform: uppercase; margin-bottom: 10px; padding-bottom: 5px; border-bottom: 1px solid var(--border); }
-.opt-action-btn { display: flex; align-items: center; gap: 10px; width: 100%; padding: 10px 12px; background: var(--panel2); border: 1px solid var(--border2); color: var(--text); cursor: pointer; transition: border-color 0.2s, background 0.2s; text-align: left; }
-.opt-action-btn:hover { border-color: var(--gold); background: var(--gold-glow); }
-.opt-btn-icon { font-size:1.3333em; color: var(--gold); flex-shrink: 0; }
-.opt-btn-label { font-family: var(--mono); font-size:0.8333em; color: var(--text); letter-spacing: 0.05em; }
-.opt-btn-sub { font-family: var(--mono); font-size:0.6667em; color: var(--text-mute); margin-top: 2px; }
-.opt-path-row { display: flex; gap: 4px; align-items: center; }
-.opt-input { flex: 1; font-family: var(--mono); font-size:0.75em; color: var(--text); background: var(--panel2); border: 1px solid var(--border2); padding: 6px 8px; outline: none; transition: border-color 0.2s; }
-.opt-input:focus { border-color: var(--cyan); }
-.opt-input::placeholder { color: var(--text-mute); }
-.opt-icon-btn { font-size:1.1667em; color: var(--text-dim); background: var(--panel2); border: 1px solid var(--border2); padding: 5px 8px; cursor: pointer; transition: color 0.15s, border-color 0.15s; flex-shrink: 0; }
-.opt-icon-btn:hover { color: var(--cyan); border-color: var(--cyan); }
-.opt-hint { font-family: var(--mono); font-size:0.6667em; color: var(--text-mute); margin-top: 5px; }
-.opt-theme-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 6px; }
-.opt-theme-swatch { display: flex; flex-direction: column; align-items: center; gap: 4px; padding: 8px 6px; background: var(--panel2); border: 1px solid var(--border2); cursor: pointer; transition: border-color 0.2s; border-radius: 2px; }
-.opt-theme-swatch:hover { border-color: var(--text-dim); }
-.opt-theme-swatch.active { border-color: var(--gold); }
-.opt-theme-swatch span { font-family: var(--mono); font-size:0.6667em; color: var(--text-dim); }
-.opt-theme-swatch.active span { color: var(--gold); }
-.swatch-bar { width: 100%; height: 3px; border-radius: 1px; }
-.opt-toggles { display: flex; flex-direction: column; gap: 8px; }
-.opt-toggle { display: flex; align-items: center; gap: 10px; cursor: pointer; user-select: none; }
-.opt-toggle input { display: none; }
-.tog-track { width: 28px; height: 14px; background: var(--border2); border-radius: 7px; position: relative; transition: background 0.2s; flex-shrink: 0; }
-.opt-toggle input:checked + .tog-track { background: var(--cyan); }
-.tog-thumb { position: absolute; top: 2px; left: 2px; width: 10px; height: 10px; background: var(--bg); border-radius: 50%; transition: transform 0.2s; }
-.opt-toggle input:checked + .tog-track .tog-thumb { transform: translateX(14px); }
-.tog-lbl { font-family: var(--mono); font-size:0.75em; color: var(--text-dim); }
-
-/* ─── DISPLAY SLIDERS ────────────────────────────────────────────── */
-.sl-group { margin-bottom: 16px; }
-.sl-group:last-child { margin-bottom: 0; }
-.sl-group-title { font-family: var(--display); font-size:0.5833em; letter-spacing: 0.25em; color: var(--gold); text-transform: uppercase; margin-bottom: 10px; padding-bottom: 5px; border-bottom: 1px solid var(--border); }
-.sl-row { display: flex; flex-direction: column; gap: 4px; margin-bottom: 10px; }
-.sl-row:last-child { margin-bottom: 0; }
-.sl-header { display: flex; justify-content: space-between; align-items: baseline; }
-.sl-label { font-family: var(--mono); font-size:0.75em; color: var(--text-dim); letter-spacing: 0.06em; }
-.sl-val { font-family: var(--mono); font-size:0.8333em; color: var(--cyan); letter-spacing: 0.04em; min-width: 42px; text-align: right; }
-.sl-input {
-  -webkit-appearance: none; appearance: none;
-  width: 100%; height: 2px; border-radius: 1px; outline: none; cursor: pointer;
-  background: linear-gradient(to right, rgba(46,207,207,0.5) var(--fill,50%), var(--border2) var(--fill,50%));
-}
-.sl-input::-webkit-slider-thumb {
-  -webkit-appearance: none; appearance: none;
-  width: 14px; height: 14px; border-radius: 50%;
-  background: var(--bg); border: 2px solid var(--cyan);
-  box-shadow: 0 0 8px rgba(46,207,207,0.5); cursor: pointer;
-  transition: box-shadow 0.15s, border-color 0.15s;
-}
-.sl-input::-webkit-slider-thumb:hover { box-shadow: 0 0 14px rgba(46,207,207,0.8); border-color: var(--cyan2); }
-.sl-reset { font-family: var(--mono); font-size:0.6667em; letter-spacing: 0.1em; text-transform: uppercase; color: var(--text-mute); background: transparent; border: 1px solid var(--border2); padding: 4px 12px; cursor: pointer; transition: all 0.15s; margin-top: 6px; width: 100%; }
-.sl-reset:hover { color: var(--red); border-color: rgba(224,82,82,0.4); }
-</style>
+<link rel="stylesheet" href="styles.css">
 </head>
 <body>
 
@@ -328,10 +14,11 @@ body::after { content: ''; position: fixed; inset: 0; background: repeating-line
   <div class="tb-sep"></div>
   <span class="tb-cmdr" id="tb-cmdr">&#8212;</span>
   <div class="tb-sep"></div>
-  <span class="tb-sys" id="tb-sys">&#8212;</span>
+  <span class="tb-sys" id="tb-sys">&#8212;</span><span id="tb-discovery-star" title="First Discovery!" style="display:none;color:var(--gold);margin-left:4px;font-size:0.85em;">&#9733;</span>
   <div class="tab-nav">
-    <button class="tab-btn active" data-view="live">Live</button>
-    <button class="tab-btn" data-view="profile">Profile</button>
+    <a class="tab-btn active" href="index.html">Live</a>
+    <a class="tab-btn" href="profile.html">Profile</a>
+    <a class="tab-btn" href="history.html">History</a>
   </div>
   <span class="tb-credits" id="tb-credits"></span>
   <button id="options-btn" title="Options">&#9881;</button>
@@ -339,141 +26,124 @@ body::after { content: ''; position: fixed; inset: 0; background: repeating-line
 
 <div id="app-wrapper" style="display:flex;flex-direction:column;height:calc(100vh - 44px);">
 
-<!-- LIVE VIEW -->
-<div id="view-live" class="active">
+  <div id="view-live" class="active">
 
-  <div class="panel" id="panel-commander">
-    <div class="panel-header">
-      <span class="label">Commander</span>
-      <div class="accent-line"></div>
-    </div>
-    <div class="panel-body">
-      <div class="stat-group">
-        <div class="stat-group-title">Navigation</div>
-        <div class="stat-row"><span class="stat-key">System</span><span class="stat-val highlight" id="sys-name">&#8212;</span></div>
-        <div class="stat-row"><span class="stat-key">Pos</span><span class="stat-val" id="sys-pos" style="font-size:0.75em">&#8212;</span></div>
-        <div class="stat-row"><span class="stat-key">Security</span><span class="stat-val" id="sys-security" style="font-size:0.75em;color:var(--text-dim)">&#8212;</span></div>
+    <div class="panel" id="panel-commander">
+      <div class="panel-header">
+        <span class="label">Commander</span>
+        <div class="accent-line"></div>
       </div>
-      <div class="stat-group">
-        <div class="stat-group-title">Ship Status</div>
-        <div class="stat-row"><span class="stat-key">Name</span><span class="stat-val" id="ship-name" style="font-size:0.75em">&#8212;</span></div>
-        <div class="stat-row"><span class="stat-key">Type</span><span class="stat-val" id="ship-type" style="font-size:0.75em;color:var(--text-dim)">&#8212;</span></div>
-        <div class="stat-row"><span class="stat-key">Ident</span><span class="stat-val" id="ship-ident" style="font-size:0.75em;color:var(--text-dim)">&#8212;</span></div>
-        <div class="stat-row"><span class="stat-key">Jump Range</span><span class="stat-val highlight" id="ship-range">&#8212;</span></div>
-        <div class="stat-row"><span class="stat-key">Cargo Cap</span><span class="stat-val" id="ship-cargo">&#8212;</span></div>
-        <div class="stat-row"><span class="stat-key">Fuel</span><span class="stat-val" id="ship-fuel">&#8212;</span></div>
-        <div class="fuel-bar-wrap"><div class="fuel-bar-fill" id="fuel-bar" style="width:0%"></div></div>
-        <div class="stat-row" style="margin-top:4px;"><span class="stat-key">Hull</span><span class="stat-val green" id="ship-hull">&#8212;</span></div>
-        <div class="stat-row"><span class="stat-key">Rebuy</span><span class="stat-val red" id="ship-rebuy">&#8212;</span></div>
-      </div>
-      <div class="stat-group">
-        <div class="stat-group-title">Station</div>
-        <div class="stat-row"><span class="stat-key">Name</span><span class="stat-val" id="station-name" style="font-size:0.75em;color:var(--text-dim)">&#8212;</span></div>
-        <div class="stat-row"><span class="stat-key">Type</span><span class="stat-val" id="station-type" style="font-size:0.75em;color:var(--text-dim)">&#8212;</span></div>
-        <div class="stat-row"><span class="stat-key">Faction</span><span class="stat-val" id="station-faction" style="font-size:0.75em;color:var(--text-dim)">&#8212;</span></div>
-        <div class="stat-row"><span class="stat-key">Credits</span><span class="stat-val gold" id="credits">&#8212;</span></div>
-      </div>
-    </div>
-  </div>
-
-  <div class="panel" id="panel-system">
-    <div class="panel-header">
-      <span class="label">System Bodies</span>
-      <div class="accent-line"></div>
-      <span style="font-family:var(--mono);font-size:0.75em;color:var(--text-mute)" id="body-count">0 bodies</span>
-    </div>
-    <div class="panel-body" style="padding:0;">
-      <table class="bodies-table"><thead><tr><th style="width:28px"></th><th>Name</th><th>Class</th><th>Distance</th><th>Information</th><th style="text-align:right">Value</th><th style="text-align:right">Max</th></tr></thead>
-      <tbody id="bodies-tbody"><tr><td colspan="7"><div class="empty-state"><div class="icon">&#9678;</div><div class="msg">Awaiting scan data</div></div></td></tr></tbody></table>
-    </div>
-  </div>
-
-  <div class="panel" id="panel-scan">
-    <div class="panel-header"><span class="label">Scan Values</span><div class="accent-line"></div></div>
-    <div class="scan-total-bar"><span class="scan-total-label">EST. TOTAL</span><span class="scan-total-val" id="scan-total">0 cr</span></div>
-    <div class="panel-body" style="padding:0;">
-      <table class="scan-table"><thead><tr><th>Body</th><th>Type</th><th style="text-align:center">Mapped</th><th style="text-align:right">Value</th></tr></thead>
-      <tbody id="scan-tbody"><tr><td colspan="4"><div class="empty-state" style="height:60px;"><div class="msg">No scans yet</div></div></td></tr></tbody></table>
-    </div>
-  </div>
-
-  <div id="panel-summary">
-    <div class="summary-title">Scan Summary</div>
-    <div class="summary-grid">
-      <div><div class="summary-num" id="sum-stars">0</div><div class="summary-lbl">Stars</div></div>
-      <div><div class="summary-num" id="sum-planets">0</div><div class="summary-lbl">Planets</div></div>
-      <div><div class="summary-num" id="sum-moons">0</div><div class="summary-lbl">Moons</div></div>
-      <div><div class="summary-num" id="sum-total">0</div><div class="summary-lbl">Total</div></div>
-    </div>
-  </div>
-
-  <div id="panel-progress">
-    <div class="panel-header" style="padding:6px 10px;">
-      <span class="label">Journal Scan</span><div class="accent-line"></div>
-      <span style="font-family:var(--mono);font-size:0.75em;color:var(--text-mute)" id="progress-pct">&#8212;</span>
-    </div>
-    <div class="progress-track"><div class="progress-fill" id="progress-bar"></div></div>
-    <div class="progress-info" id="progress-info">Ready</div>
-    <div class="panel-body" style="padding:6px 10px;overflow:hidden;"><div style="font-family:var(--mono);font-size:0.75em;color:var(--text-mute)" id="progress-detail"></div></div>
-  </div>
-
-  <div class="panel" id="panel-log">
-    <div class="panel-header"><span class="label">Application Log</span><div class="accent-line"></div><span id="log-count" style="font-family:var(--mono);font-size:0.75em;color:var(--text-mute)">0 entries</span></div>
-    <div id="log-entries"></div>
-  </div>
-
-</div><!-- /view-live -->
-
-<!-- PROFILE VIEW -->
-<div id="view-profile">
-  <div id="prof-no-data">
-    <div class="icon">&#9672;</div>
-    <div class="msg">No Commander Data Yet</div>
-    <div class="sub">Run "Scan All Journals" from Options &#9881; to populate this view</div>
-  </div>
-  <div id="prof-content" style="display:none;">
-    <div class="ident-card">
-      <div class="ident-avatar">&#9672;</div>
-      <div>
-        <div class="ident-name" id="prof-name">CMDR &#8212;</div>
-        <div class="ident-ship">
-          <span id="prof-ship-type" style="color:var(--text-dim)">&#8212;</span>
-          <span style="color:var(--text-mute)"> &middot; </span>
-          <span id="prof-ship-name" style="color:var(--cyan)">&#8212;</span>
-          <span style="color:var(--text-mute)"> &middot; </span>
-          <span id="prof-ship-ident" style="color:var(--text-mute)">&#8212;</span>
+      <div class="panel-body">
+        <div class="stat-group">
+          <div class="stat-group-title">Navigation</div>
+          <div class="stat-row"><span class="stat-key">System</span><span class="stat-val highlight" id="sys-name">&#8212;</span></div>
+          <div class="stat-row"><span class="stat-key">Pos</span><span class="stat-val" id="sys-pos" style="font-size:0.75em">&#8212;</span></div>
+          <div class="stat-row"><span class="stat-key">Security</span><span class="stat-val" id="sys-security" style="font-size:0.75em;color:var(--text-dim)">&#8212;</span></div>
         </div>
-        <div class="ident-kv-row">
-          <div><div class="ident-kv-val" id="prof-credits">&#8212;</div><div class="ident-kv-lbl">Credits</div></div>
-          <div><div class="ident-kv-val" style="color:var(--text-dim)" id="prof-mode">&#8212;</div><div class="ident-kv-lbl">Game Mode</div></div>
-          <div><div class="ident-kv-val" id="prof-system" style="color:var(--cyan2)">&#8212;</div><div class="ident-kv-lbl">Current System</div></div>
-          <div><div class="ident-kv-val" id="prof-jump" style="color:var(--cyan)">&#8212;</div><div class="ident-kv-lbl">Jump Range</div></div>
+        <div class="stat-group">
+          <div class="stat-group-title">Ship Status</div>
+          <div class="stat-row"><span class="stat-key">Name</span><span class="stat-val" id="ship-name" style="font-size:0.75em">&#8212;</span></div>
+          <div class="stat-row"><span class="stat-key">Type</span><span class="stat-val" id="ship-type" style="font-size:0.75em;color:var(--text-dim)">&#8212;</span></div>
+          <div class="stat-row"><span class="stat-key">Ident</span><span class="stat-val" id="ship-ident" style="font-size:0.75em;color:var(--text-dim)">&#8212;</span></div>
+          <div class="stat-row"><span class="stat-key">Jump Range</span><span class="stat-val highlight" id="ship-range">&#8212;</span></div>
+          <div class="stat-row"><span class="stat-key">Cargo Cap</span><span class="stat-val" id="ship-cargo">&#8212;</span></div>
+          <div class="stat-row"><span class="stat-key">Fuel</span><span class="stat-val" id="ship-fuel">&#8212;</span></div>
+          <div class="fuel-bar-wrap"><div class="fuel-bar-fill" id="fuel-bar" style="width:0%"></div></div>
+          <div class="stat-row" style="margin-top:4px;"><span class="stat-key">Hull</span><span class="stat-val green" id="ship-hull">&#8212;</span></div>
+          <div class="stat-row"><span class="stat-key">Rebuy</span><span class="stat-val red" id="ship-rebuy">&#8212;</span></div>
+        </div>
+        <div class="stat-group">
+          <div class="stat-group-title">Station</div>
+          <div class="stat-row"><span class="stat-key">Name</span><span class="stat-val" id="station-name" style="font-size:0.75em;color:var(--text-dim)">&#8212;</span></div>
+          <div class="stat-row"><span class="stat-key">Type</span><span class="stat-val" id="station-type" style="font-size:0.75em;color:var(--text-dim)">&#8212;</span></div>
+          <div class="stat-row"><span class="stat-key">Faction</span><span class="stat-val" id="station-faction" style="font-size:0.75em;color:var(--text-dim)">&#8212;</span></div>
+          <div class="stat-row"><span class="stat-key">Credits</span><span class="stat-val gold" id="credits">&#8212;</span></div>
         </div>
       </div>
     </div>
-    <div class="prof-section" style="background:var(--panel);">
-      <div class="prof-title">Commander Ranks</div>
-      <div class="ranks-grid" id="prof-ranks-grid"></div>
-    </div>
-    <div class="prof-section" style="background:var(--panel);">
-      <div class="prof-title">Superpower Reputation</div>
-      <div class="rep-grid">
-        <div class="rep-card rep-empire"><div class="rep-name">Empire</div><div class="rep-num" id="rep-empire-num">&#8212;</div><div class="rep-sub" id="rep-empire-lbl">&#8212;</div><div class="rep-track"><div class="rep-fill" id="rep-empire-bar" style="width:0%"></div></div></div>
-        <div class="rep-card rep-federation"><div class="rep-name">Federation</div><div class="rep-num" id="rep-fed-num">&#8212;</div><div class="rep-sub" id="rep-fed-lbl">&#8212;</div><div class="rep-track"><div class="rep-fill" id="rep-fed-bar" style="width:0%"></div></div></div>
-        <div class="rep-card rep-alliance"><div class="rep-name">Alliance</div><div class="rep-num" id="rep-all-num">&#8212;</div><div class="rep-sub" id="rep-all-lbl">&#8212;</div><div class="rep-track"><div class="rep-fill" id="rep-all-bar" style="width:0%"></div></div></div>
-        <div class="rep-card rep-independent"><div class="rep-name">Independent</div><div class="rep-num" id="rep-ind-num">&#8212;</div><div class="rep-sub" id="rep-ind-lbl">&#8212;</div><div class="rep-track"><div class="rep-fill" id="rep-ind-bar" style="width:0%"></div></div></div>
+
+    <div class="panel" id="panel-system">
+      <div class="panel-header">
+        <span class="label">System Bodies</span>
+        <div class="accent-line"></div>
+        <span style="font-family:var(--mono);font-size:0.75em;color:var(--text-mute)" id="body-count">0 bodies</span>
+      </div>
+      <div class="panel-body" style="padding:0;">
+        <table class="bodies-table">
+          <thead>
+            <tr>
+              <th style="width:28px"></th>
+              <th>Name</th>
+              <th>Class</th>
+              <th>Distance</th>
+              <th>Information</th>
+              <th style="text-align:right">Value</th>
+              <th style="text-align:right">Max</th>
+            </tr>
+          </thead>
+          <tbody id="bodies-tbody">
+            <tr><td colspan="7"><div class="empty-state"><div class="icon">&#9678;</div><div class="msg">Awaiting scan data</div></div></td></tr>
+          </tbody>
+        </table>
       </div>
     </div>
-    <div class="prof-section" style="background:var(--bg2);">
-      <div class="prof-title">Lifetime Statistics</div>
-      <div class="stats-cols" id="prof-stats-cols"></div>
+
+    <div class="panel" id="panel-scan">
+      <div class="panel-header"><span class="label">Scan Values</span><div class="accent-line"></div></div>
+      <div class="scan-total-bar"><span class="scan-total-label">EST. TOTAL</span><span class="scan-total-val" id="scan-total">0 cr</span></div>
+      <div class="panel-body" style="padding:0;">
+        <table class="scan-table">
+          <thead>
+            <tr>
+              <th>Body</th>
+              <th>Type</th>
+              <th style="text-align:center">Mapped</th>
+              <th style="text-align:right">Value</th>
+            </tr>
+          </thead>
+          <tbody id="scan-tbody">
+            <tr><td colspan="4"><div class="empty-state" style="height:60px;"><div class="msg">No scans yet</div></div></td></tr>
+          </tbody>
+        </table>
+      </div>
     </div>
-  </div>
-</div><!-- /view-profile -->
+
+    <div id="panel-summary">
+      <div class="summary-title">Scan Summary</div>
+      <div class="summary-grid">
+        <div><div class="summary-num" id="sum-stars">0</div><div class="summary-lbl">Stars</div></div>
+        <div><div class="summary-num" id="sum-planets">0</div><div class="summary-lbl">Planets</div></div>
+        <div><div class="summary-num" id="sum-moons">0</div><div class="summary-lbl">Moons</div></div>
+        <div><div class="summary-num" id="sum-total">0</div><div class="summary-lbl">Total</div></div>
+      </div>
+    </div>
+
+    <div id="panel-progress">
+      <div class="panel-header" style="padding:6px 10px;">
+        <span class="label">Journal Scan</span><div class="accent-line"></div>
+        <span style="font-family:var(--mono);font-size:0.75em;color:var(--text-mute)" id="progress-pct">&#8212;</span>
+      </div>
+      <div class="progress-track"><div class="progress-fill" id="progress-bar"></div></div>
+      <div class="progress-info" id="progress-info">Ready</div>
+      <div class="panel-body" style="padding:6px 10px;overflow:hidden;">
+        <div style="font-family:var(--mono);font-size:0.75em;color:var(--text-mute)" id="progress-detail"></div>
+      </div>
+    </div>
+
+    <div class="panel" id="panel-log">
+      <div class="panel-header">
+        <span class="label">Application Log</span>
+        <div class="accent-line"></div>
+        <span id="log-count" style="font-family:var(--mono);font-size:0.75em;color:var(--text-mute)">0 entries</span>
+      </div>
+      <div id="log-entries"></div>
+    </div>
+
+  </div><!-- /view-live -->
 
 </div><!-- /app-wrapper -->
 
-<!-- OPTIONS -->
+<!-- OPTIONS PANEL -->
 <div id="options-overlay"></div>
 <div id="options-panel">
   <div id="options-header">
@@ -507,65 +177,30 @@ body::after { content: ''; position: fixed; inset: 0; background: repeating-line
       </div>
     </div>
     <div class="opt-section">
-      <!-- DISPLAY SLIDERS -->
       <div class="sl-group">
         <div class="sl-group-title">Scale &amp; Size</div>
-        <div class="sl-row">
-          <div class="sl-header"><span class="sl-label">UI Scale</span><span class="sl-val" id="sv-scale">100%</span></div>
-          <input type="range" class="sl-input" id="sl-scale" min="70" max="130" step="1" value="100">
-        </div>
-        <div class="sl-row">
-          <div class="sl-header"><span class="sl-label">Font Size</span><span class="sl-val" id="sv-font">12px</span></div>
-          <input type="range" class="sl-input" id="sl-font" min="9" max="32" step="0.5" value="12">
-        </div>
-        <div class="sl-row">
-          <div class="sl-header"><span class="sl-label">Row Density</span><span class="sl-val" id="sv-density">Normal</span></div>
-          <input type="range" class="sl-input" id="sl-density" min="1" max="5" step="1" value="3">
-        </div>
+        <div class="sl-row"><div class="sl-header"><span class="sl-label">UI Scale</span><span class="sl-val" id="sv-scale">100%</span></div><input type="range" class="sl-input" id="sl-scale" min="70" max="130" step="1" value="100"></div>
+        <div class="sl-row"><div class="sl-header"><span class="sl-label">Font Size</span><span class="sl-val" id="sv-font">12px</span></div><input type="range" class="sl-input" id="sl-font" min="9" max="32" step="0.5" value="12"></div>
+        <div class="sl-row"><div class="sl-header"><span class="sl-label">Row Density</span><span class="sl-val" id="sv-density">Normal</span></div><input type="range" class="sl-input" id="sl-density" min="1" max="5" step="1" value="3"></div>
       </div>
       <div class="sl-group">
         <div class="sl-group-title">Panel Layout</div>
-        <div class="sl-row">
-          <div class="sl-header"><span class="sl-label">Left Panel Width</span><span class="sl-val" id="sv-left">220px</span></div>
-          <input type="range" class="sl-input" id="sl-left" min="160" max="360" step="5" value="220">
-        </div>
-        <div class="sl-row">
-          <div class="sl-header"><span class="sl-label">Right Panel Width</span><span class="sl-val" id="sv-right">320px</span></div>
-          <input type="range" class="sl-input" id="sl-right" min="200" max="500" step="5" value="320">
-        </div>
-        <div class="sl-row">
-          <div class="sl-header"><span class="sl-label">Bottom Bar Height</span><span class="sl-val" id="sv-bottom">120px</span></div>
-          <input type="range" class="sl-input" id="sl-bottom" min="95" max="240" step="5" value="120">
-        </div>
+        <div class="sl-row"><div class="sl-header"><span class="sl-label">Left Panel Width</span><span class="sl-val" id="sv-left">220px</span></div><input type="range" class="sl-input" id="sl-left" min="160" max="360" step="5" value="220"></div>
+        <div class="sl-row"><div class="sl-header"><span class="sl-label">Right Panel Width</span><span class="sl-val" id="sv-right">320px</span></div><input type="range" class="sl-input" id="sl-right" min="200" max="500" step="5" value="320"></div>
+        <div class="sl-row"><div class="sl-header"><span class="sl-label">Bottom Bar Height</span><span class="sl-val" id="sv-bottom">120px</span></div><input type="range" class="sl-input" id="sl-bottom" min="95" max="240" step="5" value="120"></div>
       </div>
       <div class="sl-group">
         <div class="sl-group-title">Atmosphere</div>
-        <div class="sl-row">
-          <div class="sl-header"><span class="sl-label">Brightness</span><span class="sl-val" id="sv-bright">100%</span></div>
-          <input type="range" class="sl-input" id="sl-bright" min="40" max="160" step="2" value="100">
-        </div>
-        <div class="sl-row">
-          <div class="sl-header"><span class="sl-label">Panel Opacity</span><span class="sl-val" id="sv-opacity">100%</span></div>
-          <input type="range" class="sl-input" id="sl-opacity" min="30" max="100" step="2" value="100">
-        </div>
-        <div class="sl-row">
-          <div class="sl-header"><span class="sl-label">Scanlines</span><span class="sl-val" id="sv-scan">Low</span></div>
-          <input type="range" class="sl-input" id="sl-scan" min="0" max="5" step="1" value="1">
-        </div>
-        <div class="sl-row">
-          <div class="sl-header"><span class="sl-label">Glow Intensity</span><span class="sl-val" id="sv-glow">100%</span></div>
-          <input type="range" class="sl-input" id="sl-glow" min="0" max="200" step="5" value="100">
-        </div>
-        <div class="sl-row">
-          <div class="sl-header"><span class="sl-label">Border Sharpness</span><span class="sl-val" id="sv-border">Medium</span></div>
-          <input type="range" class="sl-input" id="sl-border" min="0" max="4" step="1" value="2">
-        </div>
+        <div class="sl-row"><div class="sl-header"><span class="sl-label">Brightness</span><span class="sl-val" id="sv-bright">100%</span></div><input type="range" class="sl-input" id="sl-bright" min="40" max="160" step="2" value="100"></div>
+        <div class="sl-row"><div class="sl-header"><span class="sl-label">Panel Opacity</span><span class="sl-val" id="sv-opacity">100%</span></div><input type="range" class="sl-input" id="sl-opacity" min="30" max="100" step="2" value="100"></div>
+        <div class="sl-row"><div class="sl-header"><span class="sl-label">Scanlines</span><span class="sl-val" id="sv-scan">Low</span></div><input type="range" class="sl-input" id="sl-scan" min="0" max="5" step="1" value="1"></div>
+        <div class="sl-row"><div class="sl-header"><span class="sl-label">Glow Intensity</span><span class="sl-val" id="sv-glow">100%</span></div><input type="range" class="sl-input" id="sl-glow" min="0" max="200" step="5" value="100"></div>
+        <div class="sl-row"><div class="sl-header"><span class="sl-label">Border Sharpness</span><span class="sl-val" id="sv-border">Medium</span></div><input type="range" class="sl-input" id="sl-border" min="0" max="4" step="1" value="2"></div>
       </div>
       <button class="sl-reset" id="sl-reset-all">&#8635; Reset All Display Settings</button>
     </div>
-
     <div class="opt-section">
-      <div class="opt-section-title">Toggle Panels (Live View)</div>
+      <div class="opt-section-title">Toggle Panels</div>
       <div class="opt-toggles">
         <label class="opt-toggle"><input type="checkbox" id="tog-commander" checked><span class="tog-track"><span class="tog-thumb"></span></span><span class="tog-lbl">Commander</span></label>
         <label class="opt-toggle"><input type="checkbox" id="tog-system" checked><span class="tog-track"><span class="tog-thumb"></span></span><span class="tog-lbl">System Bodies</span></label>
@@ -578,538 +213,6 @@ body::after { content: ''; position: fixed; inset: 0; background: repeating-line
   </div>
 </div>
 
-<script>
-// ─── RANK TABLES ──────────────────────────────────────────────────
-const COMBAT_RANKS  = ['Harmless','Mostly Harmless','Novice','Competent','Expert','Master','Dangerous','Deadly','Elite'];
-const TRADE_RANKS   = ['Penniless','Mostly Penniless','Peddler','Dealer','Merchant','Broker','Entrepreneur','Tycoon','Elite'];
-const EXPLORE_RANKS = ['Aimless','Mostly Aimless','Scout','Surveyor','Trailblazer','Pathfinder','Ranger','Pioneer','Elite'];
-const CQC_RANKS     = ['Helpless','Mostly Helpless','Amateur','Semi-Pro','Professional','Champion','Hero','Gladiator','Elite'];
-const EMPIRE_RANKS  = ['None','Outsider','Serf','Master','Squire','Knight','Lord','Baron','Viscount','Count','Earl','Marquis','Duke','Prince','King'];
-const FED_RANKS     = ['None','Recruit','Cadet','Midshipman','Petty Officer','Chief Petty Officer','Warrant Officer','Ensign','Lieutenant','Lt. Commander','Post Commander','Post Captain','Rear Admiral','Vice Admiral','Admiral'];
-const EXOBIO_RANKS  = ['Directionless','Mostly Directionless','Compiler','Collector','Cataloguer','Taxonomist','Ecologist','Geneticist','Elite'];
-
-// ─── UTILITIES ────────────────────────────────────────────────────
-function fmt(n)    { return (n == null || n === 0) ? '\u2014' : Number(n).toLocaleString() + ' cr'; }
-function fmtNum(n) { return n == null ? '\u2014' : Number(n).toLocaleString(); }
-function fmtCr(n)  { return n == null ? '\u2014' : Number(n).toLocaleString() + ' cr'; }
-function fmtTime(s){ if (!s) return '\u2014'; const h = Math.floor(s/3600), d = Math.floor(h/24); return d > 0 ? d+'d '+(h%24)+'h' : h+'h'; }
-function repLabel(v){ if (v >= 90) return 'Allied'; if (v >= 50) return 'Friendly'; if (v >= 10) return 'Cordial'; if (v >= -10) return 'Neutral'; if (v >= -50) return 'Unfriendly'; return 'Hostile'; }
-function ts() { return new Date().toTimeString().slice(0,8); }
-
-// ─── LOGGING ──────────────────────────────────────────────────────
-let logCount = 0;
-function log(msg, type = 'info') {
-  logCount++;
-  document.getElementById('log-count').textContent = logCount + ' entries';
-  const el = document.getElementById('log-entries');
-  const e = document.createElement('div');
-  e.className = 'log-entry';
-  e.innerHTML = '<span class="log-ts">' + ts() + '</span><span class="log-msg ' + type + '">' + msg + '</span>';
-  el.appendChild(e);
-  el.scrollTop = el.scrollHeight;
-}
-
-// ─── TAB SWITCHING ────────────────────────────────────────────────
-function switchTab(name) {
-  document.querySelectorAll('.tab-btn').forEach(b => b.classList.toggle('active', b.dataset.view === name));
-  document.getElementById('view-live').classList.toggle('active', name === 'live');
-  document.getElementById('view-profile').classList.toggle('active', name === 'profile');
-}
-document.querySelectorAll('.tab-btn').forEach(btn => btn.addEventListener('click', () => switchTab(btn.dataset.view)));
-
-// ─── MOCK BODIES ──────────────────────────────────────────────────
-const MOCK_BODIES = [
-  { id:'HIP 39418',   cls:'White F class star',       iconType:'star',  dist:'Main Star',  isMoon:false, info:['Mass: 1.43 SM','Radius: 1.26 SR'],       tags:[],                              value:1225,  maxVal:1225  },
-  { id:'HIP 39418 1', cls:'High metal content world', iconType:'hmc',   dist:'0.34 AU',    isMoon:false, info:['Radius: 11,260 km','Landable (G: 3.0)'],  tags:['Silicate Geysers','Volcanism'], value:18174, maxVal:98446 },
-  { id:'HIP 39418 1a',cls:'Rocky body Moon',          iconType:'moon',  dist:'133,937 km', isMoon:true,  info:['Radius: 418 km','Landable'],              tags:['Carbon','Niobium'],             value:500,   maxVal:2777  },
-  { id:'HIP 39418 1b',cls:'Rocky body Moon',          iconType:'moon',  dist:'162,869 km', isMoon:true,  info:['Radius: 415 km','Landable'],              tags:['Carbon','Germanium'],           value:500,   maxVal:2777  },
-  { id:'HIP 39418 2', cls:'High metal content world', iconType:'hmc',   dist:'0.62 AU',    isMoon:false, info:['Radius: 9,953 km','Temp: 466 K'],         tags:['Silicate Geysers'],             value:17400, maxVal:94254 },
-  { id:'HIP 39418 9', cls:'Class I gas giant',        iconType:'gas',   dist:'3.17 AU',    isMoon:false, info:['Ring system present'],                    tags:[],                               value:3336,  maxVal:14456 },
-];
-const MOCK_SCANS = [
-  { body:'HIP 39418 6', type:'High metal content', mapped:true,  value:185702 },
-  { body:'HIP 39418 1', type:'High metal content', mapped:false, value:18174  },
-  { body:'HIP 39418 2', type:'High metal content', mapped:false, value:17400  },
-  { body:'HIP 39418 9', type:'Class I gas giant',  mapped:false, value:3336   },
-  { body:'HIP 39418',   type:'White F class star', mapped:false, value:1225   },
-];
-
-function populateBodies() {
-  const tbody = document.getElementById('bodies-tbody');
-  tbody.innerHTML = '';
-  let stars = 0, planets = 0, moons = 0;
-  MOCK_BODIES.forEach(b => {
-    const tr = document.createElement('tr');
-    tr.className = b.isMoon ? 'body-moon' : 'body-main';
-    tr.innerHTML =
-      '<td style="text-align:center;padding:4px;"><div style="display:flex;justify-content:center;"><div class="body-icon ' + b.iconType + '"></div></div></td>' +
-      '<td class="' + (b.isMoon ? 'body-indent' : '') + '">' +
-        '<div class="body-name-cell">' + (b.isMoon ? '<span class="moon-indicator"></span>' : '') +
-        '<span style="font-size:' + (b.isMoon ? '9' : '10') + 'px;color:' + (b.isMoon ? 'var(--text-dim)' : 'var(--text)') + '">' + b.id + '</span></div></td>' +
-      '<td class="body-class">' + b.cls + '</td>' +
-      '<td style="font-size:0.75em;color:var(--text-dim)">' + b.dist + '</td>' +
-      '<td><div class="info-text">' + b.info.map(i => '<div>' + i + '</div>').join('') + '</div>' +
-        '<div style="margin-top:3px">' + b.tags.map(t => '<span class="info-tag poi">' + t + '</span>').join('') + '</div></td>' +
-      '<td class="val-cell">' + fmt(b.value) + '</td>' +
-      '<td class="val-cell muted" style="font-size:0.75em">' + fmt(b.maxVal) + '</td>';
-    tbody.appendChild(tr);
-    if (b.iconType === 'star') stars++; else if (b.isMoon) moons++; else planets++;
-  });
-  document.getElementById('body-count').textContent = MOCK_BODIES.length + ' bodies';
-  document.getElementById('sum-stars').textContent = stars;
-  document.getElementById('sum-planets').textContent = planets;
-  document.getElementById('sum-moons').textContent = moons;
-  document.getElementById('sum-total').textContent = MOCK_BODIES.length;
-}
-
-function populateScans() {
-  const tbody = document.getElementById('scan-tbody');
-  tbody.innerHTML = '';
-  let total = 0;
-  MOCK_SCANS.forEach(s => {
-    total += s.value;
-    const tr = document.createElement('tr');
-    tr.innerHTML =
-      '<td style="font-size:0.75em">' + s.body + '</td>' +
-      '<td style="font-size:0.6667em;color:var(--text-dim)">' + s.type + '</td>' +
-      '<td style="text-align:center"><span class="mapped-icon ' + (s.mapped ? 'yes' : 'no') + '"></span></td>' +
-      '<td class="scan-val">' + fmtNum(s.value) + '</td>';
-    tbody.appendChild(tr);
-  });
-  document.getElementById('scan-total').textContent = total.toLocaleString() + ' cr';
-}
-
-// ─── HELPER: set text ─────────────────────────────────────────────
-function set(id, v) { const el = document.getElementById(id); if (el) el.textContent = (v != null ? v : '\u2014'); }
-
-// ─── CMDR DATA (from Electron IPC) ───────────────────────────────
-window.electronAPI.onCmdrData(function(d) {
-  var rk  = d.ranks      || {};
-  var pr  = d.progress   || {};
-  var rep = d.reputation || {};
-  var st  = d.stats      || {};
-
-  // Top bar
-  if (d.name)         document.getElementById('tb-cmdr').textContent = 'CMDR ' + d.name;
-  if (d.currentSystem)document.getElementById('tb-sys').textContent  = d.currentSystem;
-  if (d.credits != null) document.getElementById('tb-credits').textContent = Number(d.credits).toLocaleString() + ' CR';
-
-  // Live left panel
-  if (d.currentSystem) set('sys-name', d.currentSystem);
-  if (d.pos)           set('sys-pos', d.pos);
-  if (d.ship || d.shipName) set('ship-name', [d.shipName, d.ship].filter(Boolean).join(' \u00B7 ') || '\u2014');
-  if (d.ship)          set('ship-type', d.ship);
-  if (d.shipIdent)     set('ship-ident', d.shipIdent);
-  if (d.maxJumpRange)  set('ship-range', d.maxJumpRange);
-  if (d.cargoCapacity != null) set('ship-cargo', d.cargoCapacity + ' T');
-  if (d.fuelDisplay)   set('ship-fuel', d.fuelDisplay);
-  if (d.fuelPct != null) document.getElementById('fuel-bar').style.width = d.fuelPct + '%';
-  if (d.hullHealth != null) set('ship-hull', Math.round(d.hullHealth * 100) + '%');
-  if (d.rebuy != null) set('ship-rebuy', fmtCr(d.rebuy));
-  if (d.credits != null) set('credits', fmtCr(d.credits));
-  set('station-name',    d.dockedStation     || '\u2014');
-  set('station-type',    d.dockedStationType || '\u2014');
-  set('station-faction', d.dockedFaction     || '\u2014');
-
-  // Profile identity
-  set('prof-name',       d.name      ? 'CMDR ' + d.name : '\u2014');
-  set('prof-ship-type',  d.ship      || '\u2014');
-  set('prof-ship-name',  d.shipName  || '\u2014');
-  set('prof-ship-ident', d.shipIdent || '\u2014');
-  set('prof-credits',    d.credits != null ? Number(d.credits).toLocaleString() + ' cr' : '\u2014');
-  set('prof-mode',       d.gameMode  || '\u2014');
-  set('prof-system',     d.currentSystem || '\u2014');
-  set('prof-jump',       d.maxJumpRange  || '\u2014');
-
-  // Ranks
-  var rankDefs = [
-    { cls:'combat',  label:'Combat',      r:rk.combat,     p:pr.combat,     max:8 },
-    { cls:'trade',   label:'Trade',       r:rk.trade,      p:pr.trade,      max:8 },
-    { cls:'explore', label:'Exploration', r:rk.explore,    p:pr.explore,    max:8 },
-    { cls:'exobio',  label:'Exobiology',  r:rk.exobiology, p:null,          max:8 },
-    { cls:'empire',  label:'Empire',      r:rk.empire,     p:pr.empire,     max:14 },
-    { cls:'fed',     label:'Federation',  r:rk.federation, p:pr.federation, max:14 },
-    { cls:'cqc',     label:'CQC',         r:rk.cqc,        p:pr.cqc,        max:8 },
-  ];
-  document.getElementById('prof-ranks-grid').innerHTML = rankDefs.map(function(rd) {
-    var name   = rd.r ? rd.r.name : '\u2014';
-    var barPct = rd.p != null ? rd.p : (rd.r ? Math.round((rd.r.level / rd.max) * 100) : 0);
-    var pctLbl = rd.p != null ? rd.p + '%' : '';
-    return '<div class="rank-card ' + rd.cls + '">' +
-      '<div class="rank-label">' + rd.label + '</div>' +
-      '<div class="rank-name">' + name + '</div>' +
-      '<div class="rank-bar-wrap"><div class="rank-bar" style="width:' + barPct + '%"></div></div>' +
-      '<div class="rank-pct">' + pctLbl + '</div></div>';
-  }).join('');
-
-  // Reputation
-  function setRep(prefix, val) {
-    var v   = val != null ? val : 0;
-    var bar = Math.round(((v + 100) / 200) * 100);
-    var sign = v >= 0 ? '+' : '';
-    set(prefix + '-num', sign + v.toFixed(1));
-    set(prefix + '-lbl', repLabel(v));
-    var el = document.getElementById(prefix + '-bar');
-    if (el) el.style.width = bar + '%';
-  }
-  setRep('rep-empire', rep.empire);
-  setRep('rep-fed',    rep.federation);
-  setRep('rep-all',    rep.alliance);
-  setRep('rep-ind',    rep.independent);
-
-  // Statistics
-  var ex  = (st.Exploration       || {});
-  var tr  = (st.Trading           || {});
-  var cb  = (st.Combat            || {});
-  var mn  = (st.Mining            || {});
-  var sm  = (st.Smuggling         || {});
-  var ba  = (st.Bank_Account      || {});
-  var exo = (st.Exobiology        || {});
-  var sr  = (st.Search_And_Rescue || {});
-
-  var statCols = [
-    { title:'Exploration', color:'c-cyan', rows:[
-      ['Systems Visited',   fmtNum(ex.Systems_Visited)],
-      ['Jumps',             fmtNum(ex.Total_Hyperspace_Jumps)],
-      ['Distance',          ex.Total_Hyperspace_Distance ? Math.round(ex.Total_Hyperspace_Distance).toLocaleString()+' ly' : '\u2014'],
-      ['Furthest',          ex.Greatest_Distance_From_Start ? Math.round(ex.Greatest_Distance_From_Start).toLocaleString()+' ly' : '\u2014'],
-      ['Planets Scanned',   fmtNum(ex.Planets_Scanned_To_Level_3)],
-      ['Efficient Scans',   fmtNum(ex.Efficient_Scans)],
-      ['First Footfalls',   fmtNum(ex.First_Footfalls)],
-      ['Exploration Profit',fmtCr(ex.Exploration_Profits)],
-      ['Time Played',       fmtTime(ex.Time_Played)],
-    ]},
-    { title:'Trade & Mining', color:'c-green', rows:[
-      ['Trade Transactions',fmtNum(tr.Market_Transactions_Count)],
-      ['Trade Profit',      fmtCr(tr.Market_Profits)],
-      ['Highest Trade',     fmtCr(tr.Highest_Single_Transaction)],
-      ['Markets Traded',    fmtNum(tr.Markets_Traded_With)],
-      ['Mining Profit',     fmtCr(mn.Mining_Profits)],
-      ['Qty Mined',         fmtNum(mn.Quantity_Mined)],
-      ['Black Market',      fmtCr(sm.Black_Market_Profits)],
-      ['Search & Rescue',   fmtCr(sr.SearchRescue_Profit)],
-      ['Total Wealth',      fmtCr(ba.Current_Wealth)],
-    ]},
-    { title:'Combat', color:'c-red', rows:[
-      ['Bounties Claimed',  fmtNum(cb.Bounties_Claimed)],
-      ['Bounty Profit',     fmtCr(cb.Bounty_Hunting_Profit)],
-      ['Highest Reward',    fmtCr(cb.Highest_Single_Reward)],
-      ['Combat Bonds',      fmtNum(cb.Combat_Bonds)],
-      ['Bond Profits',      fmtCr(cb.Combat_Bond_Profits)],
-      ['Assassinations',    fmtNum(cb.Assassinations)],
-      ['Assassination Cr.', fmtCr(cb.Assassination_Profits)],
-    ]},
-    { title:'Exobiology', color:'c-purple', rows:[
-      ['Organic Data',      fmtNum(exo.Organic_Data)],
-      ['Exobiology Profit', fmtCr(exo.Organic_Data_Profits)],
-      ['First Logged',      fmtCr(exo.First_Logged_Profits)],
-      ['Genus Encountered', fmtNum(exo.Organic_Genus_Encountered)],
-      ['Species',           fmtNum(exo.Organic_Species_Encountered)],
-      ['Systems',           fmtNum(exo.Organic_Systems)],
-      ['Planets',           fmtNum(exo.Organic_Planets)],
-    ]},
-    { title:'Spending', color:'c-gold', rows:[
-      ['On Ships',          fmtCr(ba.Spent_On_Ships)],
-      ['On Outfitting',     fmtCr(ba.Spent_On_Outfitting)],
-      ['On Repairs',        fmtCr(ba.Spent_On_Repairs)],
-      ['On Insurance',      fmtCr(ba.Spent_On_Insurance)],
-      ['On Suits',          fmtCr(ba.Spent_On_Suits)],
-      ['On Weapons',        fmtCr(ba.Spent_On_Weapons)],
-      ['Ships Owned',       fmtNum(ba.Owned_Ship_Count)],
-      ['Suits Owned',       fmtNum(ba.Suits_Owned)],
-      ['Weapons Owned',     fmtNum(ba.Weapons_Owned)],
-    ]},
-  ];
-
-  document.getElementById('prof-stats-cols').innerHTML = statCols.map(function(col) {
-    return '<div class="stat-block">' +
-      '<div class="stat-block-title ' + col.color + '">' + col.title + '</div>' +
-      col.rows.map(function(row) {
-        return '<div class="mini-stat"><span class="ms-key">' + row[0] + '</span><span class="ms-val">' + row[1] + '</span></div>';
-      }).join('') + '</div>';
-  }).join('');
-
-  document.getElementById('prof-no-data').style.display  = 'none';
-  document.getElementById('prof-content').style.display  = 'block';
-  log('CMDR data loaded: ' + (d.name || '?'), 'good');
-});
-
-// ─── IPC LISTENERS ────────────────────────────────────────────────
-window.electronAPI.onScanAll(function() { log('Scan All Journals triggered', 'warn'); });
-window.electronAPI.onJournalPathMissing(function(p) { log('Journal folder not found: ' + p, 'error'); log('Set the correct path in Options', 'warn'); });
-window.electronAPI.onLocation(function(data) {
-  if (data.system) {
-    set('sys-name', data.system);
-    document.getElementById('tb-sys').textContent = data.system;
-    log('System: ' + data.system, 'info');
-  }
-});
-window.electronAPI.onProgress(function(data) {
-  var overall = Math.round(((data.fileIndex - 1 + data.currentLine / data.totalLines) / data.totalFiles) * 100);
-  var filePct = Math.round((data.currentLine / data.totalLines) * 100);
-  document.getElementById('progress-bar').style.width  = overall + '%';
-  document.getElementById('progress-pct').textContent  = overall + '%';
-  document.getElementById('progress-info').textContent = 'File ' + data.fileIndex + ' of ' + data.totalFiles;
-  document.getElementById('progress-detail').textContent = data.file + '  \u00B7  line ' + data.currentLine + ' / ' + data.totalLines + '  (' + filePct + '%)';
-  if (overall >= 100) {
-    setTimeout(function() {
-      document.getElementById('progress-bar').style.width  = '0%';
-      document.getElementById('progress-pct').textContent  = '\u2014';
-      document.getElementById('progress-info').textContent = 'Ready';
-      document.getElementById('progress-detail').textContent = '';
-      log('Scan complete', 'good');
-    }, 800);
-  }
-});
-
-async function refreshStats() {
-  try { var res = await fetch('http://localhost:3721/stats'); var d = await res.json(); log('DB scans: ' + d.scans, 'info'); } catch {}
-}
-
-// ─── OPTIONS ──────────────────────────────────────────────────────
-function openOptions() {
-  document.getElementById('options-panel').classList.add('open');
-  document.getElementById('options-overlay').classList.add('open');
-  if (window.electronAPI.getJournalPath) {
-    window.electronAPI.getJournalPath().then(function(p) { if (p) document.getElementById('opt-journal-path').value = p; }).catch(function(){});
-  }
-}
-function closeOptions() {
-  document.getElementById('options-panel').classList.remove('open');
-  document.getElementById('options-overlay').classList.remove('open');
-}
-document.getElementById('options-btn').addEventListener('click', openOptions);
-document.getElementById('options-close').addEventListener('click', closeOptions);
-document.getElementById('options-overlay').addEventListener('click', closeOptions);
-document.getElementById('opt-scan-btn').addEventListener('click', function() { window.electronAPI.triggerScanAll(); log('Scan All Journals triggered', 'warn'); closeOptions(); });
-document.getElementById('opt-browse-btn').addEventListener('click', async function() {
-  try { var chosen = await window.electronAPI.browseJournalPath(); if (chosen) { document.getElementById('opt-journal-path').value = chosen; document.getElementById('opt-path-hint').textContent = 'Path saved \u2014 restart to apply'; document.getElementById('opt-path-hint').style.color = 'var(--green)'; } }
-  catch { log('Browse not available', 'warn'); }
-});
-document.getElementById('opt-open-btn').addEventListener('click', async function() {
-  try { await window.electronAPI.openJournalFolder(document.getElementById('opt-journal-path').value.trim() || null); } catch { log('Could not open folder', 'warn'); }
-});
-document.getElementById('opt-journal-path').addEventListener('change', async function() {
-  var val = document.getElementById('opt-journal-path').value.trim();
-  try { await window.electronAPI.saveJournalPath(val); document.getElementById('opt-path-hint').textContent = val ? 'Path saved \u2014 restart to apply' : 'Leave blank to use the default path for your OS'; document.getElementById('opt-path-hint').style.color = val ? 'var(--green)' : ''; } catch {}
-});
-
-// ─── THEMES ───────────────────────────────────────────────────────
-var THEMES = {
-  default: { '--gold':'#c8972a','--gold2':'#e8b840','--gold-dim':'#7a5a10','--gold-glow':'rgba(200,151,42,0.15)','--cyan':'#2ecfcf','--cyan2':'#5ee8e8','--cyan-dim':'rgba(46,207,207,0.1)' },
-  red:     { '--gold':'#e05252','--gold2':'#f07070','--gold-dim':'#a03030','--gold-glow':'rgba(224,82,82,0.15)', '--cyan':'#cf7a3e','--cyan2':'#e89060','--cyan-dim':'rgba(207,122,62,0.1)' },
-  green:   { '--gold':'#4caf7d','--gold2':'#70d090','--gold-dim':'#2a7a50','--gold-glow':'rgba(76,175,125,0.15)','--cyan':'#a0cf3e','--cyan2':'#c0e060','--cyan-dim':'rgba(160,207,62,0.1)' },
-  purple:  { '--gold':'#a855f7','--gold2':'#c080ff','--gold-dim':'#7a30c0','--gold-glow':'rgba(168,85,247,0.15)','--cyan':'#cf3ecf','--cyan2':'#e060e0','--cyan-dim':'rgba(207,62,207,0.1)' },
-};
-function applyTheme(name) {
-  var t = THEMES[name] || THEMES.default;
-  Object.entries(t).forEach(function(kv) { document.documentElement.style.setProperty(kv[0], kv[1]); });
-  document.querySelectorAll('.opt-theme-swatch').forEach(function(el) { el.classList.toggle('active', el.dataset.theme === name); });
-  localStorage.setItem('ee-theme', name);
-}
-document.querySelectorAll('.opt-theme-swatch').forEach(function(el) { el.addEventListener('click', function() { applyTheme(el.dataset.theme); }); });
-applyTheme(localStorage.getItem('ee-theme') || 'default');
-
-// ─── DISPLAY SLIDERS ──────────────────────────────────────────────
-// Each slider: { id, valId, default, unit?, labels?, apply }
-// apply(v) is called on every change and on load
-// All values persist to localStorage under key 'ee-display'
-
-var SLIDER_DEFAULTS = {
-  scale:   100,
-  font:    12,
-  density: 3,
-  left:    220,
-  right:   320,
-  bottom:  120,
-  bright:  100,
-  opacity: 100,
-  scan:    1,
-  glow:    100,
-  border:  2,
-};
-
-var DENSITY_LABELS = ['Compact','Tight','Normal','Relaxed','Spacious'];
-var SCAN_LABELS    = ['Off','Low','Medium','High','Intense','Max'];
-var BORDER_LABELS  = ['None','Faint','Medium','Bold','Heavy'];
-
-// Scanline style tag — we'll update its content dynamically
-var scanlineStyle = document.createElement('style');
-scanlineStyle.id = 'dynamic-scanlines';
-document.head.appendChild(scanlineStyle);
-
-// Panel opacity style tag
-var panelOpacityStyle = document.createElement('style');
-panelOpacityStyle.id = 'dynamic-opacity';
-document.head.appendChild(panelOpacityStyle);
-
-function applyDisplay(key, v) {
-  var root   = document.documentElement;
-  var wrap   = document.getElementById('app-wrapper');
-  switch (key) {
-    case 'scale':
-      // zoom the entire app wrapper — topbar stays normal size
-      wrap.style.transform       = 'scale(' + (v/100) + ')';
-      wrap.style.transformOrigin = 'top left';
-      wrap.style.width           = Math.round(10000/v) + '%';
-      wrap.style.height          = 'calc(' + Math.round(10000/v) + 'vh - ' + Math.round(44*100/v) + 'px)';
-      break;
-    case 'font':
-      document.body.style.fontSize = v + 'px';
-      document.getElementById('topbar').style.fontSize = v + 'px';
-      break;
-    case 'density':
-      // padding multiplier on stat-rows, panel-body, etc.
-      var pad = [2,3,4,6,8][v-1] + 'px';
-      root.style.setProperty('--row-pad', pad);
-      // Inject a targeted style to avoid overriding everything
-      var ds = document.getElementById('density-style') || document.createElement('style');
-      ds.id = 'density-style';
-      ds.textContent = '.stat-row { padding-top:' + pad + '; padding-bottom:' + pad + '; }' +
-                       '.mini-stat { padding-top:' + pad + '; padding-bottom:' + pad + '; }' +
-                       '.panel-body { padding:' + [6,8,10,14,18][v-1] + 'px; }';
-      document.head.appendChild(ds);
-      break;
-    case 'left':
-      root.style.setProperty('--left-w', v + 'px');
-      break;
-    case 'right':
-      root.style.setProperty('--right-w', v + 'px');
-      break;
-    case 'bottom':
-      root.style.setProperty('--bottom-h', Math.max(105, v) + 'px');
-      break;
-    case 'bright':
-      wrap.style.filter = 'brightness(' + (v/100) + ')' +
-        ' saturate(' + (0.8 + (v/100)*0.4) + ')';
-      break;
-    case 'opacity':
-      panelOpacityStyle.textContent =
-        '.panel, #panel-summary, #panel-progress { background: rgba(9,14,24,' + (v/100) + ') !important; }' +
-        '#options-panel { background: rgba(9,14,24,' + Math.min(1, v/100+0.1) + ') !important; }';
-      break;
-    case 'scan':
-      if (v === 0) {
-        scanlineStyle.textContent = 'body::after { display:none; }';
-      } else {
-        var opacity = [0.02, 0.04, 0.07, 0.11, 0.16][v-1];
-        var gap     = [4, 4, 3, 3, 2][v-1];
-        scanlineStyle.textContent =
-          'body::after { background: repeating-linear-gradient(0deg, transparent, transparent ' + (gap-1) + 'px, rgba(0,0,0,' + opacity + ') ' + (gap-1) + 'px, rgba(0,0,0,' + opacity + ') ' + gap + 'px) !important; }';
-      }
-      break;
-    case 'glow':
-      var g = v / 100;
-      root.style.setProperty('--gold-glow', 'rgba(200,151,42,' + (0.15*g) + ')');
-      // Scale existing text-shadow glow elements
-      var gs = document.getElementById('glow-style') || document.createElement('style');
-      gs.id = 'glow-style';
-      gs.textContent =
-        '.tb-logo { text-shadow: 0 0 ' + Math.round(16*g) + 'px var(--gold-glow) !important; }' +
-        '.scan-total-val { text-shadow: 0 0 ' + Math.round(8*g) + 'px var(--gold-glow) !important; }' +
-        '.body-icon.star { box-shadow: 0 0 ' + Math.round(8*g) + 'px rgba(245,166,35,' + (0.5*g) + ') !important; }' +
-        '.body-icon.hmc  { box-shadow: 0 0 ' + Math.round(6*g) + 'px rgba(42,90,138,' + (0.4*g) + ') !important; }' +
-        '.mapped-icon.yes { box-shadow: 0 0 ' + Math.round(4*g) + 'px var(--green) !important; }';
-      document.head.appendChild(gs);
-      break;
-    case 'border':
-      var bw = [0, 0.5, 1, 1.5, 2][v];
-      root.style.setProperty('--border-w', bw + 'px');
-      var bs = document.getElementById('border-style') || document.createElement('style');
-      bs.id = 'border-style';
-      bs.textContent =
-        '.panel, .rank-card, .rep-card, .stat-block { border-width:' + bw + 'px !important; }' +
-        '#topbar, .panel-header { border-bottom-width:' + bw + 'px !important; }' +
-        '.stat-group-title { border-bottom-width:' + bw + 'px !important; }';
-      document.head.appendChild(bs);
-      break;
-  }
-}
-
-function sliderFill(input) {
-  var min = parseFloat(input.min), max = parseFloat(input.max), v = parseFloat(input.value);
-  var pct = Math.round(((v - min) / (max - min)) * 100);
-  input.style.setProperty('--fill', pct + '%');
-}
-
-function updateSliderUI(key, v) {
-  var valEl = document.getElementById('sv-' + key);
-  if (!valEl) return;
-  switch (key) {
-    case 'scale':   valEl.textContent = Math.round(v) + '%'; break;
-    case 'font':    valEl.textContent = v + 'px'; break;
-    case 'density': valEl.textContent = DENSITY_LABELS[v-1] || v; break;
-    case 'left':    valEl.textContent = v + 'px'; break;
-    case 'right':   valEl.textContent = v + 'px'; break;
-    case 'bottom':  valEl.textContent = v + 'px'; break;
-    case 'bright':  valEl.textContent = v + '%'; break;
-    case 'opacity': valEl.textContent = v + '%'; break;
-    case 'scan':    valEl.textContent = SCAN_LABELS[v] || v; break;
-    case 'glow':    valEl.textContent = v + '%'; break;
-    case 'border':  valEl.textContent = BORDER_LABELS[v] || v; break;
-  }
-}
-
-function loadDisplaySettings() {
-  var saved = {};
-  try { saved = JSON.parse(localStorage.getItem('ee-display') || '{}'); } catch {}
-  Object.keys(SLIDER_DEFAULTS).forEach(function(key) {
-    var v   = saved[key] != null ? saved[key] : SLIDER_DEFAULTS[key];
-    var inp = document.getElementById('sl-' + key);
-    if (inp) { inp.value = v; sliderFill(inp); }
-    updateSliderUI(key, v);
-    applyDisplay(key, v);
-  });
-}
-
-function saveDisplaySettings() {
-  var data = {};
-  Object.keys(SLIDER_DEFAULTS).forEach(function(key) {
-    var inp = document.getElementById('sl-' + key);
-    if (inp) data[key] = parseFloat(inp.value);
-  });
-  localStorage.setItem('ee-display', JSON.stringify(data));
-}
-
-Object.keys(SLIDER_DEFAULTS).forEach(function(key) {
-  var inp = document.getElementById('sl-' + key);
-  if (!inp) return;
-  inp.addEventListener('input', function() {
-    var v = parseFloat(inp.value);
-    sliderFill(inp);
-    updateSliderUI(key, v);
-    applyDisplay(key, v);
-    saveDisplaySettings();
-  });
-});
-
-document.getElementById('sl-reset-all').addEventListener('click', function() {
-  Object.keys(SLIDER_DEFAULTS).forEach(function(key) {
-    var inp = document.getElementById('sl-' + key);
-    if (inp) { inp.value = SLIDER_DEFAULTS[key]; sliderFill(inp); }
-    updateSliderUI(key, SLIDER_DEFAULTS[key]);
-    applyDisplay(key, SLIDER_DEFAULTS[key]);
-  });
-  localStorage.removeItem('ee-display');
-});
-
-loadDisplaySettings();
-
-// ─── PANEL TOGGLES ────────────────────────────────────────────────
-var PANEL_MAP = { 'tog-commander':'panel-commander','tog-system':'panel-system','tog-scan':'panel-scan','tog-summary':'panel-summary','tog-progress':'panel-progress','tog-log':'panel-log' };
-Object.entries(PANEL_MAP).forEach(function(kv) {
-  var cb = document.getElementById(kv[0]); var panel = document.getElementById(kv[1]);
-  if (!cb || !panel) return;
-  cb.addEventListener('change', function() { panel.style.visibility = cb.checked ? '' : 'hidden'; panel.style.opacity = cb.checked ? '' : '0'; });
-});
-
-// ─── BOOT ─────────────────────────────────────────────────────────
-populateBodies();
-populateScans();
-log('Elite Explorer initialised', 'good');
-log('Journal watcher active', 'info');
-log('API connected on :3721', 'info');
-setInterval(refreshStats, 30000);
-</script>
+<script src="script.js"></script>
 </body>
 </html>

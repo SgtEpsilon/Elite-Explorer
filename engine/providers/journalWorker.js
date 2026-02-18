@@ -1,31 +1,46 @@
 /**
  * journalWorker.js
- * Runs in a Worker Thread — all heavy file reading happens here.
+ * Runs in a Worker Thread.
+ *
+ * Accepts a `mode` in workerData:
+ *   'live'    — ship, fuel, location, docking from the current session only
+ *   'profile' — most-recent LoadGame, Rank, Progress, Reputation, Statistics
+ *   'history' — every FSDJump across all supplied files
+ *   'all'     — everything above (used by legacy callers)
  */
 
 const { workerData, parentPort } = require('worker_threads');
-const fs = require('fs');
+const fs   = require('fs');
 const path = require('path');
 
-const { files, lastProcessed } = workerData;
+const { files, lastProcessed, mode = 'all' } = workerData;
 const PROGRESS_INTERVAL = 500;
 
-// Rank name lookups
-const COMBAT_RANKS    = ['Harmless','Mostly Harmless','Novice','Competent','Expert','Master','Dangerous','Deadly','Elite'];
-const TRADE_RANKS     = ['Penniless','Mostly Penniless','Peddler','Dealer','Merchant','Broker','Entrepreneur','Tycoon','Elite'];
-const EXPLORE_RANKS   = ['Aimless','Mostly Aimless','Scout','Surveyor','Trailblazer','Pathfinder','Ranger','Pioneer','Elite'];
-const CQC_RANKS       = ['Helpless','Mostly Helpless','Amateur','Semi Professional','Professional','Champion','Hero','Gladiator','Elite'];
-const EMPIRE_RANKS    = ['None','Outsider','Serf','Master','Squire','Knight','Lord','Baron','Viscount','Count','Earl','Marquis','Duke','Prince','King'];
-const FEDERATION_RANKS= ['None','Recruit','Cadet','Midshipman','Petty Officer','Chief Petty Officer','Warrant Officer','Ensign','Lieutenant','Lieutenant Commander','Post Commander','Post Captain','Rear Admiral','Vice Admiral','Admiral'];
-const EXOBIO_RANKS    = ['Directionless','Mostly Directionless','Compiler','Collector','Cataloguer','Taxonomist','Ecologist','Geneticist','Elite'];
+const doLive    = mode === 'live'    || mode === 'all';
+const doProfile = mode === 'profile' || mode === 'all';
+
+// ── Rank lookup tables ────────────────────────────────────────────────────────
+const COMBAT_RANKS     = ['Harmless','Mostly Harmless','Novice','Competent','Expert','Master','Dangerous','Deadly','Elite'];
+const TRADE_RANKS      = ['Penniless','Mostly Penniless','Peddler','Dealer','Merchant','Broker','Entrepreneur','Tycoon','Elite'];
+const EXPLORE_RANKS    = ['Aimless','Mostly Aimless','Scout','Surveyor','Trailblazer','Pathfinder','Ranger','Pioneer','Elite'];
+const CQC_RANKS        = ['Helpless','Mostly Helpless','Amateur','Semi Professional','Professional','Champion','Hero','Gladiator','Elite'];
+const EMPIRE_RANKS     = ['None','Outsider','Serf','Master','Squire','Knight','Lord','Baron','Viscount','Count','Earl','Marquis','Duke','Prince','King'];
+const FEDERATION_RANKS = ['None','Recruit','Cadet','Midshipman','Petty Officer','Chief Petty Officer','Warrant Officer','Ensign','Lieutenant','Lieutenant Commander','Post Commander','Post Captain','Rear Admiral','Vice Admiral','Admiral'];
+const EXOBIO_RANKS     = ['Directionless','Mostly Directionless','Compiler','Collector','Cataloguer','Taxonomist','Ecologist','Geneticist','Elite'];
 
 async function run() {
-  const totalFiles = files.length;
-  const updatedLastProcessed = { ...lastProcessed };
+  const totalFiles            = files.length;
+  const updatedLastProcessed  = { ...lastProcessed };
 
-  // We collect cmdr data as we go — later entries overwrite earlier ones
-  // so we always end up with the most recent LoadGame/Rank/etc.
-  let cmdrData = null;
+  // Live data accumulator (ship, fuel, location, docking)
+  let liveData = null;
+
+  // Profile data accumulator (identity, ranks, rep, stats)
+  let profileIdentity   = null;
+  let profileRanks      = null;
+  let profileProgress   = null;
+  let profileReputation = null;
+  let profileStats      = null;
 
   for (let fileIndex = 0; fileIndex < files.length; fileIndex++) {
     const filePath = files[fileIndex];
@@ -39,12 +54,8 @@ async function run() {
       continue;
     }
 
-    const lines = content.split('\n');
-    let startIndex = 0;
-    if (updatedLastProcessed[fileName] != null) {
-      startIndex = updatedLastProcessed[fileName] + 1;
-    }
-
+    const lines      = content.split('\n');
+    const startIndex = (lastProcessed[fileName] != null) ? lastProcessed[fileName] + 1 : 0;
     const totalLines = lines.length;
 
     for (let i = startIndex; i < totalLines; i++) {
@@ -53,157 +64,143 @@ async function run() {
 
       try {
         const entry = JSON.parse(line);
+        const ev    = entry.event;
 
-        // ── Existing events ──────────────────────────────────────────
-        if (entry.event === 'Scan') {
+        // ── Scan event (emitted immediately, used for DB) ─────────────
+        if (ev === 'Scan') {
           parentPort.postMessage({
             type: 'event', event: 'journal.scan',
             data: { system: entry.StarSystem, body: entry.BodyName, bodyType: entry.BodyType, timestamp: entry.timestamp }
           });
         }
 
-        if (entry.event === 'Location') {
+        // ── Location / system changes ─────────────────────────────────
+        if (ev === 'Location' || ev === 'FSDJump') {
           parentPort.postMessage({
             type: 'event', event: 'journal.location',
             data: { system: entry.StarSystem, timestamp: entry.timestamp }
           });
-          if (!cmdrData) cmdrData = {};
-          cmdrData.currentSystem = entry.StarSystem;
-          cmdrData.pos = entry.StarPos ? entry.StarPos.map(n => n.toFixed(2)).join(', ') : null;
         }
 
-        if (entry.event === 'FSDJump') {
-          parentPort.postMessage({
-            type: 'event', event: 'journal.location',
-            data: { system: entry.StarSystem, timestamp: entry.timestamp }
-          });
-          if (!cmdrData) cmdrData = {};
-          cmdrData.currentSystem = entry.StarSystem;
-          cmdrData.pos = entry.StarPos ? entry.StarPos.map(n => n.toFixed(2)).join(', ') : null;
-          cmdrData.jumpRange = entry.JumpDist ? entry.JumpDist.toFixed(2) + ' ly' : null;
-        }
+        // ── LIVE DATA ─────────────────────────────────────────────────
+        if (doLive) {
+          if (ev === 'Location') {
+            if (!liveData) liveData = {};
+            liveData.currentSystem = entry.StarSystem;
+            liveData.pos = entry.StarPos ? entry.StarPos.map(n => n.toFixed(2)).join(', ') : null;
+          }
 
-        if (entry.event === 'FuelScoop' || entry.event === 'ReservoirReplenished') {
-          if (!cmdrData) cmdrData = {};
-          if (entry.Total != null)    cmdrData.fuelTotal    = entry.Total;
-          if (entry.Capacity != null) cmdrData.fuelCapacity = entry.Capacity;
-        }
+          if (ev === 'FSDJump') {
+            if (!liveData) liveData = {};
+            liveData.currentSystem = entry.StarSystem;
+            liveData.pos           = entry.StarPos ? entry.StarPos.map(n => n.toFixed(2)).join(', ') : null;
+            liveData.jumpRange     = entry.JumpDist ? entry.JumpDist.toFixed(2) + ' ly' : null;
+            liveData.lastJumpWasFirstDiscovery = (entry.SystemAlreadyDiscovered === false);
+          }
 
-        if (entry.event === 'Loadout') {
-          if (!cmdrData) cmdrData = {};
-          cmdrData.ship      = entry.Ship_Localised || entry.Ship;
-          cmdrData.shipName  = entry.ShipName  || '';
-          cmdrData.shipIdent = entry.ShipIdent || '';
-          cmdrData.maxJumpRange = entry.MaxJumpRange ? entry.MaxJumpRange.toFixed(2) + ' ly' : null;
-          cmdrData.cargoCapacity = entry.CargoCapacity != null ? entry.CargoCapacity : cmdrData.cargoCapacity;
-          // FuelCapacity in Loadout is an object: { Main: 64, Reserve: 0.77 }
-          // We want the Main value only
-          if (entry.FuelCapacity != null) {
-            cmdrData.fuelCapacity = typeof entry.FuelCapacity === 'object'
-              ? entry.FuelCapacity.Main
-              : entry.FuelCapacity;
+          if (ev === 'Loadout') {
+            if (!liveData) liveData = {};
+            liveData.ship          = entry.Ship_Localised || entry.Ship;
+            liveData.shipName      = entry.ShipName  || '';
+            liveData.shipIdent     = entry.ShipIdent || '';
+            liveData.maxJumpRange  = entry.MaxJumpRange ? entry.MaxJumpRange.toFixed(2) + ' ly' : null;
+            liveData.cargoCapacity = entry.CargoCapacity != null ? entry.CargoCapacity : (liveData.cargoCapacity ?? null);
+            if (entry.FuelCapacity != null) {
+              liveData.fuelCapacity = typeof entry.FuelCapacity === 'object'
+                ? entry.FuelCapacity.Main
+                : entry.FuelCapacity;
+            }
+            liveData.rebuy = entry.Rebuy ?? null;
+          }
+
+          if (ev === 'LoadGame') {
+            if (!liveData) liveData = {};
+            liveData.name          = entry.Commander;
+            liveData.ship          = entry.Ship_Localised || entry.Ship;
+            liveData.shipName      = entry.ShipName  || '';
+            liveData.shipIdent     = entry.ShipIdent || '';
+            liveData.credits       = entry.Credits;
+            liveData.gameMode      = entry.GameMode || 'Open';
+            if (entry.FuelLevel    != null) liveData.fuelTotal    = entry.FuelLevel;
+            if (entry.FuelCapacity != null) liveData.fuelCapacity = entry.FuelCapacity;
+          }
+
+          if (ev === 'FuelScoop' || ev === 'ReservoirReplenished') {
+            if (!liveData) liveData = {};
+            if (entry.Total    != null) liveData.fuelTotal    = entry.Total;
+            if (entry.Capacity != null) liveData.fuelCapacity = entry.Capacity;
+          }
+
+          if (ev === 'Docked') {
+            if (!liveData) liveData = {};
+            liveData.dockedStation      = entry.StationName || null;
+            liveData.dockedStationType  = entry.StationType || null;
+            liveData.dockedFaction      = entry.StationFaction?.Name || null;
+          }
+
+          if (ev === 'Undocked') {
+            if (!liveData) liveData = {};
+            liveData.dockedStation     = null;
+            liveData.dockedStationType = null;
+            liveData.dockedFaction     = null;
+          }
+
+          if (ev === 'ShipTargeted' && entry.ScanStage === 3) {
+            // hull health updates from targeting (not critical for live, skip)
           }
         }
 
-        if (entry.event === 'Docked') {
-          if (!cmdrData) cmdrData = {};
-          cmdrData.dockedStation  = entry.StationName  || null;
-          cmdrData.dockedFaction  = entry.StationFaction?.Name || null;
-        }
+        // ── PROFILE DATA ──────────────────────────────────────────────
+        if (doProfile) {
+          if (ev === 'LoadGame') {
+            profileIdentity = {
+              name:      entry.Commander,
+              ship:      entry.Ship_Localised || entry.Ship,
+              shipName:  entry.ShipName  || '',
+              shipIdent: entry.ShipIdent || '',
+              credits:   entry.Credits,
+              gameMode:  entry.GameMode || 'Open',
+            };
+          }
 
-        if (entry.event === 'Undocked') {
-          if (!cmdrData) cmdrData = {};
-          cmdrData.dockedStation = null;
-          cmdrData.dockedFaction = null;
-        }
+          if (ev === 'Rank') {
+            profileRanks = {
+              combat:     { level: entry.Combat,     name: COMBAT_RANKS[entry.Combat]     || '?' },
+              trade:      { level: entry.Trade,      name: TRADE_RANKS[entry.Trade]       || '?' },
+              explore:    { level: entry.Explore,    name: EXPLORE_RANKS[entry.Explore]   || '?' },
+              cqc:        { level: entry.CQC,        name: CQC_RANKS[entry.CQC]           || '?' },
+              empire:     { level: entry.Empire,     name: EMPIRE_RANKS[entry.Empire]     || '?' },
+              federation: { level: entry.Federation, name: FEDERATION_RANKS[entry.Federation] || '?' },
+              exobiology: entry.Exobiologist != null
+                ? { level: entry.Exobiologist, name: EXOBIO_RANKS[entry.Exobiologist] || '?' }
+                : null,
+            };
+          }
 
-        // ── Commander identity ───────────────────────────────────────
-        if (entry.event === 'LoadGame') {
-          if (!cmdrData) cmdrData = {};
-          cmdrData.name        = entry.Commander;
-          cmdrData.ship        = entry.Ship_Localised || entry.Ship;
-          cmdrData.shipName    = entry.ShipName || '';
-          cmdrData.shipIdent   = entry.ShipIdent || '';
-          cmdrData.credits     = entry.Credits;
-          cmdrData.loan        = entry.Loan || 0;
-          cmdrData.gameMode    = entry.GameMode || 'Open';
-          cmdrData.timestamp   = entry.timestamp;
-          // FuelLevel = current fuel at login; FuelCapacity here is a plain number
-          if (entry.FuelLevel    != null) cmdrData.fuelTotal    = entry.FuelLevel;
-          if (entry.FuelCapacity != null) cmdrData.fuelCapacity = entry.FuelCapacity;
-        }
+          if (ev === 'Progress') {
+            profileProgress = {
+              combat:     entry.Combat,
+              trade:      entry.Trade,
+              explore:    entry.Explore,
+              cqc:        entry.CQC,
+              empire:     entry.Empire,
+              federation: entry.Federation,
+            };
+          }
 
-        // ── Ranks ────────────────────────────────────────────────────
-        if (entry.event === 'Rank') {
-          if (!cmdrData) cmdrData = {};
-          cmdrData.ranks = {
-            combat:     { level: entry.Combat,     name: COMBAT_RANKS[entry.Combat]     || '?' },
-            trade:      { level: entry.Trade,      name: TRADE_RANKS[entry.Trade]       || '?' },
-            explore:    { level: entry.Explore,    name: EXPLORE_RANKS[entry.Explore]   || '?' },
-            cqc:        { level: entry.CQC,        name: CQC_RANKS[entry.CQC]           || '?' },
-            empire:     { level: entry.Empire,     name: EMPIRE_RANKS[entry.Empire]     || '?' },
-            federation: { level: entry.Federation, name: FEDERATION_RANKS[entry.Federation] || '?' },
-            exobiology: { level: entry.Exobiologist ?? null, name: entry.Exobiologist != null ? (EXOBIO_RANKS[entry.Exobiologist] || '?') : null },
-          };
-        }
+          if (ev === 'Reputation') {
+            profileReputation = {
+              empire:      entry.Empire      ?? 0,
+              federation:  entry.Federation  ?? 0,
+              alliance:    entry.Alliance    ?? 0,
+              independent: entry.Independent ?? 0,
+            };
+          }
 
-        // ── Rank progress (0–100 %) ──────────────────────────────────
-        if (entry.event === 'Progress') {
-          if (!cmdrData) cmdrData = {};
-          cmdrData.progress = {
-            combat:     entry.Combat,
-            trade:      entry.Trade,
-            explore:    entry.Explore,
-            cqc:        entry.CQC,
-            empire:     entry.Empire,
-            federation: entry.Federation,
-          };
-        }
-
-        // ── Faction reputation ───────────────────────────────────────
-        if (entry.event === 'Reputation') {
-          if (!cmdrData) cmdrData = {};
-          cmdrData.reputation = {
-            empire:     entry.Empire     ?? 0,
-            federation: entry.Federation ?? 0,
-            alliance:   entry.Alliance   ?? 0,
-            independent:entry.Independent?? 0,
-          };
-        }
-
-        // ── Lifetime statistics ──────────────────────────────────────
-        if (entry.event === 'Statistics') {
-          if (!cmdrData) cmdrData = {};
-          cmdrData.stats = {
-            // Exploration
-            systemsVisited:     entry.Exploration?.['Systems_Visited']          ?? 0,
-            explorationProfit:  entry.Exploration?.['Exploration_Profits']      ?? 0,
-            planetsScanned:     entry.Exploration?.['Planets_Scanned_To_Level_3']?? 0,
-            efficientScans:     entry.Exploration?.['Efficient_Scans']          ?? 0,
-            distanceTravelled:  entry.Exploration?.['Total_Hyperspace_Distance']?? 0,
-            jumpsTotal:         entry.Exploration?.['Total_Hyperspace_Jumps']   ?? 0,
-            greatestDistance:   entry.Exploration?.['Greatest_Distance_From_Start']?? 0,
-            timePlayed:         entry.Exploration?.['Time_Played']              ?? 0,
-            // Trading
-            tradingProfit:      entry.Trading?.['Market_Profits']               ?? 0,
-            tradeTransactions:  entry.Trading?.['Market_Transactions_Count']    ?? 0,
-            resourcesCollected: entry.Trading?.['Resources_Collected']          ?? 0,
-            // Combat
-            bounties:           entry.Combat?.['Bounties_Claimed']              ?? 0,
-            bountyCreds:        entry.Combat?.['Bounty_Hunting_Profit']         ?? 0,
-            kills:              entry.Combat?.['Kills']                         ?? 0,
-            assassinations:     entry.Combat?.['Assassination_Profits']         ?? 0,
-            // Mining
-            miningProfit:       entry.Mining?.['Mining_Profits']                ?? 0,
-            quantityMined:      entry.Mining?.['Quantity_Mined']                ?? 0,
-            // Smuggling
-            smugglingProfit:    entry.Smuggling?.['Black_Market_Profits']       ?? 0,
-            // Search & Rescue
-            searchRescueProfit: entry.Search_And_Rescue?.['SearchRescue_Profit']?? 0,
-            // Exobiology
-            organicsSold:       entry.Exobiology?.['Organics_Sold']             ?? 0,
-            exoProfit:          entry.Exobiology?.['Exobiology_Profits']        ?? 0,
-          };
+          if (ev === 'Statistics') {
+            // Keep the full raw Statistics object — renderer will access sub-keys directly
+            profileStats = entry;
+          }
         }
 
       } catch {
@@ -222,14 +219,27 @@ async function run() {
     }
   }
 
-  // Send the most recent cmdr snapshot we built up
-  if (cmdrData) {
-    // Compute fuel % for the bar
-    if (cmdrData.fuelTotal != null && cmdrData.fuelCapacity) {
-      cmdrData.fuelPct = Math.round((cmdrData.fuelTotal / cmdrData.fuelCapacity) * 100);
-      cmdrData.fuelDisplay = `${cmdrData.fuelTotal.toFixed(1)} / ${cmdrData.fuelCapacity}`;
+  // ── Emit live-data ────────────────────────────────────────────────────────
+  if (doLive && liveData) {
+    if (liveData.fuelTotal != null && liveData.fuelCapacity) {
+      liveData.fuelPct     = Math.round((liveData.fuelTotal / liveData.fuelCapacity) * 100);
+      liveData.fuelDisplay = liveData.fuelTotal.toFixed(1) + ' / ' + liveData.fuelCapacity;
     }
-    parentPort.postMessage({ type: 'cmdr', data: cmdrData });
+    parentPort.postMessage({ type: 'live-data', data: liveData });
+  }
+
+  // ── Emit profile-data ─────────────────────────────────────────────────────
+  if (doProfile && (profileIdentity || profileRanks || profileStats)) {
+    parentPort.postMessage({
+      type: 'profile-data',
+      data: {
+        identity:   profileIdentity   || {},
+        ranks:      profileRanks      || {},
+        progress:   profileProgress   || {},
+        reputation: profileReputation || {},
+        stats:      profileStats      || {},   // raw Statistics event object
+      }
+    });
   }
 
   parentPort.postMessage({ type: 'done', updatedLastProcessed });

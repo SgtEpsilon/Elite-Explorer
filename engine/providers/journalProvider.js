@@ -20,220 +20,176 @@ async function saveLastProcessed() {
 let mainWindow = null;
 function setMainWindow(win) { mainWindow = win; }
 
+function send(channel, data) {
+  if (mainWindow && !mainWindow.isDestroyed()) {
+    mainWindow.webContents.send(channel, data);
+  }
+}
+
 function getJournalPath() {
   if (config.journalPath && config.journalPath.trim()) return config.journalPath.trim();
   const os = process.platform;
   if (os === 'win32')  return path.join(process.env.USERPROFILE, 'Saved Games', 'Frontier Developments', 'Elite Dangerous');
   if (os === 'darwin') return path.join(process.env.HOME, 'Library', 'Application Support', 'Frontier Developments', 'Elite Dangerous');
   if (os === 'linux')  return path.join(process.env.HOME, '.local', 'share', 'Steam', 'steamapps', 'compatdata', '359320', 'pfx', 'drive_c', 'users', 'steamuser', 'Saved Games', 'Frontier Developments', 'Elite Dangerous');
-  throw new Error(`Unsupported OS: ${os}. Set journalPath in config.json`);
+  throw new Error('Unsupported OS. Set journalPath in config.json');
 }
 
-function runWorker(files) {
-  return new Promise((resolve, reject) => {
-    const worker = new Worker(path.join(__dirname, 'journalWorker.js'), {
-      workerData: { files, lastProcessed: { ...lastProcessed } }
-    });
-
-    worker.on('message', async (msg) => {
-      switch (msg.type) {
-
-        case 'progress':
-          if (mainWindow && !mainWindow.isDestroyed()) {
-            mainWindow.webContents.send('scan-progress', {
-              file: msg.file, currentLine: msg.currentLine,
-              totalLines: msg.totalLines, fileIndex: msg.fileIndex, totalFiles: msg.totalFiles
-            });
-          }
-          break;
-
-        case 'event':
-          if (msg.event === 'journal.scan') {
-            eventBus.emit('journal.scan', { system: msg.data.system, body: msg.data.body, bodyType: msg.data.bodyType, timestamp: msg.data.timestamp });
-          }
-          if (msg.event === 'journal.location') {
-            eventBus.emit('journal.location', { system: msg.data.system, timestamp: msg.data.timestamp });
-          }
-          break;
-
-        // ── NEW: forward cmdr data to the renderer ───────────────────
-        case 'cmdr':
-          if (mainWindow && !mainWindow.isDestroyed()) {
-            mainWindow.webContents.send('cmdr-data', msg.data);
-          }
-          // Also store latest on eventBus so anything else can listen
-          eventBus.emit('journal.cmdr', msg.data);
-          break;
-
-        case 'done':
-          lastProcessed = msg.updatedLastProcessed;
-          await saveLastProcessed();
-          resolve();
-          break;
-
-        case 'error':
-          console.error('Worker error:', msg.message);
-          break;
-      }
-    });
-
-    worker.on('error', reject);
-    worker.on('exit', (code) => { if (code !== 0) reject(new Error(`Worker exited ${code}`)); });
-  });
-}
-
-async function readLastEntries() {
-  let journalPath;
-  try {
-    journalPath = getJournalPath();
-  } catch (err) {
-    console.error('[readLastEntries] Could not resolve journal path:', err.message);
-    return;
-  }
-
-  console.log('[readLastEntries] Journal path:', journalPath);
-
-  if (!fs.existsSync(journalPath)) {
-    console.error('[readLastEntries] Journal directory does not exist:', journalPath);
-    if (mainWindow && !mainWindow.isDestroyed()) {
-      mainWindow.webContents.send('journal-path-missing', journalPath);
-    }
-    return;
-  }
-
-  let allFiles;
-  try {
-    allFiles = fs.readdirSync(journalPath)
-      .filter(f => f.startsWith('Journal.') && f.endsWith('.log'))
-      .map(f => ({ file: f, time: fs.statSync(path.join(journalPath, f)).mtime }))
-      .sort((a, b) => b.time - a.time);
-  } catch (err) {
-    console.error('[readLastEntries] Failed to read journal directory:', err.message);
-    return;
-  }
-
-  console.log(`[readLastEntries] Found ${allFiles.length} journal files`);
-  if (!allFiles.length) return;
-
-  const recent = allFiles.slice(0, 1);
-  console.log('[readLastEntries] Reading latest log only:', recent.map(f => f.file).join(', '));
-
-  // Always pass an empty lastProcessed so all 15 files are read from line 0.
-  // This guarantees current session state is populated on every startup.
-  const recentPaths = recent.map(f => path.join(journalPath, f.file));
-
-  return new Promise((resolve, reject) => {
-    const worker = new Worker(path.join(__dirname, 'journalWorker.js'), {
-      workerData: { files: recentPaths, lastProcessed: {} }
-    });
-    worker.on('message', async (msg) => {
-      switch (msg.type) {
-        case 'progress':
-          if (mainWindow && !mainWindow.isDestroyed()) {
-            mainWindow.webContents.send('scan-progress', {
-              file: msg.file, currentLine: msg.currentLine,
-              totalLines: msg.totalLines, fileIndex: msg.fileIndex, totalFiles: msg.totalFiles
-            });
-          }
-          break;
-        case 'event':
-          if (msg.event === 'journal.scan') {
-            eventBus.emit('journal.scan', { system: msg.data.system, body: msg.data.body, bodyType: msg.data.bodyType, timestamp: msg.data.timestamp });
-          }
-          if (msg.event === 'journal.location') {
-            eventBus.emit('journal.location', { system: msg.data.system, timestamp: msg.data.timestamp });
-          }
-          break;
-        case 'cmdr':
-          console.log('[readLastEntries] cmdr-data received, name:', msg.data?.name, 'system:', msg.data?.currentSystem);
-          if (mainWindow && !mainWindow.isDestroyed()) {
-            mainWindow.webContents.send('cmdr-data', msg.data);
-          } else {
-            console.warn('[readLastEntries] mainWindow not ready when cmdr-data arrived');
-          }
-          eventBus.emit('journal.cmdr', msg.data);
-          break;
-        case 'done':
-          console.log('[readLastEntries] done, updatedLastProcessed keys:', Object.keys(msg.updatedLastProcessed).length);
-          // Update lastProcessed for the latest file
-          recent.forEach(f => {
-            if (msg.updatedLastProcessed[f.file] != null) {
-              lastProcessed[f.file] = msg.updatedLastProcessed[f.file];
-            }
-          });
-          await saveLastProcessed();
-          resolve();
-          break;
-        case 'error':
-          console.error('Worker error:', msg.message);
-          break;
-      }
-    });
-    worker.on('error', reject);
-    worker.on('exit', (code) => { if (code !== 0) reject(new Error(`Worker exited ${code}`)); });
-  });
-}
-
-async function readAllJournals() {
-  const journalPath = getJournalPath();
-  const files = fs.readdirSync(journalPath)
+function getSortedJournalFiles(journalPath) {
+  return fs.readdirSync(journalPath)
     .filter(f => f.startsWith('Journal.') && f.endsWith('.log'))
-    .map(f => path.join(journalPath, f))
-    .sort((a, b) => fs.statSync(b).mtime - fs.statSync(a).mtime);
+    .map(f => ({ file: f, fullPath: path.join(journalPath, f), time: fs.statSync(path.join(journalPath, f)).mtime }))
+    .sort((a, b) => b.time - a.time);
+}
+
+// ── Generic worker runner ─────────────────────────────────────────────────────
+function runWorker(files, { mode = 'all', useLastProcessed = false, updateLastProcessed = false } = {}) {
+  return new Promise((resolve, reject) => {
+    const lp = useLastProcessed ? { ...lastProcessed } : {};
+    const worker = new Worker(path.join(__dirname, 'journalWorker.js'), {
+      workerData: { files, lastProcessed: lp, mode }
+    });
+
+    worker.on('message', async (msg) => {
+      switch (msg.type) {
+        case 'progress':
+          send('scan-progress', {
+            file: msg.file, currentLine: msg.currentLine,
+            totalLines: msg.totalLines, fileIndex: msg.fileIndex, totalFiles: msg.totalFiles
+          });
+          break;
+
+        case 'event':
+          if (msg.event === 'journal.scan')
+            eventBus.emit('journal.scan', msg.data);
+          if (msg.event === 'journal.location') {
+            eventBus.emit('journal.location', msg.data);
+            send('location-data', msg.data);
+          }
+          break;
+
+        case 'live-data':
+          send('live-data', msg.data);
+          eventBus.emit('journal.live', msg.data);
+          break;
+
+        case 'profile-data':
+          send('profile-data', msg.data);
+          eventBus.emit('journal.profile', msg.data);
+          break;
+
+        case 'done':
+          if (updateLastProcessed) {
+            lastProcessed = { ...lastProcessed, ...msg.updatedLastProcessed };
+            await saveLastProcessed();
+          }
+          resolve();
+          break;
+
+        case 'error':
+          console.error('[worker error]', msg.file || '', msg.message);
+          break;
+      }
+    });
+
+    worker.on('error', reject);
+    worker.on('exit', code => { if (code !== 0) reject(new Error('Worker exited ' + code)); });
+  });
+}
+
+// ── LIVE: single latest journal only ─────────────────────────────────────────
+async function readLiveJournal(journalPath) {
+  const files = getSortedJournalFiles(journalPath);
   if (!files.length) return;
-  await runWorker(files);
+  const latest = files[0];
+  console.log('[live] Reading:', latest.file);
+  await runWorker([latest.fullPath], { mode: 'live' });
+}
+
+// ── PROFILE: scan backwards until all 5 key event types are found ─────────────
+async function readProfileData(journalPath) {
+  const files = getSortedJournalFiles(journalPath);
+  if (!files.length) return;
+
+  const REQUIRED = new Set(['LoadGame', 'Rank', 'Progress', 'Reputation', 'Statistics']);
+  const found    = new Set();
+  const batch    = [];
+
+  for (const f of files) {
+    batch.push(f.fullPath);
+    try {
+      const content = fs.readFileSync(f.fullPath, 'utf8');
+      for (const line of content.split('\n')) {
+        if (!line.trim()) continue;
+        try { const e = JSON.parse(line); if (REQUIRED.has(e.event)) found.add(e.event); } catch {}
+        if (found.size === REQUIRED.size) break;
+      }
+    } catch {}
+    if (found.size === REQUIRED.size) break;
+  }
+
+  console.log('[profile] Scanning ' + batch.length + ' file(s), found: ' + [...found].join(', '));
+  await runWorker(batch, { mode: 'profile' });
+}
+
+// ── Exported "Scan All Journals" (Options button) ─────────────────────────────
+// Only covers live + profile. History is owned by historyProvider.
+async function scanAll() {
+  let journalPath;
+  try { journalPath = getJournalPath(); } catch (err) {
+    console.error('[scanAll] Cannot resolve journal path:', err.message);
+    return;
+  }
+  if (!fs.existsSync(journalPath)) {
+    send('journal-path-missing', journalPath);
+    return;
+  }
+  send('scan-all-journals', {});
+  await Promise.all([
+    readLiveJournal(journalPath),
+    readProfileData(journalPath),
+  ]);
 }
 
 function getLatestJournalFile(journalPath) {
-  try {
-    const files = fs.readdirSync(journalPath)
-      .filter(f => f.startsWith('Journal.') && f.endsWith('.log'))
-      .map(f => ({ file: f, fullPath: path.join(journalPath, f), time: fs.statSync(path.join(journalPath, f)).mtime }))
-      .sort((a, b) => b.time - a.time);
-    return files.length ? files[0] : null;
-  } catch {
-    return null;
-  }
+  try { const f = getSortedJournalFiles(journalPath); return f.length ? f[0] : null; } catch { return null; }
 }
 
+// ── Start: boot all three scopes + attach live watcher ───────────────────────
 function start() {
   let journalPath;
-  try {
-    journalPath = getJournalPath();
-  } catch (err) {
-    console.error('[start] Could not resolve journal path:', err.message);
+  try { journalPath = getJournalPath(); } catch (err) {
+    console.error('[start] Cannot resolve journal path:', err.message);
     return;
   }
   if (!fs.existsSync(journalPath)) {
-    console.error('[start] Journal directory does not exist:', journalPath);
+    console.error('[start] Journal directory not found:', journalPath);
+    send('journal-path-missing', journalPath);
     return;
   }
 
-  readLastEntries();
+  // Boot live + profile scopes (history is owned by historyProvider)
+  readLiveJournal(journalPath);
+  readProfileData(journalPath);
 
-  let latestFile = getLatestJournalFile(journalPath);
+  // Live watcher — only fires live-data updates
+  let latestFile  = getLatestJournalFile(journalPath);
   let watchedPath = latestFile ? latestFile.fullPath : null;
-  if (watchedPath) console.log('[watcher] Tracking latest log:', latestFile.file);
+  if (watchedPath) console.log('[watcher] Tracking:', latestFile.file);
 
-  // Watch the journal directory for both new files appearing and changes to existing files
-  const watcher = chokidar.watch(`${journalPath}${path.sep}Journal.*.log`, {
+  const watcher = chokidar.watch(journalPath + path.sep + 'Journal.*.log', {
     persistent: true,
-    ignoreInitial: true
+    ignoreInitial: true,
   });
 
   const handleFileEvent = (filePath) => {
-    // Check if a newer log has appeared (e.g. game session started)
     const nowLatest = getLatestJournalFile(journalPath);
     if (nowLatest && nowLatest.fullPath !== watchedPath) {
-      console.log('[watcher] New latest journal detected, switching to:', nowLatest.file);
+      console.log('[watcher] New session:', nowLatest.file);
       watchedPath = nowLatest.fullPath;
     }
-    // Only process events from the current latest log
     if (filePath === watchedPath) {
-      console.log('[watcher] Change in latest log:', path.basename(filePath));
-      runWorker([filePath]);
-    } else {
-      console.log('[watcher] Ignoring change in non-latest file:', path.basename(filePath));
+      runWorker([filePath], { mode: 'live' });
     }
   };
 
@@ -241,4 +197,4 @@ function start() {
   watcher.on('change', handleFileEvent);
 }
 
-module.exports = { start, readAllJournals, setMainWindow, getJournalPath };
+module.exports = { start, scanAll, setMainWindow, getJournalPath };

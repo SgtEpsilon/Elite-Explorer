@@ -2,32 +2,27 @@ const { app, BrowserWindow, ipcMain } = require('electron');
 const path = require('path');
 const engine = require('./engine/core/engine');
 const journalProvider = require('./engine/providers/journalProvider');
+const historyProvider = require('./engine/providers/historyProvider');
 const eventBus = require('./engine/core/eventBus');
 const api = require('./engine/api/server');
 
 let mainWindow;
-let isScanning = false; // guard against double-triggering
+let isScanning = false;
 
-// ── Scan Function ────────────────────────────────────────────────
+// ── Scan all journals (triggered from Options button) ────────────────────────
 async function runScan() {
   if (isScanning) return;
   isScanning = true;
-
   try {
-    console.log('Scan All Journals starting...');
-    if (mainWindow && !mainWindow.isDestroyed()) {
-      mainWindow.webContents.send('scan-all-journals');
-    }
-    await journalProvider.readAllJournals();
-    console.log('Scan All Journals completed.');
+    await journalProvider.scanAll();
   } catch (err) {
-    console.error('Error scanning all journals:', err);
+    console.error('Error during full scan:', err);
   } finally {
     isScanning = false;
   }
 }
 
-// ── Create Main Window ──────────────────────────────────────────
+// ── Create Main Window ───────────────────────────────────────────────────────
 function createWindow() {
   try {
     mainWindow = new BrowserWindow({
@@ -44,34 +39,42 @@ function createWindow() {
     });
 
     mainWindow.loadFile(path.join(__dirname, 'ui', 'index.html'));
-
-    // Assign mainWindow to journalProvider
     journalProvider.setMainWindow(mainWindow);
+    historyProvider.setMainWindow(mainWindow);
 
-    // ── Wait for renderer to finish loading before starting the engine
-    // so IPC listeners are registered before we send any data.
+    // ── Cache the three data payloads so any page that navigates in
+    // receives its data immediately without waiting for a re-scan.
+    let cachedLive    = null;
+    let cachedProfile = null;
+
+    eventBus.on('journal.live',    d => { cachedLive    = d; });
+    eventBus.on('journal.profile', d => { cachedProfile = d; });
+
+    // Re-send cached data every time a page finishes loading (navigation, reload)
+    mainWindow.webContents.on('did-finish-load', () => {
+      if (mainWindow.isDestroyed()) return;
+      if (cachedLive)    mainWindow.webContents.send('live-data',    cachedLive);
+      if (cachedProfile) mainWindow.webContents.send('profile-data', cachedProfile);
+      // History replays itself via historyProvider.replayToPage()
+      historyProvider.replayToPage();
+    });
+
+    // ── Start engine on first load ───────────────────────────────────────────
     mainWindow.webContents.once('did-finish-load', () => {
       engine.start();
       api.start();
+      // History runs independently — kick it off on startup
+      historyProvider.scan();
     });
 
-    // ── Forward location updates to renderer safely
-    eventBus.on('journal.location', (data) => {
-      if (mainWindow && !mainWindow.isDestroyed()) {
-        mainWindow.webContents.send('location-data', data);
-      }
-    });
-
-    // ── IPC: Renderer triggers scan
+    // ── IPC handlers ─────────────────────────────────────────────────────────
     ipcMain.handle('trigger-scan-all', () => runScan());
+    ipcMain.handle('trigger-history-scan', () => historyProvider.scan());
 
-    // ── Window Controls ──────────────────────────────────────────────
-    // Optional: safe quit button from renderer
     ipcMain.handle('app-quit', () => {
       if (mainWindow && !mainWindow.isDestroyed()) mainWindow.close();
     });
 
-    // ── Options: Journal Path ────────────────────────────────────────
     ipcMain.handle('get-journal-path', () => {
       try {
         const cfg = JSON.parse(require('fs').readFileSync(path.join(__dirname, 'config.json'), 'utf8'));
@@ -104,37 +107,24 @@ function createWindow() {
       if (target) await shell.openPath(target);
     });
 
-
-
-    // ── Optional: Handle window closed
-    mainWindow.on('closed', () => {
-      mainWindow = null;
-    });
+    mainWindow.on('closed', () => { mainWindow = null; });
 
   } catch (err) {
     console.error('Failed to create main window:', err);
   }
 }
 
-// ── App Lifecycle ───────────────────────────────────────────────
+// ── App Lifecycle ────────────────────────────────────────────────────────────
 app.whenReady().then(() => {
   createWindow();
-
   app.on('activate', () => {
     if (BrowserWindow.getAllWindows().length === 0) createWindow();
   });
 });
 
-// Quit app when all windows closed (except macOS)
 app.on('window-all-closed', () => {
   if (process.platform !== 'darwin') app.quit();
 });
 
-// ── Global Exception Guard ──────────────────────────────────────
-process.on('uncaughtException', (err) => {
-  console.error('Uncaught Exception:', err);
-});
-
-process.on('unhandledRejection', (reason) => {
-  console.error('Unhandled Promise Rejection:', reason);
-});
+process.on('uncaughtException',    err    => console.error('Uncaught Exception:', err));
+process.on('unhandledRejection',   reason => console.error('Unhandled Rejection:', reason));
