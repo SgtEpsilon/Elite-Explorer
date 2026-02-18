@@ -115,8 +115,8 @@ async function readLastEntries() {
   console.log(`[readLastEntries] Found ${allFiles.length} journal files`);
   if (!allFiles.length) return;
 
-  const recent = allFiles.slice(0, 15);
-  console.log('[readLastEntries] Reading:', recent.map(f => f.file).join(', '));
+  const recent = allFiles.slice(0, 1);
+  console.log('[readLastEntries] Reading latest log only:', recent.map(f => f.file).join(', '));
 
   // Always pass an empty lastProcessed so all 15 files are read from line 0.
   // This guarantees current session state is populated on every startup.
@@ -155,7 +155,7 @@ async function readLastEntries() {
           break;
         case 'done':
           console.log('[readLastEntries] done, updatedLastProcessed keys:', Object.keys(msg.updatedLastProcessed).length);
-          // Update lastProcessed for all 15 files
+          // Update lastProcessed for the latest file
           recent.forEach(f => {
             if (msg.updatedLastProcessed[f.file] != null) {
               lastProcessed[f.file] = msg.updatedLastProcessed[f.file];
@@ -184,6 +184,18 @@ async function readAllJournals() {
   await runWorker(files);
 }
 
+function getLatestJournalFile(journalPath) {
+  try {
+    const files = fs.readdirSync(journalPath)
+      .filter(f => f.startsWith('Journal.') && f.endsWith('.log'))
+      .map(f => ({ file: f, fullPath: path.join(journalPath, f), time: fs.statSync(path.join(journalPath, f)).mtime }))
+      .sort((a, b) => b.time - a.time);
+    return files.length ? files[0] : null;
+  } catch {
+    return null;
+  }
+}
+
 function start() {
   let journalPath;
   try {
@@ -196,12 +208,37 @@ function start() {
     console.error('[start] Journal directory does not exist:', journalPath);
     return;
   }
+
   readLastEntries();
-  const watcher = chokidar.watch(`${journalPath}${path.sep}Journal.*.log`, { persistent: true, ignoreInitial: false });
-  watcher.on('change', filePath => {
-    console.log('[watcher] File changed:', filePath);
-    runWorker([filePath]);
+
+  let latestFile = getLatestJournalFile(journalPath);
+  let watchedPath = latestFile ? latestFile.fullPath : null;
+  if (watchedPath) console.log('[watcher] Tracking latest log:', latestFile.file);
+
+  // Watch the journal directory for both new files appearing and changes to existing files
+  const watcher = chokidar.watch(`${journalPath}${path.sep}Journal.*.log`, {
+    persistent: true,
+    ignoreInitial: true
   });
+
+  const handleFileEvent = (filePath) => {
+    // Check if a newer log has appeared (e.g. game session started)
+    const nowLatest = getLatestJournalFile(journalPath);
+    if (nowLatest && nowLatest.fullPath !== watchedPath) {
+      console.log('[watcher] New latest journal detected, switching to:', nowLatest.file);
+      watchedPath = nowLatest.fullPath;
+    }
+    // Only process events from the current latest log
+    if (filePath === watchedPath) {
+      console.log('[watcher] Change in latest log:', path.basename(filePath));
+      runWorker([filePath]);
+    } else {
+      console.log('[watcher] Ignoring change in non-latest file:', path.basename(filePath));
+    }
+  };
+
+  watcher.on('add', handleFileEvent);
+  watcher.on('change', handleFileEvent);
 }
 
 module.exports = { start, readAllJournals, setMainWindow, getJournalPath };
