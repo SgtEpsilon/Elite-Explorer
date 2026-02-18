@@ -1,0 +1,69 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>Elite Explorer</title>
+<style>
+body { font-family: sans-serif; background: #1e1e2f; color: #eee; padding: 20px; }
+h1 { color: #4cafef; }
+#progressContainer { width: 100%; background: #333; border-radius: 5px; height: 25px; margin-top: 10px; }
+#progressBar { width: 0%; height: 100%; background: #4cafef; border-radius: 5px; transition: width 0.2s; }
+table { width: 100%; border-collapse: collapse; margin-top: 20px; }
+th, td { padding: 10px; border-bottom: 1px solid #555; text-align: left; }
+</style>
+</head>
+<body>
+<h1>Elite Dangerous Explorer</h1>
+
+<p>Total Scans: <span id="scanCount">0</span></p>
+<p id="progressText">Progress: idle</p>
+<div id="progressContainer"><div id="progressBar"></div></div>
+
+<table id="scanTable">
+  <thead>
+    <tr>
+      <th>System</th>
+      <th>Body</th>
+      <th>Type</th>
+      <th>Timestamp</th>
+    </tr>
+  </thead>
+  <tbody></tbody>
+</table>
+
+<script>
+// FIX: Removed `require('../engine/providers/journalProvider')` from here.
+// That line was crashing the entire script because the renderer (browser window)
+// cannot use Node.js require(). The actual scan now runs in main.js instead.
+
+// Update table every 2 seconds (assuming scans stored in SQLite or memory)
+function updateUI() {
+  // Implement your UI refresh logic here
+}
+updateUI();
+setInterval(updateUI, 2000);
+
+// Listen for Scan All Journals menu click (just for UI feedback — the real work happens in main.js)
+window.electronAPI.onScanAll(() => {
+  console.log('Scan All Journals triggered — main process is doing the work.');
+  document.getElementById('progressText').innerText = 'Scanning journals...';
+});
+
+// Multi-file progress listener
+window.electronAPI.onProgress((data) => {
+  const filePercent = Math.round((data.currentLine / data.totalLines) * 100);
+  const overallPercent = Math.round(((data.fileIndex - 1 + data.currentLine / data.totalLines) / data.totalFiles) * 100);
+
+  document.getElementById('progressText').innerText = `Processing ${data.file} (${filePercent}%) | Overall: ${overallPercent}%`;
+  document.getElementById('progressBar').style.width = overallPercent + '%';
+
+  if (overallPercent >= 100) {
+    setTimeout(() => {
+      document.getElementById('progressText').innerText = 'Scan complete';
+      document.getElementById('progressBar').style.width = '0%';
+    }, 500);
+  }
+});
+</script>
+</body>
+</html>
