@@ -1,4 +1,9 @@
 {
   "journalPath": "",
-  "apiPort": 3721
+  "apiPort": 3721,
+  "commanderName": "",
+  "eddnEnabled": false,
+  "edsmEnabled": false,
+  "edsmCommanderName": "",
+  "edsmApiKey": ""
 }

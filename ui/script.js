@@ -287,6 +287,73 @@ if (window.electronAPI) {
       set('sys-name', data.system);
       set('tb-sys',   data.system);
       log('Jump: ' + data.system, 'info');
+      // Clear EDSM fields until new system data arrives
+      set('sys-security',   '\u2014');
+      set('sys-allegiance', '\u2014');
+      set('sys-economy',    '\u2014');
+      set('sys-population', '\u2014');
+      var link = document.getElementById('edsm-link');
+      if (link) { link.style.opacity = '0.35'; link.style.pointerEvents = 'none'; }
+      var dot = document.getElementById('edsm-dot');
+      if (dot) { dot.style.background = 'var(--text-mute)'; dot.title = 'EDSM: fetching\u2026'; }
+    }
+  });
+
+  // ── EDSM: system info ─────────────────────────────────────────────────────
+  window.electronAPI.onEdsmSystem(function(d) {
+    // Security colour coding
+    var secColor = 'var(--text-dim)';
+    if (d.security) {
+      var s = d.security.toLowerCase();
+      if (s.includes('high'))   secColor = 'var(--green)';
+      else if (s.includes('medium')) secColor = 'var(--gold)';
+      else if (s.includes('low') || s.includes('anarchy') || s.includes('lawless')) secColor = 'var(--red, #e05252)';
+    }
+    var secEl = document.getElementById('sys-security');
+    if (secEl) { secEl.textContent = d.security || '\u2014'; secEl.style.color = secColor; }
+
+    set('sys-allegiance', d.allegiance || '\u2014');
+    set('sys-economy',    d.economy    || '\u2014');
+    set('sys-population', d.population != null ? Number(d.population).toLocaleString() : '\u2014');
+
+    // Update live EDSM link
+    var link = document.getElementById('edsm-link');
+    if (link && d.edsmUrl) {
+      link.style.opacity = '1';
+      link.style.pointerEvents = 'auto';
+      link.onclick = function(e) {
+        e.preventDefault();
+        if (window.electronAPI && window.electronAPI.openExternal) window.electronAPI.openExternal(d.edsmUrl);
+        return false;
+      };
+      link.title = 'View ' + d.name + ' on EDSM';
+    }
+
+    var dot = document.getElementById('edsm-dot');
+    if (dot) {
+      dot.style.background = d.error ? 'var(--red, #e05252)' : 'var(--cyan)';
+      dot.title = d.error ? 'EDSM: ' + d.error : 'EDSM: ' + d.name;
+    }
+
+    if (!d.error) log('EDSM: ' + d.name + (d.allegiance ? ' \u00B7 ' + d.allegiance : '') + (d.security ? ' \u00B7 ' + d.security : ''), 'info');
+  });
+
+  // ── EDDN: submission status ───────────────────────────────────────────────
+  window.electronAPI.onEddnStatus(function(d) {
+    var dot = document.getElementById('eddn-dot');
+    if (!dot) return;
+    if (d.ok) {
+      dot.style.background = 'var(--cyan)';
+      dot.title = 'EDDN: submitted ' + (d.schema || '');
+      // Fade back to dim after 3s
+      clearTimeout(dot._fadeTimer);
+      dot._fadeTimer = setTimeout(function() {
+        dot.style.background = 'var(--text-mute)';
+        dot.title = 'EDDN: enabled';
+      }, 3000);
+    } else {
+      dot.style.background = 'var(--red, #e05252)';
+      dot.title = 'EDDN error: ' + (d.message || d.status || '?');
     }
   });
 
@@ -326,11 +393,25 @@ async function refreshStats() {
 function openOptions() {
   document.getElementById('options-panel').classList.add('open');
   document.getElementById('options-overlay').classList.add('open');
-  if (window.electronAPI && window.electronAPI.getJournalPath) {
-    window.electronAPI.getJournalPath()
-      .then(function(p) { if (p) document.getElementById('opt-journal-path').value = p; })
-      .catch(function(){});
-  }
+  if (!window.electronAPI) return;
+  // Load journal path
+  window.electronAPI.getJournalPath()
+    .then(function(p) { if (p) document.getElementById('opt-journal-path').value = p; })
+    .catch(function() {});
+  // Load full config for EDDN/EDSM fields
+  window.electronAPI.getConfig().then(function(cfg) {
+    var el;
+    el = document.getElementById('opt-eddn-enabled'); if (el) el.checked = !!cfg.eddnEnabled;
+    el = document.getElementById('opt-cmdr-name');    if (el) el.value  = cfg.commanderName    || '';
+    el = document.getElementById('opt-edsm-enabled'); if (el) el.checked = !!cfg.edsmEnabled;
+    el = document.getElementById('opt-edsm-cmdr');    if (el) el.value  = cfg.edsmCommanderName || '';
+    el = document.getElementById('opt-edsm-key');     if (el) el.value  = cfg.edsmApiKey        || '';
+    // Reflect enabled state in dots
+    var eddnDot = document.getElementById('eddn-dot');
+    if (eddnDot) { eddnDot.style.background = cfg.eddnEnabled ? 'var(--text-mute)' : 'var(--border2)'; eddnDot.title = cfg.eddnEnabled ? 'EDDN: enabled' : 'EDDN: disabled'; }
+    var edsmDot = document.getElementById('edsm-dot');
+    if (edsmDot) { edsmDot.style.background = cfg.edsmEnabled ? 'var(--text-mute)' : 'var(--border2)'; edsmDot.title = cfg.edsmEnabled ? 'EDSM: enabled' : 'EDSM: disabled'; }
+  }).catch(function() {});
 }
 function closeOptions() {
   document.getElementById('options-panel').classList.remove('open');
@@ -377,6 +458,28 @@ if (journalPath) journalPath.addEventListener('change', async function() {
     document.getElementById('opt-path-hint').textContent = val ? 'Path saved \u2014 restart to apply' : 'Leave blank to use the default path for your OS';
     document.getElementById('opt-path-hint').style.color = val ? 'var(--green)' : '';
   } catch {}
+});
+
+// ─── EDDN / EDSM SAVE BUTTON ──────────────────────────────────────
+var saveApiBtn = document.getElementById('opt-save-api-btn');
+if (saveApiBtn) saveApiBtn.addEventListener('click', async function() {
+  if (!window.electronAPI) return;
+  var eddnEnabled = (document.getElementById('opt-eddn-enabled') || {}).checked || false;
+  var edsmEnabled = (document.getElementById('opt-edsm-enabled') || {}).checked || false;
+  var commanderName    = ((document.getElementById('opt-cmdr-name')  || {}).value || '').trim();
+  var edsmCommanderName = ((document.getElementById('opt-edsm-cmdr') || {}).value || '').trim();
+  var edsmApiKey        = ((document.getElementById('opt-edsm-key')  || {}).value || '').trim();
+  try {
+    await window.electronAPI.saveConfig({ eddnEnabled, edsmEnabled, commanderName, edsmCommanderName, edsmApiKey });
+    var hint = document.getElementById('opt-api-hint');
+    if (hint) { hint.textContent = 'Saved \u2714'; hint.style.color = 'var(--green)'; setTimeout(function() { hint.textContent = 'Changes take effect immediately'; hint.style.color = ''; }, 2500); }
+    // Update dots
+    var eddnDot = document.getElementById('eddn-dot');
+    if (eddnDot) { eddnDot.style.background = eddnEnabled ? 'var(--text-mute)' : 'var(--border2)'; eddnDot.title = eddnEnabled ? 'EDDN: enabled' : 'EDDN: disabled'; }
+    var edsmDot = document.getElementById('edsm-dot');
+    if (edsmDot) { edsmDot.style.background = edsmEnabled ? 'var(--text-mute)' : 'var(--border2)'; edsmDot.title = edsmEnabled ? 'EDSM: enabled' : 'EDSM: disabled'; }
+    log('API settings saved', 'good');
+  } catch { log('Failed to save API settings', 'error'); }
 });
 
 // ─── THEMES ───────────────────────────────────────────────────────

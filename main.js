@@ -1,10 +1,18 @@
-const { app, BrowserWindow, ipcMain } = require('electron');
+const { app, BrowserWindow, ipcMain, shell } = require('electron');
 const path = require('path');
+const fs   = require('fs');
 const engine = require('./engine/core/engine');
 const journalProvider = require('./engine/providers/journalProvider');
 const historyProvider = require('./engine/providers/historyProvider');
+const eddnRelay       = require('./engine/services/eddnRelay');
+const edsmClient      = require('./engine/services/edsmClient');
 const eventBus = require('./engine/core/eventBus');
 const api = require('./engine/api/server');
+
+const CONFIG_PATH = path.join(__dirname, 'config.json');
+
+function readConfig()        { try { return JSON.parse(fs.readFileSync(CONFIG_PATH, 'utf8')); } catch { return {}; } }
+function writeConfig(obj)    { fs.writeFileSync(CONFIG_PATH, JSON.stringify(obj, null, 2)); }
 
 let mainWindow;
 let isScanning = false;
@@ -41,53 +49,69 @@ function createWindow() {
     mainWindow.loadFile(path.join(__dirname, 'ui', 'index.html'));
     journalProvider.setMainWindow(mainWindow);
     historyProvider.setMainWindow(mainWindow);
+    eddnRelay.setMainWindow(mainWindow);
+    edsmClient.setMainWindow(mainWindow);
 
-    // ── Cache the three data payloads so any page that navigates in
-    // receives its data immediately without waiting for a re-scan.
+    // ── Cache payloads for page navigation replays ───────────────────────────
     let cachedLive    = null;
     let cachedProfile = null;
+    let cachedEdsm    = null;   // last EDSM system info
 
     eventBus.on('journal.live',    d => { cachedLive    = d; });
     eventBus.on('journal.profile', d => { cachedProfile = d; });
 
-    // Re-send cached data every time a page finishes loading (navigation, reload)
+    // EDSM sends via IPC directly — intercept a copy for replay
     mainWindow.webContents.on('did-finish-load', () => {
       if (mainWindow.isDestroyed()) return;
       if (cachedLive)    mainWindow.webContents.send('live-data',    cachedLive);
       if (cachedProfile) mainWindow.webContents.send('profile-data', cachedProfile);
-      // History replays itself via historyProvider.replayToPage()
+      if (cachedEdsm)    mainWindow.webContents.send('edsm-system',  cachedEdsm);
       historyProvider.replayToPage();
     });
+
+    // Intercept edsm-system to cache it for replay
+    eventBus.on('edsm.system', d => { cachedEdsm = d; });
 
     // ── Start engine on first load ───────────────────────────────────────────
     mainWindow.webContents.once('did-finish-load', () => {
       engine.start();
       api.start();
-      // History runs independently — kick it off on startup
+      eddnRelay.start();
+      edsmClient.start();
       historyProvider.scan();
     });
 
     // ── IPC handlers ─────────────────────────────────────────────────────────
-    ipcMain.handle('trigger-scan-all', () => runScan());
+    ipcMain.handle('trigger-scan-all',    () => runScan());
     ipcMain.handle('trigger-history-scan', () => historyProvider.scan());
+
+    // Open external URL in system browser (for EDSM link)
+    ipcMain.handle('open-external', (e, url) => {
+      if (typeof url === 'string' && (url.startsWith('https://') || url.startsWith('http://'))) {
+        shell.openExternal(url);
+      }
+    });
+
+    // Full config read/write for EDDN + EDSM settings
+    ipcMain.handle('get-config', () => readConfig());
+    ipcMain.handle('save-config', (e, patch) => {
+      const cfg = readConfig();
+      Object.assign(cfg, patch);
+      writeConfig(cfg);
+      return cfg;
+    });
 
     ipcMain.handle('app-quit', () => {
       if (mainWindow && !mainWindow.isDestroyed()) mainWindow.close();
     });
 
-    ipcMain.handle('get-journal-path', () => {
-      try {
-        const cfg = JSON.parse(require('fs').readFileSync(path.join(__dirname, 'config.json'), 'utf8'));
-        return cfg.journalPath || '';
-      } catch { return ''; }
-    });
+    ipcMain.handle('get-journal-path', () => readConfig().journalPath || '');
 
     ipcMain.handle('save-journal-path', (e, newPath) => {
       try {
-        const cfgPath = path.join(__dirname, 'config.json');
-        const cfg = JSON.parse(require('fs').readFileSync(cfgPath, 'utf8'));
+        const cfg = readConfig();
         cfg.journalPath = newPath;
-        require('fs').writeFileSync(cfgPath, JSON.stringify(cfg, null, 2));
+        writeConfig(cfg);
         return true;
       } catch { return false; }
     });
@@ -102,7 +126,6 @@ function createWindow() {
     });
 
     ipcMain.handle('open-journal-folder', async (e, folderPath) => {
-      const { shell } = require('electron');
       const target = folderPath || journalProvider.getJournalPath?.() || '';
       if (target) await shell.openPath(target);
     });

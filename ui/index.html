@@ -21,6 +21,8 @@
     <a class="tab-btn" href="history.html">History</a>
   </div>
   <span class="tb-credits" id="tb-credits"></span>
+  <span id="eddn-dot" title="EDDN: disabled" style="width:6px;height:6px;border-radius:50%;background:var(--border2);display:inline-block;margin-right:4px;transition:background 0.4s;"></span>
+  <span id="edsm-dot" title="EDSM: disabled" style="width:6px;height:6px;border-radius:50%;background:var(--border2);display:inline-block;margin-right:8px;transition:background 0.4s;"></span>
   <button id="options-btn" title="Options">&#9881;</button>
 </div>
 
@@ -39,6 +41,15 @@
           <div class="stat-row"><span class="stat-key">System</span><span class="stat-val highlight" id="sys-name">&#8212;</span></div>
           <div class="stat-row"><span class="stat-key">Pos</span><span class="stat-val" id="sys-pos" style="font-size:0.75em">&#8212;</span></div>
           <div class="stat-row"><span class="stat-key">Security</span><span class="stat-val" id="sys-security" style="font-size:0.75em;color:var(--text-dim)">&#8212;</span></div>
+          <div class="stat-row"><span class="stat-key">Allegiance</span><span class="stat-val" id="sys-allegiance" style="font-size:0.75em;color:var(--text-dim)">&#8212;</span></div>
+          <div class="stat-row"><span class="stat-key">Economy</span><span class="stat-val" id="sys-economy" style="font-size:0.75em;color:var(--text-dim)">&#8212;</span></div>
+          <div class="stat-row"><span class="stat-key">Population</span><span class="stat-val" id="sys-population" style="font-size:0.75em;color:var(--text-dim)">&#8212;</span></div>
+          <div class="stat-row">
+            <span class="stat-key">EDSM</span>
+            <a id="edsm-link" href="#" title="View on Elite Dangerous Star Map"
+               style="font-size:0.75em;color:var(--cyan);text-decoration:none;font-family:var(--mono);cursor:pointer;opacity:0.5;pointer-events:none;"
+               onclick="return false;">&#8599; View system</a>
+          </div>
         </div>
         <div class="stat-group">
           <div class="stat-group-title">Ship Status</div>
@@ -156,6 +167,40 @@
       <button class="opt-action-btn" id="opt-scan-btn">
         <span class="opt-btn-icon">&#11041;</span>
         <div><div class="opt-btn-label">Scan All Journals</div><div class="opt-btn-sub">Re-process all Elite journal files</div></div>
+      </button>
+    </div>
+    <div class="opt-section">
+      <div class="opt-section-title">EDDN — Data Network</div>
+      <label class="opt-toggle" style="margin-bottom:8px;">
+        <input type="checkbox" id="opt-eddn-enabled">
+        <span class="tog-track"><span class="tog-thumb"></span></span>
+        <span class="tog-lbl">Submit events to EDDN</span>
+      </label>
+      <div class="opt-hint">Shares jump, scan &amp; dock events with the community network. Your commander name is used as the uploader ID.</div>
+      <div style="margin-top:8px;">
+        <label style="font-size:0.72em;color:var(--text-dim);display:block;margin-bottom:3px;">Commander Name (uploader ID)</label>
+        <input class="opt-input" id="opt-cmdr-name" type="text" placeholder="Your in-game commander name" spellcheck="false"/>
+      </div>
+    </div>
+    <div class="opt-section">
+      <div class="opt-section-title">EDSM — Star Map</div>
+      <label class="opt-toggle" style="margin-bottom:8px;">
+        <input type="checkbox" id="opt-edsm-enabled">
+        <span class="tog-track"><span class="tog-thumb"></span></span>
+        <span class="tog-lbl">Fetch system data from EDSM</span>
+      </label>
+      <div class="opt-hint">Displays security, allegiance, population and enables the EDSM link for each system you visit. No account required for lookups.</div>
+      <div style="margin-top:8px;">
+        <label style="font-size:0.72em;color:var(--text-dim);display:block;margin-bottom:3px;">EDSM Commander Name <span style="opacity:0.5">(optional — for flight log sync)</span></label>
+        <input class="opt-input" id="opt-edsm-cmdr" type="text" placeholder="Your EDSM commander name" spellcheck="false"/>
+      </div>
+      <div style="margin-top:6px;">
+        <label style="font-size:0.72em;color:var(--text-dim);display:block;margin-bottom:3px;">EDSM API Key <span style="opacity:0.5">(optional — from edsm.net/en/settings/api)</span></label>
+        <input class="opt-input" id="opt-edsm-key" type="password" placeholder="••••••••••••••••" spellcheck="false"/>
+      </div>
+      <button class="opt-action-btn" id="opt-save-api-btn" style="margin-top:10px;">
+        <span class="opt-btn-icon">&#10003;</span>
+        <div><div class="opt-btn-label">Save API Settings</div><div class="opt-btn-sub" id="opt-api-hint">Changes take effect immediately</div></div>
       </button>
     </div>
     <div class="opt-section">

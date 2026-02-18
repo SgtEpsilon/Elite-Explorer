@@ -68,6 +68,11 @@ function runWorker(files, { mode = 'all', useLastProcessed = false, updateLastPr
           }
           break;
 
+        case 'raw':
+          // Forward raw journal entries to EDDN relay — only fires from live watcher
+          eventBus.emit('journal.raw.' + msg.event, msg.entry);
+          break;
+
         case 'live-data':
           send('live-data', msg.data);
           eventBus.emit('journal.live', msg.data);

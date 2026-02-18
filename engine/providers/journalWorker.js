@@ -72,14 +72,23 @@ async function run() {
             type: 'event', event: 'journal.scan',
             data: { system: entry.StarSystem, body: entry.BodyName, bodyType: entry.BodyType, timestamp: entry.timestamp }
           });
+          // Forward raw entry for EDDN relay (live mode only — never replay old scans)
+          if (doLive) {
+            parentPort.postMessage({ type: 'raw', event: ev, entry });
+          }
         }
 
         // ── Location / system changes ─────────────────────────────────
         if (ev === 'Location' || ev === 'FSDJump') {
           parentPort.postMessage({
             type: 'event', event: 'journal.location',
-            data: { system: entry.StarSystem, timestamp: entry.timestamp }
+            data: { system: entry.StarSystem, timestamp: entry.timestamp, coords: entry.StarPos || null }
           });
+        }
+
+        // ── Raw event forwarding for EDDN (live watcher only) ─────────
+        if (doLive && (ev === 'FSDJump' || ev === 'Docked')) {
+          parentPort.postMessage({ type: 'raw', event: ev, entry });
         }
 
         // ── LIVE DATA ─────────────────────────────────────────────────
