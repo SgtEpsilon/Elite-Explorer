@@ -33,8 +33,8 @@ function createWindow() {
     mainWindow = new BrowserWindow({
       width: 1200,
       height: 800,
-      frame: false, // BORDERLESS
-      transparent: false, // true if you want full transparency
+      frame: true,
+      transparent: false,
       resizable: true,
       webPreferences: {
         preload: path.join(__dirname, 'preload.js'),
@@ -48,6 +48,13 @@ function createWindow() {
     // Assign mainWindow to journalProvider
     journalProvider.setMainWindow(mainWindow);
 
+    // ── Wait for renderer to finish loading before starting the engine
+    // so IPC listeners are registered before we send any data.
+    mainWindow.webContents.once('did-finish-load', () => {
+      engine.start();
+      api.start();
+    });
+
     // ── Forward location updates to renderer safely
     eventBus.on('journal.location', (data) => {
       if (mainWindow && !mainWindow.isDestroyed()) {
@@ -58,30 +65,46 @@ function createWindow() {
     // ── IPC: Renderer triggers scan
     ipcMain.handle('trigger-scan-all', () => runScan());
 
+    // ── Window Controls ──────────────────────────────────────────────
     // Optional: safe quit button from renderer
     ipcMain.handle('app-quit', () => {
       if (mainWindow && !mainWindow.isDestroyed()) mainWindow.close();
     });
 
-    // ── Window Controls ──────────────────────────────────────────────
-    ipcMain.handle('win-minimize', () => {
-      if (mainWindow && !mainWindow.isDestroyed()) mainWindow.minimize();
+    // ── Options: Journal Path ────────────────────────────────────────
+    ipcMain.handle('get-journal-path', () => {
+      try {
+        const cfg = JSON.parse(require('fs').readFileSync(path.join(__dirname, 'config.json'), 'utf8'));
+        return cfg.journalPath || '';
+      } catch { return ''; }
     });
-    ipcMain.handle('win-maximize', () => {
-      if (mainWindow && !mainWindow.isDestroyed()) {
-        if (mainWindow.isMaximized()) {
-          mainWindow.unmaximize();
-        } else {
-          mainWindow.maximize();
-        }
-      }
+
+    ipcMain.handle('save-journal-path', (e, newPath) => {
+      try {
+        const cfgPath = path.join(__dirname, 'config.json');
+        const cfg = JSON.parse(require('fs').readFileSync(cfgPath, 'utf8'));
+        cfg.journalPath = newPath;
+        require('fs').writeFileSync(cfgPath, JSON.stringify(cfg, null, 2));
+        return true;
+      } catch { return false; }
     });
-    ipcMain.handle('win-close', () => {
-      if (mainWindow && !mainWindow.isDestroyed()) mainWindow.close();
+
+    ipcMain.handle('browse-journal-path', async () => {
+      const { dialog } = require('electron');
+      const result = await dialog.showOpenDialog(mainWindow, {
+        title: 'Select Elite Dangerous Journal Folder',
+        properties: ['openDirectory'],
+      });
+      return result.canceled ? null : result.filePaths[0];
     });
-    ipcMain.handle('win-is-maximized', () => {
-      return mainWindow ? mainWindow.isMaximized() : false;
+
+    ipcMain.handle('open-journal-folder', async (e, folderPath) => {
+      const { shell } = require('electron');
+      const target = folderPath || journalProvider.getJournalPath?.() || '';
+      if (target) await shell.openPath(target);
     });
+
+
 
     // ── Optional: Handle window closed
     mainWindow.on('closed', () => {
@@ -96,11 +119,8 @@ function createWindow() {
 // ── App Lifecycle ───────────────────────────────────────────────
 app.whenReady().then(() => {
   createWindow();
-  engine.start();
-  api.start();
 
   app.on('activate', () => {
-    // macOS behavior: recreate window if none exist
     if (BrowserWindow.getAllWindows().length === 0) createWindow();
   });
 });

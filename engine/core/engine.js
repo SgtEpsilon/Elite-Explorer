@@ -7,7 +7,7 @@ function start() {
     db.run(
       `INSERT INTO personal_scans (system_name, body_name, body_type, timestamp)
        VALUES (?, ?, ?, ?)`,
-      [data.system, data.body, data.type, data.timestamp]
+      [data.system ?? null, data.body ?? null, data.bodyType ?? null, data.timestamp ?? null]
     );
   });
 
@@ -15,7 +15,7 @@ function start() {
     db.run(
       `INSERT OR REPLACE INTO commander_state (id, current_system, updated_at)
        VALUES (1, ?, ?)`,
-      [data.system, data.timestamp]
+      [data.system ?? null, data.timestamp ?? null]
     );
   });
 

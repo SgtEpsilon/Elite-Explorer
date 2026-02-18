@@ -1,0 +1,1484 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>Elite Dashboard</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Rajdhani:wght@300;400;500;600;700&family=Share+Tech+Mono&family=Exo+2:wght@100;200;300;400&display=swap" rel="stylesheet">
+<style>
+:root {
+  --bg:        #05080d;
+  --bg2:       #080c13;
+  --panel:     #0a0f18;
+  --panel2:    #0d1420;
+  --border:    #152030;
+  --border2:   #1e3048;
+  --gold:      #d4a843;
+  --gold2:     #f0c060;
+  --gold-dim:  rgba(212,168,67,0.12);
+  --gold-glow: rgba(212,168,67,0.25);
+  --cyan:      #2dd4d4;
+  --cyan2:     #5ee8e8;
+  --cyan-dim:  rgba(45,212,212,0.08);
+  --red:       #e05555;
+  --green:     #3dbd7a;
+  --purple:    #9b6fd4;
+  --text:      #c8d8e8;
+  --text-dim:  #5a7898;
+  --text-mute: #2a4058;
+  --mono:      'Share Tech Mono', monospace;
+  --head:      'Rajdhani', sans-serif;
+  --body:      'Exo 2', sans-serif;
+}
+
+* { box-sizing: border-box; margin: 0; padding: 0; }
+
+html, body {
+  width: 100%; min-height: 100vh;
+  background: var(--bg);
+  color: var(--text);
+  font-family: var(--body);
+  font-size: 13px;
+  overflow-x: hidden;
+}
+
+/* ── Noise texture overlay ── */
+body::before {
+  content: '';
+  position: fixed; inset: 0;
+  background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 256 256' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)' opacity='0.04'/%3E%3C/svg%3E");
+  background-size: 256px 256px;
+  pointer-events: none;
+  z-index: 9998;
+  opacity: 0.6;
+}
+
+/* ── Scanlines ── */
+body::after {
+  content: '';
+  position: fixed; inset: 0;
+  background: repeating-linear-gradient(0deg, transparent, transparent 3px, rgba(0,0,0,0.03) 3px, rgba(0,0,0,0.03) 4px);
+  pointer-events: none;
+  z-index: 9999;
+}
+
+/* ══════════════════════════════════════════
+   DROP ZONE
+══════════════════════════════════════════ */
+#drop-zone {
+  position: fixed; inset: 0;
+  display: flex; flex-direction: column;
+  align-items: center; justify-content: center;
+  gap: 24px;
+  z-index: 100;
+  transition: opacity 0.4s ease;
+}
+
+#drop-zone.hidden { opacity: 0; pointer-events: none; }
+
+.drop-ring {
+  width: 180px; height: 180px;
+  border-radius: 50%;
+  border: 1px solid var(--border2);
+  display: flex; align-items: center; justify-content: center;
+  position: relative;
+  animation: ringPulse 3s ease-in-out infinite;
+}
+.drop-ring::before {
+  content: '';
+  position: absolute; inset: -8px;
+  border-radius: 50%;
+  border: 1px solid rgba(45,212,212,0.15);
+  animation: ringPulse 3s ease-in-out infinite 0.5s;
+}
+.drop-ring::after {
+  content: '';
+  position: absolute; inset: -18px;
+  border-radius: 50%;
+  border: 1px solid rgba(45,212,212,0.07);
+  animation: ringPulse 3s ease-in-out infinite 1s;
+}
+
+@keyframes ringPulse {
+  0%, 100% { opacity: 0.4; }
+  50% { opacity: 1; }
+}
+
+.drop-icon {
+  font-size: 48px;
+  color: var(--cyan);
+  opacity: 0.7;
+  filter: drop-shadow(0 0 16px rgba(45,212,212,0.4));
+}
+
+.drop-title {
+  font-family: var(--head);
+  font-size: 22px;
+  font-weight: 600;
+  letter-spacing: 0.2em;
+  color: var(--text);
+  text-transform: uppercase;
+}
+
+.drop-sub {
+  font-family: var(--mono);
+  font-size: 10px;
+  color: var(--text-dim);
+  letter-spacing: 0.15em;
+  text-align: center;
+}
+
+.drop-btn {
+  font-family: var(--mono);
+  font-size: 10px;
+  letter-spacing: 0.15em;
+  text-transform: uppercase;
+  color: var(--cyan);
+  background: transparent;
+  border: 1px solid rgba(45,212,212,0.3);
+  padding: 8px 20px;
+  cursor: pointer;
+  transition: all 0.2s;
+}
+.drop-btn:hover { background: var(--cyan-dim); border-color: var(--cyan); box-shadow: 0 0 12px rgba(45,212,212,0.2); }
+
+#file-input { display: none; }
+
+#drop-zone.drag-over .drop-ring { border-color: var(--cyan); box-shadow: 0 0 30px rgba(45,212,212,0.3); }
+
+/* ══════════════════════════════════════════
+   DASHBOARD
+══════════════════════════════════════════ */
+#dashboard {
+  opacity: 0;
+  transition: opacity 0.5s ease;
+  padding: 0;
+}
+#dashboard.visible { opacity: 1; }
+
+/* ── Top bar ── */
+#topbar {
+  display: flex;
+  align-items: center;
+  gap: 0;
+  height: 48px;
+  border-bottom: 1px solid var(--border);
+  background: var(--panel);
+  padding: 0 20px;
+  position: sticky; top: 0; z-index: 50;
+}
+
+.tb-logo {
+  font-family: var(--head);
+  font-size: 18px;
+  font-weight: 700;
+  letter-spacing: 0.15em;
+  color: var(--gold);
+  text-transform: uppercase;
+  text-shadow: 0 0 20px var(--gold-glow);
+  margin-right: 24px;
+  white-space: nowrap;
+}
+
+.tb-cmdr {
+  font-family: var(--mono);
+  font-size: 11px;
+  color: var(--cyan);
+  letter-spacing: 0.1em;
+}
+
+.tb-sep {
+  width: 1px;
+  height: 24px;
+  background: var(--border2);
+  margin: 0 16px;
+}
+
+.tb-sys {
+  font-family: var(--mono);
+  font-size: 11px;
+  color: var(--text-dim);
+  letter-spacing: 0.05em;
+}
+
+.tb-right {
+  margin-left: auto;
+  display: flex;
+  align-items: center;
+  gap: 16px;
+}
+
+.tb-mode {
+  font-family: var(--mono);
+  font-size: 9px;
+  letter-spacing: 0.12em;
+  color: var(--text-mute);
+  text-transform: uppercase;
+}
+
+.tb-credits {
+  font-family: var(--mono);
+  font-size: 12px;
+  color: var(--gold2);
+  letter-spacing: 0.05em;
+}
+
+.tb-reload {
+  font-family: var(--mono);
+  font-size: 9px;
+  color: var(--text-dim);
+  background: transparent;
+  border: 1px solid var(--border2);
+  padding: 4px 10px;
+  cursor: pointer;
+  letter-spacing: 0.1em;
+  transition: all 0.2s;
+}
+.tb-reload:hover { color: var(--cyan); border-color: var(--cyan); }
+
+/* ── Main grid ── */
+#main-grid {
+  display: grid;
+  grid-template-columns: 280px 1fr;
+  grid-template-rows: auto;
+  min-height: calc(100vh - 48px);
+}
+
+/* ── Left sidebar ── */
+#sidebar {
+  border-right: 1px solid var(--border);
+  background: var(--panel);
+  display: flex;
+  flex-direction: column;
+  gap: 0;
+}
+
+/* ── Right content ── */
+#content {
+  display: flex;
+  flex-direction: column;
+  gap: 0;
+}
+
+/* ══════════════════════════════════════════
+   SHARED PANEL STYLES
+══════════════════════════════════════════ */
+.pane {
+  padding: 16px;
+  border-bottom: 1px solid var(--border);
+}
+
+.pane-title {
+  font-family: var(--head);
+  font-size: 9px;
+  font-weight: 600;
+  letter-spacing: 0.3em;
+  color: var(--gold);
+  text-transform: uppercase;
+  margin-bottom: 14px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.pane-title::after {
+  content: '';
+  flex: 1;
+  height: 1px;
+  background: linear-gradient(to right, var(--border2), transparent);
+}
+
+/* ══════════════════════════════════════════
+   SHIP IDENTITY (top of sidebar)
+══════════════════════════════════════════ */
+#pane-ship {
+  background: linear-gradient(135deg, rgba(212,168,67,0.04) 0%, transparent 60%);
+  border-left: 2px solid var(--gold);
+  position: relative;
+  overflow: hidden;
+}
+
+#pane-ship::before {
+  content: '';
+  position: absolute;
+  top: -20px; right: -20px;
+  width: 120px; height: 120px;
+  border-radius: 50%;
+  background: radial-gradient(circle, rgba(212,168,67,0.06) 0%, transparent 70%);
+  pointer-events: none;
+}
+
+.ship-name-big {
+  font-family: var(--head);
+  font-size: 20px;
+  font-weight: 700;
+  color: var(--gold2);
+  letter-spacing: 0.08em;
+  text-shadow: 0 0 20px var(--gold-glow);
+  line-height: 1.1;
+  margin-bottom: 3px;
+}
+
+.ship-type {
+  font-family: var(--mono);
+  font-size: 9px;
+  color: var(--text-dim);
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  margin-bottom: 14px;
+}
+
+.ship-ident {
+  font-family: var(--mono);
+  font-size: 9px;
+  color: var(--text-mute);
+  letter-spacing: 0.08em;
+}
+
+/* ── Stat rows ── */
+.stat-rows {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.stat-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 4px 0;
+  border-bottom: 1px solid rgba(21,32,48,0.5);
+}
+.stat-row:last-child { border-bottom: none; }
+
+.s-key {
+  font-family: var(--mono);
+  font-size: 9px;
+  color: var(--text-dim);
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.s-val {
+  font-family: var(--mono);
+  font-size: 11px;
+  color: var(--text);
+  text-align: right;
+}
+
+.s-val.cyan  { color: var(--cyan); }
+.s-val.gold  { color: var(--gold2); }
+.s-val.green { color: var(--green); }
+.s-val.red   { color: var(--red); }
+
+/* ── Fuel bar ── */
+.fuel-section {
+  margin-top: 10px;
+}
+
+.fuel-label-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  margin-bottom: 5px;
+}
+
+.fuel-label {
+  font-family: var(--mono);
+  font-size: 8px;
+  color: var(--text-dim);
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+}
+
+.fuel-nums {
+  font-family: var(--mono);
+  font-size: 10px;
+  color: var(--cyan);
+}
+
+.fuel-track {
+  height: 5px;
+  background: var(--border);
+  border-radius: 2px;
+  overflow: hidden;
+  position: relative;
+}
+
+.fuel-fill {
+  height: 100%;
+  border-radius: 2px;
+  background: linear-gradient(to right, rgba(45,212,212,0.5), var(--cyan));
+  transition: width 1s cubic-bezier(0.4,0,0.2,1);
+  position: relative;
+}
+
+.fuel-fill::after {
+  content: '';
+  position: absolute;
+  top: 0; right: 0;
+  width: 4px; height: 100%;
+  background: white;
+  opacity: 0.6;
+  filter: blur(1px);
+}
+
+/* ══════════════════════════════════════════
+   NAVIGATION PANE
+══════════════════════════════════════════ */
+#pane-nav {
+  border-left: 2px solid var(--cyan);
+  background: linear-gradient(135deg, rgba(45,212,212,0.03) 0%, transparent 60%);
+}
+
+.nav-system {
+  font-family: var(--head);
+  font-size: 16px;
+  font-weight: 600;
+  color: var(--cyan2);
+  letter-spacing: 0.06em;
+  margin-bottom: 2px;
+  text-shadow: 0 0 16px rgba(45,212,212,0.3);
+}
+
+.nav-pos {
+  font-family: var(--mono);
+  font-size: 9px;
+  color: var(--text-mute);
+  letter-spacing: 0.05em;
+  margin-bottom: 12px;
+}
+
+/* ── Security badge ── */
+.sec-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  font-family: var(--mono);
+  font-size: 8px;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  padding: 2px 8px;
+  border-radius: 1px;
+  margin-bottom: 12px;
+}
+.sec-badge.high   { background: rgba(61,189,122,0.1); color: var(--green); border: 1px solid rgba(61,189,122,0.25); }
+.sec-badge.medium { background: rgba(212,168,67,0.1); color: var(--gold); border: 1px solid rgba(212,168,67,0.25); }
+.sec-badge.low    { background: rgba(224,85,85,0.1); color: var(--red); border: 1px solid rgba(224,85,85,0.25); }
+.sec-badge.anarchy{ background: rgba(155,111,212,0.1); color: var(--purple); border: 1px solid rgba(155,111,212,0.25); }
+.sec-dot { width: 5px; height: 5px; border-radius: 50%; background: currentColor; }
+
+/* ══════════════════════════════════════════
+   STATION PANE
+══════════════════════════════════════════ */
+#pane-station {
+  border-left: 2px solid var(--purple);
+  background: linear-gradient(135deg, rgba(155,111,212,0.03) 0%, transparent 60%);
+}
+
+.station-name-big {
+  font-family: var(--head);
+  font-size: 14px;
+  font-weight: 600;
+  color: #c8a0f0;
+  letter-spacing: 0.08em;
+  margin-bottom: 2px;
+}
+
+.station-type {
+  font-family: var(--mono);
+  font-size: 8px;
+  color: var(--text-mute);
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  margin-bottom: 10px;
+}
+
+/* Services chips */
+.services-wrap {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+  margin-top: 8px;
+}
+
+.svc-chip {
+  font-family: var(--mono);
+  font-size: 7px;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  padding: 2px 6px;
+  border-radius: 1px;
+  background: rgba(155,111,212,0.08);
+  color: rgba(200,160,240,0.6);
+  border: 1px solid rgba(155,111,212,0.2);
+}
+
+/* ══════════════════════════════════════════
+   RANKS SECTION (right content, top)
+══════════════════════════════════════════ */
+#pane-ranks {
+  background: var(--panel);
+  border-bottom: 1px solid var(--border);
+  padding: 20px 24px;
+}
+
+.ranks-grid {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 12px;
+}
+
+.rank-card {
+  background: var(--panel2);
+  border: 1px solid var(--border);
+  padding: 12px 14px;
+  position: relative;
+  overflow: hidden;
+  transition: border-color 0.2s;
+}
+
+.rank-card::before {
+  content: '';
+  position: absolute;
+  top: 0; left: 0; right: 0;
+  height: 2px;
+}
+
+.rank-card.combat::before   { background: linear-gradient(to right, var(--red), transparent); }
+.rank-card.trade::before    { background: linear-gradient(to right, var(--green), transparent); }
+.rank-card.explore::before  { background: linear-gradient(to right, var(--cyan), transparent); }
+.rank-card.empire::before   { background: linear-gradient(to right, #c09060, transparent); }
+.rank-card.fed::before      { background: linear-gradient(to right, #6090c8, transparent); }
+.rank-card.cqc::before      { background: linear-gradient(to right, var(--purple), transparent); }
+.rank-card.exobio::before   { background: linear-gradient(to right, #60c890, transparent); }
+
+.rank-label {
+  font-family: var(--mono);
+  font-size: 8px;
+  color: var(--text-mute);
+  letter-spacing: 0.15em;
+  text-transform: uppercase;
+  margin-bottom: 6px;
+}
+
+.rank-name {
+  font-family: var(--head);
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--text);
+  letter-spacing: 0.05em;
+  margin-bottom: 8px;
+  line-height: 1.1;
+}
+
+.rank-bar-wrap {
+  height: 3px;
+  background: var(--border);
+  border-radius: 1px;
+  overflow: hidden;
+  margin-bottom: 4px;
+}
+
+.rank-bar {
+  height: 100%;
+  border-radius: 1px;
+  transition: width 1.2s cubic-bezier(0.4,0,0.2,1);
+}
+
+.rank-card.combat .rank-bar   { background: var(--red); }
+.rank-card.trade .rank-bar    { background: var(--green); }
+.rank-card.explore .rank-bar  { background: var(--cyan); }
+.rank-card.empire .rank-bar   { background: #c09060; }
+.rank-card.fed .rank-bar      { background: #6090c8; }
+.rank-card.cqc .rank-bar      { background: var(--purple); }
+.rank-card.exobio .rank-bar   { background: #60c890; }
+
+.rank-pct {
+  font-family: var(--mono);
+  font-size: 8px;
+  color: var(--text-mute);
+  text-align: right;
+}
+
+/* ══════════════════════════════════════════
+   REPUTATION PANE
+══════════════════════════════════════════ */
+#pane-rep {
+  background: var(--panel);
+  border-bottom: 1px solid var(--border);
+  padding: 20px 24px;
+}
+
+.rep-grid {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 12px;
+}
+
+.rep-card {
+  background: var(--panel2);
+  border: 1px solid var(--border);
+  padding: 14px;
+}
+
+.rep-name {
+  font-family: var(--mono);
+  font-size: 8px;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  margin-bottom: 10px;
+}
+
+.rep-num {
+  font-family: var(--head);
+  font-size: 22px;
+  font-weight: 300;
+  line-height: 1;
+  margin-bottom: 8px;
+}
+
+.rep-empire     .rep-name { color: #c09060; }
+.rep-federation .rep-name { color: #6090c8; }
+.rep-alliance   .rep-name { color: #60c860; }
+.rep-independent .rep-name { color: var(--text-dim); }
+
+.rep-empire     .rep-num { color: #c09060; }
+.rep-federation .rep-num { color: #6090c8; }
+.rep-alliance   .rep-num { color: #60c860; }
+.rep-independent .rep-num { color: var(--text-dim); }
+
+.rep-track {
+  height: 3px;
+  background: var(--border);
+  border-radius: 1px;
+  overflow: hidden;
+}
+
+.rep-fill {
+  height: 100%;
+  border-radius: 1px;
+  transition: width 1.2s ease;
+}
+
+.rep-empire     .rep-fill { background: #c09060; }
+.rep-federation .rep-fill { background: #6090c8; }
+.rep-alliance   .rep-fill { background: #60c860; }
+.rep-independent .rep-fill { background: var(--text-dim); }
+
+/* ══════════════════════════════════════════
+   STATISTICS SECTION
+══════════════════════════════════════════ */
+#pane-stats {
+  background: var(--bg2);
+  padding: 20px 24px;
+  flex: 1;
+}
+
+.stats-cols {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 16px;
+}
+
+.stat-col-title {
+  font-family: var(--head);
+  font-size: 9px;
+  font-weight: 600;
+  letter-spacing: 0.25em;
+  text-transform: uppercase;
+  margin-bottom: 10px;
+  padding-bottom: 6px;
+  border-bottom: 1px solid var(--border2);
+}
+
+.stat-col-title.c-cyan   { color: var(--cyan); }
+.stat-col-title.c-gold   { color: var(--gold); }
+.stat-col-title.c-green  { color: var(--green); }
+.stat-col-title.c-red    { color: var(--red); }
+.stat-col-title.c-purple { color: var(--purple); }
+
+.stat-block {
+  background: var(--panel);
+  border: 1px solid var(--border);
+  padding: 14px;
+}
+
+.mini-stat {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  padding: 4px 0;
+  border-bottom: 1px solid rgba(21,32,48,0.5);
+}
+.mini-stat:last-child { border-bottom: none; }
+
+.ms-key {
+  font-family: var(--mono);
+  font-size: 8px;
+  color: var(--text-mute);
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+
+.ms-val {
+  font-family: var(--mono);
+  font-size: 10px;
+  color: var(--text);
+  text-align: right;
+}
+
+.ms-val.cyan   { color: var(--cyan); }
+.ms-val.gold   { color: var(--gold2); }
+.ms-val.green  { color: var(--green); }
+.ms-val.red    { color: var(--red); }
+.ms-val.purple { color: var(--purple); }
+
+/* ══════════════════════════════════════════
+   POWERPLAY
+══════════════════════════════════════════ */
+#pane-power {
+  border-left: 2px solid var(--green);
+  background: linear-gradient(135deg, rgba(61,189,122,0.03) 0%, transparent 60%);
+}
+
+/* ══════════════════════════════════════════
+   ERROR / EMPTY STATES
+══════════════════════════════════════════ */
+.parse-error {
+  font-family: var(--mono);
+  font-size: 10px;
+  color: var(--red);
+  padding: 20px;
+  text-align: center;
+  letter-spacing: 0.1em;
+}
+
+/* ══════════════════════════════════════════
+   ANIMATIONS
+══════════════════════════════════════════ */
+@keyframes fadeUp {
+  from { opacity: 0; transform: translateY(8px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+
+.pane, .rank-card, .rep-card, .stat-block, .mini-stat {
+  animation: fadeUp 0.4s ease both;
+}
+
+.rank-card:nth-child(1) { animation-delay: 0.05s; }
+.rank-card:nth-child(2) { animation-delay: 0.10s; }
+.rank-card:nth-child(3) { animation-delay: 0.15s; }
+.rank-card:nth-child(4) { animation-delay: 0.20s; }
+.rank-card:nth-child(5) { animation-delay: 0.25s; }
+.rank-card:nth-child(6) { animation-delay: 0.30s; }
+.rank-card:nth-child(7) { animation-delay: 0.35s; }
+
+/* ══════════════════════════════════════════
+   RESPONSIVE
+══════════════════════════════════════════ */
+@media (max-width: 900px) {
+  #main-grid { grid-template-columns: 1fr; }
+  #sidebar { border-right: none; border-bottom: 1px solid var(--border); }
+  .ranks-grid { grid-template-columns: repeat(2, 1fr); }
+  .rep-grid { grid-template-columns: repeat(2, 1fr); }
+  .stats-cols { grid-template-columns: 1fr; }
+}
+</style>
+</head>
+<body>
+
+<!-- ══ DROP ZONE ══════════════════════════════════════════════ -->
+<div id="drop-zone">
+  <div class="drop-ring">
+    <div class="drop-icon">◈</div>
+  </div>
+  <div class="drop-title">Elite Dashboard</div>
+  <div class="drop-sub">DROP YOUR JOURNAL FILE HERE<br>Journal_YYYY-MM-DDTHHMMSS_NN.log</div>
+  <button class="drop-btn" onclick="document.getElementById('file-input').click()">Browse File</button>
+  <input type="file" id="file-input" accept=".log,.txt">
+</div>
+
+<!-- ══ DASHBOARD ══════════════════════════════════════════════ -->
+<div id="dashboard">
+
+  <!-- Top bar -->
+  <div id="topbar">
+    <span class="tb-logo">◈ Elite</span>
+    <span class="tb-cmdr" id="tb-cmdr">CMDR —</span>
+    <div class="tb-sep"></div>
+    <span class="tb-sys" id="tb-sys">—</span>
+    <div class="tb-right">
+      <span class="tb-mode" id="tb-mode">—</span>
+      <span class="tb-credits" id="tb-credits">—</span>
+      <button class="tb-reload" onclick="resetDrop()">↩ Load Another</button>
+    </div>
+  </div>
+
+  <!-- Main layout -->
+  <div id="main-grid">
+
+    <!-- ── SIDEBAR ── -->
+    <div id="sidebar">
+
+      <!-- Ship Identity -->
+      <div class="pane" id="pane-ship">
+        <div class="pane-title">Ship</div>
+        <div class="ship-name-big" id="ship-name">—</div>
+        <div class="ship-type" id="ship-type">—</div>
+        <div class="ship-ident" id="ship-ident">—</div>
+
+        <div class="stat-rows" style="margin-top:14px;">
+          <div class="stat-row">
+            <span class="s-key">Jump Range</span>
+            <span class="s-val cyan" id="ship-range">—</span>
+          </div>
+          <div class="stat-row">
+            <span class="s-key">Cargo Cap</span>
+            <span class="s-val" id="ship-cargo">—</span>
+          </div>
+          <div class="stat-row">
+            <span class="s-key">Hull Value</span>
+            <span class="s-val gold" id="ship-hull">—</span>
+          </div>
+          <div class="stat-row">
+            <span class="s-key">Modules</span>
+            <span class="s-val gold" id="ship-modules">—</span>
+          </div>
+          <div class="stat-row">
+            <span class="s-key">Rebuy</span>
+            <span class="s-val red" id="ship-rebuy">—</span>
+          </div>
+          <div class="stat-row">
+            <span class="s-key">Hull Health</span>
+            <span class="s-val green" id="ship-hull-health">—</span>
+          </div>
+        </div>
+
+        <div class="fuel-section">
+          <div class="fuel-label-row">
+            <span class="fuel-label">Fuel</span>
+            <span class="fuel-nums" id="fuel-nums">— / —</span>
+          </div>
+          <div class="fuel-track">
+            <div class="fuel-fill" id="fuel-bar" style="width:0%"></div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Navigation -->
+      <div class="pane" id="pane-nav">
+        <div class="pane-title">Navigation</div>
+        <div class="nav-system" id="nav-system">—</div>
+        <div class="nav-pos" id="nav-pos">—</div>
+        <div id="nav-security"></div>
+
+        <div class="stat-rows">
+          <div class="stat-row">
+            <span class="s-key">Allegiance</span>
+            <span class="s-val" id="nav-allegiance">—</span>
+          </div>
+          <div class="stat-row">
+            <span class="s-key">Economy</span>
+            <span class="s-val" id="nav-economy">—</span>
+          </div>
+          <div class="stat-row">
+            <span class="s-key">Government</span>
+            <span class="s-val" id="nav-gov">—</span>
+          </div>
+          <div class="stat-row">
+            <span class="s-key">Population</span>
+            <span class="s-val" id="nav-pop">—</span>
+          </div>
+        </div>
+      </div>
+
+      <!-- Station (only shown if docked) -->
+      <div class="pane" id="pane-station" style="display:none;">
+        <div class="pane-title">Docked At</div>
+        <div class="station-name-big" id="stn-name">—</div>
+        <div class="station-type" id="stn-type">—</div>
+        <div class="stat-rows">
+          <div class="stat-row">
+            <span class="s-key">Faction</span>
+            <span class="s-val" id="stn-faction">—</span>
+          </div>
+          <div class="stat-row">
+            <span class="s-key">Economy</span>
+            <span class="s-val" id="stn-econ">—</span>
+          </div>
+          <div class="stat-row">
+            <span class="s-key">Dist. from Star</span>
+            <span class="s-val" id="stn-dist">—</span>
+          </div>
+        </div>
+        <div class="services-wrap" id="stn-services"></div>
+      </div>
+
+      <!-- Powerplay -->
+      <div class="pane" id="pane-power" style="display:none;">
+        <div class="pane-title">Powerplay</div>
+        <div class="stat-rows">
+          <div class="stat-row">
+            <span class="s-key">Power</span>
+            <span class="s-val green" id="pp-power">—</span>
+          </div>
+          <div class="stat-row">
+            <span class="s-key">State</span>
+            <span class="s-val" id="pp-state">—</span>
+          </div>
+          <div class="stat-row">
+            <span class="s-key">Merits</span>
+            <span class="s-val" id="pp-merits">—</span>
+          </div>
+          <div class="stat-row">
+            <span class="s-key">Time Pledged</span>
+            <span class="s-val" id="pp-time">—</span>
+          </div>
+        </div>
+      </div>
+
+    </div>
+
+    <!-- ── RIGHT CONTENT ── -->
+    <div id="content">
+
+      <!-- Ranks -->
+      <div id="pane-ranks">
+        <div class="pane-title">Commander Ranks</div>
+        <div class="ranks-grid" id="ranks-grid">
+          <!-- filled by JS -->
+        </div>
+      </div>
+
+      <!-- Reputation -->
+      <div id="pane-rep">
+        <div class="pane-title">Superpower Reputation</div>
+        <div class="rep-grid">
+          <div class="rep-card rep-empire">
+            <div class="rep-name">Empire</div>
+            <div class="rep-num" id="rep-empire-num">—</div>
+            <div class="rep-track"><div class="rep-fill" id="rep-empire-bar" style="width:0%"></div></div>
+          </div>
+          <div class="rep-card rep-federation">
+            <div class="rep-name">Federation</div>
+            <div class="rep-num" id="rep-fed-num">—</div>
+            <div class="rep-track"><div class="rep-fill" id="rep-fed-bar" style="width:0%"></div></div>
+          </div>
+          <div class="rep-card rep-alliance">
+            <div class="rep-name">Alliance</div>
+            <div class="rep-num" id="rep-all-num">—</div>
+            <div class="rep-track"><div class="rep-fill" id="rep-all-bar" style="width:0%"></div></div>
+          </div>
+          <div class="rep-card rep-independent">
+            <div class="rep-name">Independent</div>
+            <div class="rep-num" id="rep-ind-num">—</div>
+            <div class="rep-track"><div class="rep-fill" id="rep-ind-bar" style="width:0%"></div></div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Stats -->
+      <div id="pane-stats">
+        <div class="pane-title">Lifetime Statistics</div>
+        <div class="stats-cols" id="stats-cols">
+          <!-- filled by JS -->
+        </div>
+      </div>
+
+    </div>
+  </div>
+</div>
+
+<script>
+// ════════════════════════════════════════════════════════════
+// RANK LOOKUPS
+// ════════════════════════════════════════════════════════════
+const COMBAT_RANKS    = ['Harmless','Mostly Harmless','Novice','Competent','Expert','Master','Dangerous','Deadly','Elite'];
+const TRADE_RANKS     = ['Penniless','Mostly Penniless','Peddler','Dealer','Merchant','Broker','Entrepreneur','Tycoon','Elite'];
+const EXPLORE_RANKS   = ['Aimless','Mostly Aimless','Scout','Surveyor','Trailblazer','Pathfinder','Ranger','Pioneer','Elite'];
+const CQC_RANKS       = ['Helpless','Mostly Helpless','Amateur','Semi-Pro','Professional','Champion','Hero','Gladiator','Elite'];
+const EMPIRE_RANKS    = ['None','Outsider','Serf','Master','Squire','Knight','Lord','Baron','Viscount','Count','Earl','Marquis','Duke','Prince','King'];
+const FED_RANKS       = ['None','Recruit','Cadet','Midshipman','Petty Officer','Chief Petty Officer','Warrant Officer','Ensign','Lieutenant','Lt. Commander','Post Commander','Post Captain','Rear Admiral','Vice Admiral','Admiral'];
+const EXOBIO_RANKS    = ['Directionless','Mostly Directionless','Compiler','Collector','Cataloguer','Taxonomist','Ecologist','Geneticist','Elite'];
+
+// ════════════════════════════════════════════════════════════
+// UTILITIES
+// ════════════════════════════════════════════════════════════
+function cr(n) {
+  if (n == null) return '—';
+  return Number(n).toLocaleString() + ' cr';
+}
+function num(n) {
+  if (n == null) return '—';
+  return Number(n).toLocaleString();
+}
+function ly(n) {
+  if (n == null) return '—';
+  return Number(n).toFixed(2) + ' ly';
+}
+function pct(n) {
+  if (n == null) return '—';
+  return Number(n).toFixed(1) + '%';
+}
+function timePlayed(secs) {
+  if (!secs) return '—';
+  const d = Math.floor(secs / 86400);
+  const h = Math.floor((secs % 86400) / 3600);
+  if (d > 0) return d + 'd ' + h + 'h';
+  return h + 'h';
+}
+function repToLabel(v) {
+  if (v >= 90) return 'Allied';
+  if (v >= 50) return 'Friendly';
+  if (v >= 10) return 'Cordial';
+  if (v >= -10) return 'Neutral';
+  if (v >= -50) return 'Unfriendly';
+  return 'Hostile';
+}
+function secBadge(secStr) {
+  const s = secStr || '';
+  if (s.includes('high'))   return {cls:'high',   label:'High Security'};
+  if (s.includes('medium')) return {cls:'medium',  label:'Medium Security'};
+  if (s.includes('low'))    return {cls:'low',     label:'Low Security'};
+  if (s.includes('anarchy'))return {cls:'anarchy', label:'Anarchy'};
+  return null;
+}
+function cleanLocale(s) {
+  if (!s) return '—';
+  return s.replace(/^\$[^;]+;$/, s).replace('_Localised','');
+}
+function formatServices(arr) {
+  if (!arr || !arr.length) return '';
+  const labels = {
+    dock:'Dock', autodock:'Auto-Dock', commodities:'Commodities',
+    contacts:'Contacts', crewlounge:'Crew Lounge', rearm:'Rearm',
+    refuel:'Refuel', repair:'Repair', engineer:'Engineer',
+    flightcontroller:'Flight Ctrl', stationoperations:'Ops',
+    stationMenu:'Menu', carriermanagement:'Carrier Mgmt',
+    carrierfuel:'Carrier Fuel', socialspace:'Social Space',
+    blackmarket:'Black Market', outfitting:'Outfitting',
+    shipyard:'Shipyard', missions:'Missions',
+  };
+  return arr.map(s => `<div class="svc-chip">${labels[s] || s}</div>`).join('');
+}
+
+// ════════════════════════════════════════════════════════════
+// PARSE JOURNAL
+// ════════════════════════════════════════════════════════════
+function parseJournal(text) {
+  const lines = text.split('\n');
+  const data = {
+    cmdr: null, ship: null, shipName: null, shipIdent: null,
+    shipType: null, fuelLevel: null, fuelCapacity: null,
+    credits: null, gameMode: null,
+    maxJumpRange: null, cargoCapacity: null, hullValue: null,
+    modulesValue: null, rebuy: null, hullHealth: null,
+    currentSystem: null, starPos: null, systemAllegiance: null,
+    systemEconomy: null, systemSecondEconomy: null, systemGovernment: null,
+    systemSecurity: null, population: null,
+    docked: false, stationName: null, stationType: null,
+    stationFaction: null, stationEconomy: null, distFromStar: null,
+    stationServices: [],
+    ranks: null, progress: null, reputation: null, stats: null,
+    power: null, powerState: null, merits: null, timePledged: null,
+  };
+
+  for (const raw of lines) {
+    const line = raw.trim();
+    if (!line) continue;
+    let e;
+    try { e = JSON.parse(line); } catch { continue; }
+
+    switch (e.event) {
+      case 'Commander':
+        data.cmdr = e.Name;
+        break;
+
+      case 'LoadGame':
+        data.cmdr      = e.Commander || data.cmdr;
+        data.ship      = e.Ship_Localised || e.Ship;
+        data.shipName  = e.ShipName;
+        data.shipIdent = e.ShipIdent;
+        data.fuelLevel    = e.FuelLevel;
+        data.fuelCapacity = e.FuelCapacity; // plain number here
+        data.credits   = e.Credits;
+        data.gameMode  = e.GameMode;
+        break;
+
+      case 'Loadout':
+        data.ship          = e.Ship_Localised || e.Ship || data.ship;
+        data.shipName      = e.ShipName  || data.shipName;
+        data.shipIdent     = e.ShipIdent || data.shipIdent;
+        data.maxJumpRange  = e.MaxJumpRange;
+        data.cargoCapacity = e.CargoCapacity;
+        data.hullValue     = e.HullValue;
+        data.modulesValue  = e.ModulesValue;
+        data.rebuy         = e.Rebuy;
+        data.hullHealth    = e.HullHealth;
+        // FuelCapacity is object { Main, Reserve } in Loadout
+        if (e.FuelCapacity && typeof e.FuelCapacity === 'object') {
+          data.fuelCapacity = e.FuelCapacity.Main;
+        } else if (e.FuelCapacity != null) {
+          data.fuelCapacity = e.FuelCapacity;
+        }
+        break;
+
+      case 'Location':
+        data.currentSystem       = e.StarSystem;
+        data.starPos             = e.StarPos;
+        data.systemAllegiance    = e.SystemAllegiance;
+        data.systemEconomy       = e.SystemEconomy_Localised || e.SystemEconomy;
+        data.systemSecondEconomy = e.SystemSecondEconomy_Localised || e.SystemSecondEconomy;
+        data.systemGovernment    = e.SystemGovernment_Localised || e.SystemGovernment;
+        data.systemSecurity      = e.SystemSecurity;
+        data.population          = e.Population;
+        data.docked              = !!e.Docked;
+        if (e.Docked) {
+          data.stationName     = e.StationName;
+          data.stationType     = e.StationType;
+          data.stationFaction  = e.StationFaction?.Name;
+          data.stationEconomy  = e.StationEconomy_Localised || e.StationEconomy;
+          data.distFromStar    = e.DistFromStarLS;
+          data.stationServices = e.StationServices || [];
+        }
+        break;
+
+      case 'FSDJump':
+        data.currentSystem    = e.StarSystem;
+        data.starPos          = e.StarPos;
+        data.systemAllegiance = e.SystemAllegiance;
+        data.systemEconomy    = e.SystemEconomy_Localised || e.SystemEconomy;
+        data.systemGovernment = e.SystemGovernment_Localised || e.SystemGovernment;
+        data.systemSecurity   = e.SystemSecurity;
+        data.population       = e.Population;
+        data.docked           = false;
+        break;
+
+      case 'Docked':
+        data.docked          = true;
+        data.stationName     = e.StationName;
+        data.stationType     = e.StationType;
+        data.stationFaction  = e.StationFaction?.Name;
+        data.stationEconomy  = e.StationEconomy_Localised || e.StationEconomy;
+        data.distFromStar    = e.DistFromStarLS;
+        data.stationServices = e.StationServices || [];
+        break;
+
+      case 'Undocked':
+        data.docked = false;
+        break;
+
+      case 'FuelScoop':
+      case 'ReservoirReplenished':
+        if (e.Total    != null) data.fuelLevel    = e.Total;
+        if (e.Capacity != null) data.fuelCapacity = e.Capacity;
+        break;
+
+      case 'Rank':
+        data.ranks = {
+          combat:     { level: e.Combat,       name: COMBAT_RANKS[e.Combat]     || '?' },
+          trade:      { level: e.Trade,        name: TRADE_RANKS[e.Trade]       || '?' },
+          explore:    { level: e.Explore,      name: EXPLORE_RANKS[e.Explore]   || '?' },
+          cqc:        { level: e.CQC,          name: CQC_RANKS[e.CQC]           || '?' },
+          empire:     { level: e.Empire,       name: EMPIRE_RANKS[e.Empire]     || '?' },
+          federation: { level: e.Federation,   name: FED_RANKS[e.Federation]    || '?' },
+          exobiology: { level: e.Exobiologist, name: EXOBIO_RANKS[e.Exobiologist] || '?' },
+        };
+        break;
+
+      case 'Progress':
+        data.progress = {
+          combat:     e.Combat,
+          trade:      e.Trade,
+          explore:    e.Explore,
+          cqc:        e.CQC,
+          empire:     e.Empire,
+          federation: e.Federation,
+        };
+        break;
+
+      case 'Reputation':
+        data.reputation = {
+          empire:      e.Empire      ?? 0,
+          federation:  e.Federation  ?? 0,
+          alliance:    e.Alliance    ?? 0,
+          independent: e.Independent ?? 0,
+        };
+        break;
+
+      case 'Statistics':
+        data.stats = e;
+        break;
+
+      case 'Powerplay':
+        data.power       = e.Power;
+        data.powerState  = e.PowerplayState || 'Pledged';
+        data.merits      = e.Merits;
+        data.timePledged = e.TimePledged;
+        break;
+    }
+  }
+
+  return data;
+}
+
+// ════════════════════════════════════════════════════════════
+// RENDER
+// ════════════════════════════════════════════════════════════
+function set(id, val) {
+  const el = document.getElementById(id);
+  if (el) el.textContent = val ?? '—';
+}
+
+function renderDashboard(data) {
+  // ── Top bar ──
+  set('tb-cmdr', 'CMDR ' + (data.cmdr || '?'));
+  set('tb-sys',  data.currentSystem || '—');
+  set('tb-mode', (data.gameMode || '—').toUpperCase());
+  set('tb-credits', data.credits != null ? Number(data.credits).toLocaleString() + ' CR' : '—');
+
+  // ── Ship ──
+  set('ship-name',    data.shipName || '—');
+  set('ship-type',    data.ship     || '—');
+  set('ship-ident',   data.shipIdent || '—');
+  set('ship-range',   data.maxJumpRange  ? ly(data.maxJumpRange)  : '—');
+  set('ship-cargo',   data.cargoCapacity ? data.cargoCapacity + ' T' : '—');
+  set('ship-hull',    data.hullValue     ? cr(data.hullValue)     : '—');
+  set('ship-modules', data.modulesValue  ? cr(data.modulesValue)  : '—');
+  set('ship-rebuy',   data.rebuy         ? cr(data.rebuy)         : '—');
+  set('ship-hull-health', data.hullHealth != null ? Math.round(data.hullHealth * 100) + '%' : '—');
+
+  // Fuel bar
+  if (data.fuelLevel != null && data.fuelCapacity) {
+    const p = Math.min(100, (data.fuelLevel / data.fuelCapacity) * 100);
+    document.getElementById('fuel-bar').style.width = p + '%';
+    set('fuel-nums', data.fuelLevel.toFixed(1) + ' / ' + data.fuelCapacity.toFixed(0) + ' T');
+  }
+
+  // ── Navigation ──
+  set('nav-system', data.currentSystem || '—');
+  if (data.starPos) {
+    set('nav-pos', data.starPos.map(n => n.toFixed(1)).join(', ') + ' ly');
+  }
+  // Security badge
+  const sec = secBadge(data.systemSecurity);
+  const secEl = document.getElementById('nav-security');
+  if (sec && secEl) {
+    secEl.innerHTML = `<div class="sec-badge ${sec.cls}"><div class="sec-dot"></div>${sec.label}</div>`;
+  }
+  set('nav-allegiance', data.systemAllegiance || '—');
+  // Clean up economy string
+  const econ = (data.systemEconomy || '—').replace(/^\$economy_/,'').replace(/;$/,'');
+  const econ2 = data.systemSecondEconomy ? ' / ' + (data.systemSecondEconomy || '').replace(/^\$economy_/,'').replace(/;$/,'') : '';
+  set('nav-economy', econ + econ2);
+  const gov = (data.systemGovernment || '—').replace(/^\$government_/,'').replace(/;$/,'');
+  set('nav-gov', gov);
+  set('nav-pop', data.population ? Number(data.population).toLocaleString() : '—');
+
+  // ── Station ──
+  if (data.docked && data.stationName) {
+    document.getElementById('pane-station').style.display = '';
+    set('stn-name', data.stationName);
+    set('stn-type', data.stationType || '—');
+    set('stn-faction', data.stationFaction || '—');
+    const stEcon = (data.stationEconomy || '—').replace(/^\$economy_/,'').replace(/;$/,'');
+    set('stn-econ', stEcon);
+    set('stn-dist', data.distFromStar ? Number(data.distFromStar).toFixed(1) + ' ls' : '—');
+    document.getElementById('stn-services').innerHTML = formatServices(data.stationServices);
+  }
+
+  // ── Powerplay ──
+  if (data.power) {
+    document.getElementById('pane-power').style.display = '';
+    set('pp-power',  data.power);
+    set('pp-state',  data.powerState || '—');
+    set('pp-merits', data.merits != null ? Number(data.merits).toLocaleString() : '—');
+    set('pp-time',   data.timePledged ? timePlayed(data.timePledged) : '—');
+  }
+
+  // ── Ranks ──
+  const rk = data.ranks || {};
+  const pr = data.progress || {};
+  const rankDefs = [
+    { key: 'combat',     cls: 'combat',  label: 'Combat',      r: rk.combat,     p: pr.combat,     max: 8 },
+    { key: 'trade',      cls: 'trade',   label: 'Trade',       r: rk.trade,      p: pr.trade,      max: 8 },
+    { key: 'explore',    cls: 'explore', label: 'Exploration', r: rk.explore,    p: pr.explore,    max: 8 },
+    { key: 'exobiology', cls: 'exobio',  label: 'Exobiology',  r: rk.exobiology, p: null,          max: 8 },
+    { key: 'empire',     cls: 'empire',  label: 'Empire',      r: rk.empire,     p: pr.empire,     max: 14 },
+    { key: 'federation', cls: 'fed',     label: 'Federation',  r: rk.federation, p: pr.federation, max: 14 },
+    { key: 'cqc',        cls: 'cqc',     label: 'CQC',         r: rk.cqc,        p: pr.cqc,        max: 8 },
+  ];
+
+  const ranksGrid = document.getElementById('ranks-grid');
+  ranksGrid.innerHTML = rankDefs.map(rd => {
+    const name = rd.r?.name || '—';
+    const barPct = rd.p != null ? rd.p : (rd.r ? Math.round((rd.r.level / rd.max) * 100) : 0);
+    const pctLabel = rd.p != null ? rd.p + '%' : '';
+    return `
+      <div class="rank-card ${rd.cls}">
+        <div class="rank-label">${rd.label}</div>
+        <div class="rank-name">${name}</div>
+        <div class="rank-bar-wrap"><div class="rank-bar" style="width:${barPct}%"></div></div>
+        <div class="rank-pct">${pctLabel}</div>
+      </div>
+    `;
+  }).join('');
+
+  // ── Reputation ──
+  const rep = data.reputation || {};
+  function setRep(prefix, val) {
+    const v = val ?? 0;
+    const bar = Math.round(((v + 100) / 200) * 100);
+    const sign = v >= 0 ? '+' : '';
+    set(prefix + '-num', sign + v.toFixed(1) + ' · ' + repToLabel(v));
+    const el = document.getElementById(prefix + '-bar');
+    if (el) el.style.width = bar + '%';
+  }
+  setRep('rep-empire', rep.empire);
+  setRep('rep-fed',    rep.federation);
+  setRep('rep-all',    rep.alliance);
+  setRep('rep-ind',    rep.independent);
+
+  // ── Statistics ──
+  const st = data.stats;
+  if (st) {
+    const ex  = st.Exploration || {};
+    const tr  = st.Trading     || {};
+    const cb  = st.Combat      || {};
+    const mn  = st.Mining      || {};
+    const sm  = st.Smuggling   || {};
+    const ba  = st.Bank_Account|| {};
+    const exo = st.Exobiology  || {};
+    const sr  = st.Search_And_Rescue || {};
+
+    const cols = [
+      {
+        title: 'Exploration', color: 'c-cyan',
+        rows: [
+          ['Systems Visited',    num(ex.Systems_Visited)],
+          ['Jumps',              num(ex.Total_Hyperspace_Jumps)],
+          ['Distance',           ex.Total_Hyperspace_Distance ? Math.round(ex.Total_Hyperspace_Distance).toLocaleString() + ' ly' : '—'],
+          ['Furthest From Sol',  ex.Greatest_Distance_From_Start ? Math.round(ex.Greatest_Distance_From_Start).toLocaleString() + ' ly' : '—'],
+          ['Planets Scanned',    num(ex.Planets_Scanned_To_Level_3)],
+          ['Efficient Scans',    num(ex.Efficient_Scans)],
+          ['First Footfalls',    num(ex.First_Footfalls)],
+          ['Exploration Profit', cr(ex.Exploration_Profits)],
+          ['Time Played',        timePlayed(ex.Time_Played)],
+        ]
+      },
+      {
+        title: 'Trade & Mining', color: 'c-green',
+        rows: [
+          ['Trade Transactions', num(tr.Market_Transactions_Count)],
+          ['Trade Profit',       cr(tr.Market_Profits)],
+          ['Highest Trade',      cr(tr.Highest_Single_Transaction)],
+          ['Markets Traded',     num(tr.Markets_Traded_With)],
+          ['Mining Profit',      cr(mn.Mining_Profits)],
+          ['Qty Mined',          num(mn.Quantity_Mined)],
+          ['Black Market',       cr(sm.Black_Market_Profits)],
+          ['Search & Rescue',    cr(sr.SearchRescue_Profit)],
+          ['Total Wealth',       cr(ba.Current_Wealth)],
+        ]
+      },
+      {
+        title: 'Combat', color: 'c-red',
+        rows: [
+          ['Bounties Claimed',   num(cb.Bounties_Claimed)],
+          ['Bounty Profit',      cr(cb.Bounty_Hunting_Profit)],
+          ['Highest Reward',     cr(cb.Highest_Single_Reward)],
+          ['Combat Bonds',       num(cb.Combat_Bonds)],
+          ['Bond Profits',       cr(cb.Combat_Bond_Profits)],
+          ['Assassinations',     num(cb.Assassinations)],
+          ['Assassination Cr.',  cr(cb.Assassination_Profits)],
+          ['Ships Owned',        num(ba.Owned_Ship_Count)],
+          ['Insurance Claims',   num(ba.Insurance_Claims)],
+        ]
+      },
+      {
+        title: 'Exobiology', color: 'c-purple',
+        rows: [
+          ['Organics Sold',      num(exo.Organic_Data)],
+          ['Exobiology Profit',  cr(exo.Organic_Data_Profits)],
+          ['First Logged Profit',cr(exo.First_Logged_Profits)],
+          ['Genus Encountered',  num(exo.Organic_Genus_Encountered)],
+          ['Species Encountered',num(exo.Organic_Species_Encountered)],
+          ['Systems',            num(exo.Organic_Systems)],
+          ['Planets',            num(exo.Organic_Planets)],
+        ]
+      },
+      {
+        title: 'Spending', color: 'c-gold',
+        rows: [
+          ['On Ships',       cr(ba.Spent_On_Ships)],
+          ['On Outfitting',  cr(ba.Spent_On_Outfitting)],
+          ['On Repairs',     cr(ba.Spent_On_Repairs)],
+          ['On Insurance',   cr(ba.Spent_On_Insurance)],
+          ['On Suits',       cr(ba.Spent_On_Suits)],
+          ['On Weapons',     cr(ba.Spent_On_Weapons)],
+          ['On Fuel',        cr(ba.Spent_On_Fuel)],
+          ['Suits Owned',    num(ba.Suits_Owned)],
+          ['Weapons Owned',  num(ba.Weapons_Owned)],
+        ]
+      },
+    ];
+
+    const colsEl = document.getElementById('stats-cols');
+    colsEl.innerHTML = cols.map(col => `
+      <div class="stat-block">
+        <div class="stat-col-title ${col.color}">${col.title}</div>
+        ${col.rows.map(([k,v]) => `
+          <div class="mini-stat">
+            <span class="ms-key">${k}</span>
+            <span class="ms-val">${v}</span>
+          </div>
+        `).join('')}
+      </div>
+    `).join('');
+  }
+}
+
+// ════════════════════════════════════════════════════════════
+// FILE HANDLING
+// ════════════════════════════════════════════════════════════
+function handleFile(file) {
+  if (!file) return;
+  const reader = new FileReader();
+  reader.onload = (e) => {
+    try {
+      const text = e.target.result;
+      const data = parseJournal(text);
+      renderDashboard(data);
+      document.getElementById('drop-zone').classList.add('hidden');
+      const dash = document.getElementById('dashboard');
+      dash.classList.add('visible');
+    } catch(err) {
+      alert('Error parsing journal: ' + err.message);
+    }
+  };
+  reader.readAsText(file);
+}
+
+function resetDrop() {
+  document.getElementById('dashboard').classList.remove('visible');
+  document.getElementById('drop-zone').classList.remove('hidden');
+}
+
+// Drop zone
+const dz = document.getElementById('drop-zone');
+document.addEventListener('dragover',  (e) => { e.preventDefault(); dz.classList.add('drag-over'); });
+document.addEventListener('dragleave', (e) => { if (!dz.contains(e.relatedTarget)) dz.classList.remove('drag-over'); });
+document.addEventListener('drop', (e) => {
+  e.preventDefault();
+  dz.classList.remove('drag-over');
+  const file = e.dataTransfer.files[0];
+  if (file) handleFile(file);
+});
+
+// File input
+document.getElementById('file-input').addEventListener('change', (e) => {
+  handleFile(e.target.files[0]);
+});
+</script>
+</body>
+</html>

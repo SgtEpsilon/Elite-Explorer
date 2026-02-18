@@ -67,6 +67,54 @@ async function run() {
             type: 'event', event: 'journal.location',
             data: { system: entry.StarSystem, timestamp: entry.timestamp }
           });
+          if (!cmdrData) cmdrData = {};
+          cmdrData.currentSystem = entry.StarSystem;
+          cmdrData.pos = entry.StarPos ? entry.StarPos.map(n => n.toFixed(2)).join(', ') : null;
+        }
+
+        if (entry.event === 'FSDJump') {
+          parentPort.postMessage({
+            type: 'event', event: 'journal.location',
+            data: { system: entry.StarSystem, timestamp: entry.timestamp }
+          });
+          if (!cmdrData) cmdrData = {};
+          cmdrData.currentSystem = entry.StarSystem;
+          cmdrData.pos = entry.StarPos ? entry.StarPos.map(n => n.toFixed(2)).join(', ') : null;
+          cmdrData.jumpRange = entry.JumpDist ? entry.JumpDist.toFixed(2) + ' ly' : null;
+        }
+
+        if (entry.event === 'FuelScoop' || entry.event === 'ReservoirReplenished') {
+          if (!cmdrData) cmdrData = {};
+          if (entry.Total != null)    cmdrData.fuelTotal    = entry.Total;
+          if (entry.Capacity != null) cmdrData.fuelCapacity = entry.Capacity;
+        }
+
+        if (entry.event === 'Loadout') {
+          if (!cmdrData) cmdrData = {};
+          cmdrData.ship      = entry.Ship_Localised || entry.Ship;
+          cmdrData.shipName  = entry.ShipName  || '';
+          cmdrData.shipIdent = entry.ShipIdent || '';
+          cmdrData.maxJumpRange = entry.MaxJumpRange ? entry.MaxJumpRange.toFixed(2) + ' ly' : null;
+          cmdrData.cargoCapacity = entry.CargoCapacity != null ? entry.CargoCapacity : cmdrData.cargoCapacity;
+          // FuelCapacity in Loadout is an object: { Main: 64, Reserve: 0.77 }
+          // We want the Main value only
+          if (entry.FuelCapacity != null) {
+            cmdrData.fuelCapacity = typeof entry.FuelCapacity === 'object'
+              ? entry.FuelCapacity.Main
+              : entry.FuelCapacity;
+          }
+        }
+
+        if (entry.event === 'Docked') {
+          if (!cmdrData) cmdrData = {};
+          cmdrData.dockedStation  = entry.StationName  || null;
+          cmdrData.dockedFaction  = entry.StationFaction?.Name || null;
+        }
+
+        if (entry.event === 'Undocked') {
+          if (!cmdrData) cmdrData = {};
+          cmdrData.dockedStation = null;
+          cmdrData.dockedFaction = null;
         }
 
         // ── Commander identity ───────────────────────────────────────
@@ -80,6 +128,9 @@ async function run() {
           cmdrData.loan        = entry.Loan || 0;
           cmdrData.gameMode    = entry.GameMode || 'Open';
           cmdrData.timestamp   = entry.timestamp;
+          // FuelLevel = current fuel at login; FuelCapacity here is a plain number
+          if (entry.FuelLevel    != null) cmdrData.fuelTotal    = entry.FuelLevel;
+          if (entry.FuelCapacity != null) cmdrData.fuelCapacity = entry.FuelCapacity;
         }
 
         // ── Ranks ────────────────────────────────────────────────────
@@ -173,6 +224,11 @@ async function run() {
 
   // Send the most recent cmdr snapshot we built up
   if (cmdrData) {
+    // Compute fuel % for the bar
+    if (cmdrData.fuelTotal != null && cmdrData.fuelCapacity) {
+      cmdrData.fuelPct = Math.round((cmdrData.fuelTotal / cmdrData.fuelCapacity) * 100);
+      cmdrData.fuelDisplay = `${cmdrData.fuelTotal.toFixed(1)} / ${cmdrData.fuelCapacity}`;
+    }
     parentPort.postMessage({ type: 'cmdr', data: cmdrData });
   }
 
