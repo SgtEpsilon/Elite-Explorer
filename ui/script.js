@@ -31,69 +31,298 @@ function log(msg, type = 'info') {
   entriesEl.scrollTop = entriesEl.scrollHeight;
 }
 
-// ─── MOCK BODIES (live page only) ─────────────────────────────────
-const MOCK_BODIES = [
-  { id:'HIP 39418',   cls:'White F class star',       iconType:'star',  dist:'Main Star',  isMoon:false, info:['Mass: 1.43 SM','Radius: 1.26 SR'],       tags:[],                              value:1225,  maxVal:1225  },
-  { id:'HIP 39418 1', cls:'High metal content world', iconType:'hmc',   dist:'0.34 AU',    isMoon:false, info:['Radius: 11,260 km','Landable (G: 3.0)'],  tags:['Silicate Geysers','Volcanism'], value:18174, maxVal:98446 },
-  { id:'HIP 39418 1a',cls:'Rocky body Moon',          iconType:'moon',  dist:'133,937 km', isMoon:true,  info:['Radius: 418 km','Landable'],              tags:['Carbon','Niobium'],             value:500,   maxVal:2777  },
-  { id:'HIP 39418 1b',cls:'Rocky body Moon',          iconType:'moon',  dist:'162,869 km', isMoon:true,  info:['Radius: 415 km','Landable'],              tags:['Carbon','Germanium'],           value:500,   maxVal:2777  },
-  { id:'HIP 39418 2', cls:'High metal content world', iconType:'hmc',   dist:'0.62 AU',    isMoon:false, info:['Radius: 9,953 km','Temp: 466 K'],         tags:['Silicate Geysers'],             value:17400, maxVal:94254 },
-  { id:'HIP 39418 9', cls:'Class I gas giant',        iconType:'gas',   dist:'3.17 AU',    isMoon:false, info:['Ring system present'],                    tags:[],                               value:3336,  maxVal:14456 },
-];
-const MOCK_SCANS = [
-  { body:'HIP 39418 6', type:'High metal content', mapped:true,  value:185702 },
-  { body:'HIP 39418 1', type:'High metal content', mapped:false, value:18174  },
-  { body:'HIP 39418 2', type:'High metal content', mapped:false, value:17400  },
-  { body:'HIP 39418 9', type:'Class I gas giant',  mapped:false, value:3336   },
-  { body:'HIP 39418',   type:'White F class star', mapped:false, value:1225   },
-];
+// ─── BODY RENDERING ───────────────────────────────────────────────
+// State: journal scan data + EDSM data are merged here.
+var _journalBodies = {};   // bodyName → journal Scan entry
+var _journalSignals = {};  // bodyName → [signal strings]
+var _edsmBodies     = [];  // array of EDSM body objects
+var _currentSystem  = null;
 
-function populateBodies() {
-  const tbody = document.getElementById('bodies-tbody');
-  if (!tbody) return;
-  tbody.innerHTML = '';
-  let stars = 0, planets = 0, moons = 0;
-  MOCK_BODIES.forEach(b => {
-    const tr = document.createElement('tr');
-    tr.className = b.isMoon ? 'body-moon' : 'body-main';
-    tr.innerHTML =
-      '<td style="text-align:center;padding:4px;"><div style="display:flex;justify-content:center;"><div class="body-icon ' + b.iconType + '"></div></div></td>' +
-      '<td class="' + (b.isMoon ? 'body-indent' : '') + '">' +
-        '<div class="body-name-cell">' + (b.isMoon ? '<span class="moon-indicator"></span>' : '') +
-        '<span style="font-size:' + (b.isMoon ? '9' : '10') + 'px;color:' + (b.isMoon ? 'var(--text-dim)' : 'var(--text)') + '">' + b.id + '</span></div></td>' +
-      '<td class="body-class">' + b.cls + '</td>' +
-      '<td style="font-size:0.75em;color:var(--text-dim)">' + b.dist + '</td>' +
-      '<td><div class="info-text">' + b.info.map(i => '<div>' + i + '</div>').join('') + '</div>' +
-        '<div style="margin-top:3px">' + b.tags.map(t => '<span class="info-tag poi">' + t + '</span>').join('') + '</div></td>' +
-      '<td class="val-cell">' + fmt(b.value) + '</td>' +
-      '<td class="val-cell muted" style="font-size:0.75em">' + fmt(b.maxVal) + '</td>';
-    tbody.appendChild(tr);
-    if (b.iconType === 'star') stars++; else if (b.isMoon) moons++; else planets++;
+// Map journal scan data → icon type
+function bodyIconType(b) {
+  if (b.type === 'Star')   return 'star';
+  if (b.type === 'Belt')   return 'moon';
+  if (b.planetClass) {
+    var pc = b.planetClass.toLowerCase();
+    if (pc.includes('gas giant') || pc.includes('sudarsky')) return 'gas';
+    if (pc.includes('icy'))        return 'icy';
+    if (pc.includes('rocky'))      return 'rocky';
+    if (pc.includes('metal'))      return 'hmc';
+    if (pc.includes('water'))      return 'icy';
+    if (pc.includes('ammonia'))    return 'gas';
+    if (pc.includes('earth'))      return 'hmc';
+  }
+  return 'rocky';
+}
+
+// Shorten body name relative to system name
+function shortBodyName(name, system) {
+  if (!system || !name) return name || '—';
+  if (name.toLowerCase().startsWith(system.toLowerCase() + ' ')) {
+    return name.slice(system.length + 1);
+  }
+  return name;
+}
+
+// Format a distance in LS
+function fmtLS(ls) {
+  if (ls == null) return '—';
+  if (ls < 0.01)  return (ls * 299792.458).toFixed(0) + ' km';
+  if (ls < 1)     return ls.toFixed(3) + ' ls';
+  if (ls < 1000)  return ls.toFixed(1) + ' ls';
+  return (ls / 499.004785).toFixed(2) + ' AU';
+}
+
+// Estimate base scan value from planet class (fallback when journal doesn't give it)
+function estimateValue(b) {
+  if (!b.planetClass) return null;
+  var pc = b.planetClass.toLowerCase();
+  if (pc.includes('earth'))   return 700000;
+  if (pc.includes('ammonia'))  return 500000;
+  if (pc.includes('water giant')) return 100000;
+  if (pc.includes('water'))   return 100000;
+  if (pc.includes('metal'))   return 20000;
+  if (pc.includes('high metal')) return 20000;
+  if (pc.includes('class i gas'))  return 3000;
+  if (pc.includes('class ii gas')) return 8000;
+  if (pc.includes('class iii'))    return 5000;
+  if (pc.includes('class iv'))     return 5000;
+  if (pc.includes('class v'))      return 6000;
+  if (pc.includes('icy'))     return 1000;
+  if (pc.includes('rocky'))   return 500;
+  return null;
+}
+
+// Determine if a body is a moon (has a parent that is not a belt or barycentre)
+// Heuristic: body name has more than one letter/number segment after system name
+function isMoonBody(b, system) {
+  var short = shortBodyName(b.name, system);
+  // If the short name has a letter then another segment (e.g. "1 a" or "A 1"), it's a moon
+  return /\d+\s+[a-z]/i.test(short) || /[a-z]\s+\d+/i.test(short);
+}
+
+// Merge journal + EDSM data into a unified list sorted by distance
+function buildMergedBodies(system) {
+  var merged = {};  // name.toLowerCase() → merged body
+
+  // Start from journal bodies
+  Object.values(_journalBodies).forEach(function(b) {
+    var key = b.name.toLowerCase();
+    merged[key] = { source: 'journal', journal: b, edsm: null };
   });
-  set('body-count', MOCK_BODIES.length + ' bodies');
+
+  // Overlay EDSM bodies
+  _edsmBodies.forEach(function(eb) {
+    var key = (eb.name || '').toLowerCase();
+    if (merged[key]) {
+      merged[key].edsm = eb;
+    } else {
+      merged[key] = { source: 'edsm', journal: null, edsm: eb };
+    }
+  });
+
+  return Object.values(merged).sort(function(a, b) {
+    // Stars first, then by distance
+    var aIsstar = (a.journal && a.journal.type === 'Star') || (a.edsm && a.edsm.type === 'Star');
+    var bIsStar = (b.journal && b.journal.type === 'Star') || (b.edsm && b.edsm.type === 'Star');
+    if (aIsstar && !bIsStar) return -1;
+    if (!aIsstar && bIsStar)  return 1;
+    var aDist = (a.journal && a.journal.distanceFromArrival) || (a.edsm && a.edsm.distanceToArrival) || 999999;
+    var bDist = (b.journal && b.journal.distanceFromArrival) || (b.edsm && b.edsm.distanceToArrival) || 999999;
+    return aDist - bDist;
+  });
+}
+
+function renderBodies(system) {
+  var tbody = document.getElementById('bodies-tbody');
+  if (!tbody) return;
+
+  var bodies = buildMergedBodies(system || _currentSystem);
+
+  if (!bodies.length) {
+    tbody.innerHTML = '<tr><td colspan="7"><div class="empty-state"><div class="icon">&#9678;</div><div class="msg">Awaiting scan data</div></div></td></tr>';
+    set('body-count', '0 bodies');
+    set('sum-stars', 0); set('sum-planets', 0); set('sum-moons', 0); set('sum-total', 0);
+    return;
+  }
+
+  var stars = 0, planets = 0, moons = 0;
+  var rows = [];
+
+  bodies.forEach(function(entry) {
+    var jb  = entry.journal;
+    var eb  = entry.edsm;
+    var sys = system || _currentSystem;
+
+    // ── Derive display values preferring journal data, filling from EDSM ──
+    var name         = (jb && jb.name) || (eb && eb.name) || '?';
+    var shortName    = shortBodyName(name, sys);
+    var isMain       = jb ? (jb.type === 'Star' || !isMoonBody(jb, sys)) : (eb ? eb.type === 'Star' || !isMoonBody(eb, sys) : true);
+    var isStar       = (jb && jb.type === 'Star') || (eb && eb.type === 'Star');
+
+    var displayClass;
+    if (jb && jb.type === 'Star') {
+      displayClass = (jb.starType || '') + (jb.subclass != null ? jb.subclass : '') + (jb.luminosity ? ' ' + jb.luminosity : '') + ' star';
+    } else if (jb && jb.planetClass) {
+      displayClass = jb.planetClass;
+      if (jb.terraformable) displayClass += ' (T)';
+    } else if (eb) {
+      displayClass = eb.subType || eb.type || '—';
+    } else {
+      displayClass = '—';
+    }
+
+    var distLS     = (jb && jb.distanceFromArrival) || (eb && eb.distanceToArrival);
+    var distDisplay = isStar && (!distLS || distLS < 0.001) ? 'Main Star' : fmtLS(distLS);
+
+    var icon = jb ? bodyIconType(jb) : (isStar ? 'star' : eb && eb.type === 'Planet' ? 'rocky' : 'moon');
+
+    // ── Info lines ──
+    var infoLines = [];
+
+    if (jb && jb.type === 'Star') {
+      if (jb.solarMasses)  infoLines.push('Mass: ' + jb.solarMasses + ' SM');
+      if (jb.solarRadius)  infoLines.push('Radius: ' + jb.solarRadius + ' SR');
+      if (eb && eb.solarRadius) infoLines.push('Radius: ' + eb.solarRadius.toFixed(3) + ' SR');
+      if (jb.surfaceTemp)  infoLines.push('Temp: ' + jb.surfaceTemp.toLocaleString() + ' K');
+      if (jb.isScoopable)  infoLines.push('Scoopable');
+    } else if (jb) {
+      if (jb.radius)       infoLines.push('Radius: ' + jb.radius.toLocaleString() + ' km');
+      if (jb.gravity)      infoLines.push('Gravity: ' + jb.gravity + ' g');
+      if (jb.surfaceTemp)  infoLines.push('Temp: ' + jb.surfaceTemp + ' K');
+      if (jb.massEM)       infoLines.push('Mass: ' + jb.massEM + ' EM');
+      if (jb.atmosphere && jb.atmosphere !== 'No atmosphere' && jb.atmosphere !== '')
+        infoLines.push('Atm: ' + (jb.atmosphereType || jb.atmosphere));
+      if (jb.volcanism && jb.volcanism !== 'No volcanism')
+        infoLines.push('Volc: ' + jb.volcanism.replace('minor ', '').replace(' volcanism', ''));
+      if (jb.landable)     infoLines.push('Landable');
+    } else if (eb) {
+      if (eb.radius)       infoLines.push('Radius: ' + Math.round(eb.radius).toLocaleString() + ' km');
+      if (eb.gravity)      infoLines.push('Gravity: ' + parseFloat(eb.gravity).toFixed(2) + ' g');
+      if (eb.surfaceTemp)  infoLines.push('Temp: ' + Math.round(eb.surfaceTemp) + ' K');
+      if (eb.isLandable)   infoLines.push('Landable');
+    }
+
+    if (jb && jb.rings)  infoLines.push('Rings: ' + (jb.ringTypes.join(', ') || 'present'));
+    else if (eb && eb.rings) infoLines.push('Rings');
+
+    // ── Tags ──
+    var tags = [];
+
+    // Atmosphere tag
+    if (jb && jb.atmosphere && jb.atmosphere !== 'No atmosphere' && jb.atmosphere !== '')
+      tags.push({ text: 'Atmos', cls: 'atm' });
+
+    // Terraformable
+    if (jb && jb.terraformable)
+      tags.push({ text: 'Terraformable', cls: 'terra' });
+
+    // First discovery / mapping
+    if (jb && !jb.wasDiscovered)
+      tags.push({ text: '★ First Discovery', cls: 'disco' });
+    if (jb && !jb.wasMapped)
+      tags.push({ text: '✦ First Mapped', cls: 'mapped' });
+
+    // Signals (bio, geo, human, thargoid etc)
+    var signals = _journalSignals[name] || [];
+    signals.forEach(function(sig) {
+      var cls = 'poi';
+      var sl = sig.toLowerCase();
+      if (sl.includes('biolog')) cls = 'bio';
+      else if (sl.includes('geological') || sl.includes('geo')) cls = 'geo';
+      else if (sl.includes('human') || sl.includes('station') || sl.includes('settlement')) cls = 'human';
+      else if (sl.includes('thargoid') || sl.includes('guardian')) cls = 'alien';
+      tags.push({ text: sig, cls: cls });
+    });
+
+    // EDSM extra: stations/settlements
+    if (eb && eb.type === 'Star') {
+      // nothing extra
+    }
+
+    // ── Value ──
+    var value    = (jb && jb.estimatedValue) || estimateValue(jb || {});
+    var maxValue = (jb && jb.mappedValue)    || (value ? Math.round(value * 3.3) : null);
+
+    // Count body types
+    if (isStar)      stars++;
+    else if (!isMain) moons++;
+    else             planets++;
+
+    var rowClass = isMain ? 'body-main' : 'body-moon';
+
+    var tagHtml = tags.map(function(t) {
+      return '<span class="info-tag ' + t.cls + '">' + t.text + '</span>';
+    }).join('');
+
+    var infoHtml = infoLines.map(function(l) { return '<div>' + l + '</div>'; }).join('');
+
+    rows.push(
+      '<tr class="' + rowClass + '">' +
+        '<td style="text-align:center;padding:4px;">' +
+          '<div style="display:flex;justify-content:center;">' +
+            '<div class="body-icon ' + icon + '"></div>' +
+          '</div>' +
+        '</td>' +
+        '<td class="' + (isMain ? '' : 'body-indent') + '">' +
+          '<div class="body-name-cell">' +
+            (!isMain ? '<span class="moon-indicator"></span>' : '') +
+            '<span style="font-size:' + (isMain ? '10' : '9') + 'px;color:' + (isMain ? 'var(--text)' : 'var(--text-dim)') + '">' + shortName + '</span>' +
+          '</div>' +
+        '</td>' +
+        '<td class="body-class">' + displayClass + '</td>' +
+        '<td style="font-size:0.75em;color:var(--text-dim);white-space:nowrap">' + distDisplay + '</td>' +
+        '<td>' +
+          '<div class="info-text">' + infoHtml + '</div>' +
+          (tagHtml ? '<div style="margin-top:3px">' + tagHtml + '</div>' : '') +
+        '</td>' +
+        '<td class="val-cell">' + (value ? value.toLocaleString() + ' cr' : '—') + '</td>' +
+        '<td class="val-cell muted" style="font-size:0.75em">' + (maxValue ? maxValue.toLocaleString() + ' cr' : '—') + '</td>' +
+      '</tr>'
+    );
+  });
+
+  tbody.innerHTML = rows.join('');
+  set('body-count', bodies.length + ' bod' + (bodies.length !== 1 ? 'ies' : 'y'));
   set('sum-stars',   stars);
   set('sum-planets', planets);
   set('sum-moons',   moons);
-  set('sum-total',   MOCK_BODIES.length);
+  set('sum-total',   stars + planets + moons);
+}
+
+function populateBodies() {
+  renderBodies(_currentSystem);
+}
+
+// ─── SCAN VALUES PANEL ────────────────────────────────────────────
+var _scanEntries = {};  // bodyName → { value, mapped }
+
+function renderScans() {
+  var tbody = document.getElementById('scan-tbody');
+  if (!tbody) return;
+  var entries = Object.values(_scanEntries);
+  if (!entries.length) {
+    tbody.innerHTML = '<tr><td colspan="4"><div class="empty-state" style="height:60px;"><div class="msg">No scans yet</div></div></td></tr>';
+    set('scan-total', '—');
+    return;
+  }
+  entries.sort(function(a, b) { return (b.value || 0) - (a.value || 0); });
+  var total = 0;
+  var rows = entries.map(function(s) {
+    total += (s.value || 0);
+    return '<tr>' +
+      '<td style="font-size:0.75em">' + shortBodyName(s.body, _currentSystem) + '</td>' +
+      '<td style="font-size:0.6667em;color:var(--text-dim)">' + (s.type || '') + '</td>' +
+      '<td style="text-align:center"><span class="mapped-icon ' + (s.mapped ? 'yes' : 'no') + '"></span></td>' +
+      '<td class="scan-val">' + (s.value ? s.value.toLocaleString() : '—') + '</td>' +
+    '</tr>';
+  });
+  tbody.innerHTML = rows.join('');
+  set('scan-total', total.toLocaleString() + ' cr');
 }
 
 function populateScans() {
-  const tbody = document.getElementById('scan-tbody');
-  if (!tbody) return;
-  tbody.innerHTML = '';
-  let total = 0;
-  MOCK_SCANS.forEach(s => {
-    total += s.value;
-    const tr = document.createElement('tr');
-    tr.innerHTML =
-      '<td style="font-size:0.75em">' + s.body + '</td>' +
-      '<td style="font-size:0.6667em;color:var(--text-dim)">' + s.type + '</td>' +
-      '<td style="text-align:center"><span class="mapped-icon ' + (s.mapped ? 'yes' : 'no') + '"></span></td>' +
-      '<td class="scan-val">' + fmtNum(s.value) + '</td>';
-    tbody.appendChild(tr);
-  });
-  const totalEl = document.getElementById('scan-total');
-  if (totalEl) totalEl.textContent = total.toLocaleString() + ' cr';
+  renderScans();
 }
 
 // ─── ELECTRON IPC ─────────────────────────────────────────────────
@@ -106,6 +335,7 @@ if (window.electronAPI) {
     if (d.name)          set('tb-cmdr', 'CMDR ' + d.name);
     if (d.currentSystem) set('tb-sys',  d.currentSystem);
     if (d.credits != null) set('tb-credits', Number(d.credits).toLocaleString() + ' CR');
+    if (d.currentSystem && !_currentSystem) _currentSystem = d.currentSystem;
 
     // Live panel elements (only exist on index.html — set() is a no-op on other pages)
     if (d.currentSystem) set('sys-name',   d.currentSystem);
@@ -128,6 +358,23 @@ if (window.electronAPI) {
     // Discovery star in topbar
     var tbStar = document.getElementById('tb-discovery-star');
     if (tbStar) tbStar.style.display = d.lastJumpWasFirstDiscovery ? 'inline' : 'none';
+
+    // Activate EDSM link immediately using current system name as fallback URL.
+    // This ensures the link works even before onEdsmSystem fires (e.g. EDSM disabled).
+    if (d.currentSystem) {
+      var edsmLinkEl = document.getElementById('edsm-link');
+      if (edsmLinkEl && edsmLinkEl.style.pointerEvents === 'none') {
+        var sysUrl = 'https://www.edsm.net/en/system/id/-/name/' + encodeURIComponent(d.currentSystem);
+        edsmLinkEl.style.opacity = '0.6';
+        edsmLinkEl.style.pointerEvents = 'auto';
+        edsmLinkEl.title = 'View ' + d.currentSystem + ' on EDSM';
+        edsmLinkEl.onclick = (function(url) { return function(e) {
+          e.preventDefault();
+          if (window.electronAPI && window.electronAPI.openExternal) window.electronAPI.openExternal(url);
+          return false;
+        }; })(sysUrl);
+      }
+    }
 
     // Profile page: current system + jump range come from live data, not profile snapshot
     if (d.currentSystem) set('prof-system', d.currentSystem);
@@ -287,16 +534,67 @@ if (window.electronAPI) {
       set('sys-name', data.system);
       set('tb-sys',   data.system);
       log('Jump: ' + data.system, 'info');
+      // Clear body state for new system
+      _currentSystem  = data.system;
+      _journalBodies  = {};
+      _journalSignals = {};
+      _edsmBodies     = [];
+      _scanEntries    = {};
+      renderBodies(data.system);
+      renderScans();
       // Clear EDSM fields until new system data arrives
       set('sys-security',   '\u2014');
       set('sys-allegiance', '\u2014');
       set('sys-economy',    '\u2014');
       set('sys-population', '\u2014');
+      // Activate EDSM link immediately with a fallback URL built from system name.
+      // This makes the link functional even if EDSM lookup is disabled or fails.
       var link = document.getElementById('edsm-link');
-      if (link) { link.style.opacity = '0.35'; link.style.pointerEvents = 'none'; }
+      if (link) {
+        var fallbackUrl = 'https://www.edsm.net/en/system/id/-/name/' + encodeURIComponent(data.system);
+        link.style.opacity = '0.6';
+        link.style.pointerEvents = 'auto';
+        link.title = 'View ' + data.system + ' on EDSM';
+        link.onclick = function(e) {
+          e.preventDefault();
+          if (window.electronAPI && window.electronAPI.openExternal) window.electronAPI.openExternal(fallbackUrl);
+          return false;
+        };
+      }
       var dot = document.getElementById('edsm-dot');
       if (dot) { dot.style.background = 'var(--text-mute)'; dot.title = 'EDSM: fetching\u2026'; }
     }
+  });
+
+  // ── JOURNAL SCAN DATA → live bodies panel ─────────────────────────────────
+  if (window.electronAPI.onBodiesData) {
+    window.electronAPI.onBodiesData(function(data) {
+      if (!data || !data.bodies) return;
+      _currentSystem = data.system || _currentSystem;
+      _journalBodies = {};
+      (data.bodies || []).forEach(function(b) { _journalBodies[b.name] = b; });
+      _journalSignals = data.signals || {};
+      (data.bodies || []).forEach(function(b) {
+        if (b.estimatedValue || b.mappedValue) {
+          _scanEntries[b.name] = {
+            body:   b.name,
+            type:   b.planetClass || b.starType || b.type || '',
+            mapped: b.wasMapped === false,
+            value:  b.estimatedValue || null,
+          };
+        }
+      });
+      renderBodies(_currentSystem);
+      renderScans();
+    });
+  }
+
+  // ── EDSM BODIES → merge into bodies panel ─────────────────────────────────
+  window.electronAPI.onEdsmBodies(function(data) {
+    if (!data || !data.bodies) return;
+    _edsmBodies = data.bodies || [];
+    renderBodies(data.system || _currentSystem);
+    log('EDSM: ' + _edsmBodies.length + ' bodies for ' + (data.system || '?'), 'info');
   });
 
   // ── EDSM: system info ─────────────────────────────────────────────────────
@@ -316,17 +614,18 @@ if (window.electronAPI) {
     set('sys-economy',    d.economy    || '\u2014');
     set('sys-population', d.population != null ? Number(d.population).toLocaleString() : '\u2014');
 
-    // Update live EDSM link
+    // Update EDSM link — edsmUrl is always provided by the service, even on error
     var link = document.getElementById('edsm-link');
-    if (link && d.edsmUrl) {
-      link.style.opacity = '1';
+    if (link) {
+      var url = d.edsmUrl || ('https://www.edsm.net/en/system/id/-/name/' + encodeURIComponent(d.name || ''));
+      link.style.opacity = d.error ? '0.5' : '1';
       link.style.pointerEvents = 'auto';
       link.onclick = function(e) {
         e.preventDefault();
-        if (window.electronAPI && window.electronAPI.openExternal) window.electronAPI.openExternal(d.edsmUrl);
+        if (window.electronAPI && window.electronAPI.openExternal) window.electronAPI.openExternal(url);
         return false;
       };
-      link.title = 'View ' + d.name + ' on EDSM';
+      link.title = (d.error ? 'EDSM lookup failed — ' : 'View ') + (d.name || '') + ' on EDSM';
     }
 
     var dot = document.getElementById('edsm-dot');
@@ -390,6 +689,52 @@ async function refreshStats() {
 }
 
 // ─── OPTIONS PANEL ────────────────────────────────────────────────
+function capiUpdateUI(status) {
+  // status: { hasClientId, isLoggedIn, tokenValid, tokenExpiry } from capiGetStatus()
+  // OR null/undefined when not available
+  var dot       = document.getElementById('capi-dot');
+  var label     = document.getElementById('capi-status-label');
+  var badge     = document.getElementById('capi-cmdr-badge');
+  var expiryRow = document.getElementById('capi-expiry-row');
+  var expiryVal = document.getElementById('capi-expiry-val');
+  var loginBtn  = document.getElementById('capi-login-btn');
+  var logoutBtn = document.getElementById('capi-logout-btn');
+  var loginSub  = document.getElementById('capi-login-sub');
+  if (!dot) return;
+
+  if (status && status.isLoggedIn && status.tokenValid) {
+    dot.style.background  = 'var(--green)';
+    label.textContent     = 'AUTHENTICATED';
+    label.style.color     = 'var(--green)';
+    if (status.tokenExpiry) {
+      expiryVal.textContent  = new Date(status.tokenExpiry).toLocaleString();
+      expiryRow.style.display = '';
+    }
+    if (loginBtn)  loginBtn.style.display  = 'none';
+    if (logoutBtn) logoutBtn.style.display = '';
+  } else if (status && status.isLoggedIn && !status.tokenValid) {
+    dot.style.background  = 'var(--gold)';
+    label.textContent     = 'TOKEN EXPIRED — re-login required';
+    label.style.color     = 'var(--gold)';
+    if (status.tokenExpiry) {
+      expiryVal.textContent  = new Date(status.tokenExpiry).toLocaleString() + ' (expired)';
+      expiryRow.style.display = '';
+    }
+    if (loginSub)  loginSub.textContent  = 'Re-authenticate to refresh token';
+    if (loginBtn)  loginBtn.style.display  = '';
+    if (logoutBtn) logoutBtn.style.display = '';
+  } else {
+    dot.style.background  = 'var(--border2)';
+    label.textContent     = 'NOT AUTHENTICATED';
+    label.style.color     = 'var(--text-mute)';
+    if (badge) badge.style.display = 'none';
+    expiryRow.style.display = 'none';
+    if (loginSub)  loginSub.textContent  = 'Opens Frontier auth in your browser';
+    if (loginBtn)  loginBtn.style.display  = '';
+    if (logoutBtn) logoutBtn.style.display = 'none';
+  }
+}
+
 function openOptions() {
   document.getElementById('options-panel').classList.add('open');
   document.getElementById('options-overlay').classList.add('open');
@@ -398,7 +743,7 @@ function openOptions() {
   window.electronAPI.getJournalPath()
     .then(function(p) { if (p) document.getElementById('opt-journal-path').value = p; })
     .catch(function() {});
-  // Load full config for EDDN/EDSM fields
+  // Load full config for EDDN/EDSM/cAPI fields
   window.electronAPI.getConfig().then(function(cfg) {
     var el;
     el = document.getElementById('opt-eddn-enabled'); if (el) el.checked = !!cfg.eddnEnabled;
@@ -406,12 +751,15 @@ function openOptions() {
     el = document.getElementById('opt-edsm-enabled'); if (el) el.checked = !!cfg.edsmEnabled;
     el = document.getElementById('opt-edsm-cmdr');    if (el) el.value  = cfg.edsmCommanderName || '';
     el = document.getElementById('opt-edsm-key');     if (el) el.value  = cfg.edsmApiKey        || '';
+    el = document.getElementById('capi-client-id');   if (el) el.value  = cfg.capiClientId      || '';
     // Reflect enabled state in dots
     var eddnDot = document.getElementById('eddn-dot');
     if (eddnDot) { eddnDot.style.background = cfg.eddnEnabled ? 'var(--text-mute)' : 'var(--border2)'; eddnDot.title = cfg.eddnEnabled ? 'EDDN: enabled' : 'EDDN: disabled'; }
     var edsmDot = document.getElementById('edsm-dot');
     if (edsmDot) { edsmDot.style.background = cfg.edsmEnabled ? 'var(--text-mute)' : 'var(--border2)'; edsmDot.title = cfg.edsmEnabled ? 'EDSM: enabled' : 'EDSM: disabled'; }
   }).catch(function() {});
+  // Load cAPI auth state
+  window.electronAPI.capiGetStatus().then(capiUpdateUI).catch(function() {});
 }
 function closeOptions() {
   document.getElementById('options-panel').classList.remove('open');
@@ -466,7 +814,7 @@ if (saveApiBtn) saveApiBtn.addEventListener('click', async function() {
   if (!window.electronAPI) return;
   var eddnEnabled = (document.getElementById('opt-eddn-enabled') || {}).checked || false;
   var edsmEnabled = (document.getElementById('opt-edsm-enabled') || {}).checked || false;
-  var commanderName    = ((document.getElementById('opt-cmdr-name')  || {}).value || '').trim();
+  var commanderName     = ((document.getElementById('opt-cmdr-name')  || {}).value || '').trim();
   var edsmCommanderName = ((document.getElementById('opt-edsm-cmdr') || {}).value || '').trim();
   var edsmApiKey        = ((document.getElementById('opt-edsm-key')  || {}).value || '').trim();
   try {
@@ -480,6 +828,102 @@ if (saveApiBtn) saveApiBtn.addEventListener('click', async function() {
     if (edsmDot) { edsmDot.style.background = edsmEnabled ? 'var(--text-mute)' : 'var(--border2)'; edsmDot.title = edsmEnabled ? 'EDSM: enabled' : 'EDSM: disabled'; }
     log('API settings saved', 'good');
   } catch { log('Failed to save API settings', 'error'); }
+});
+
+// ─── FRONTIER cAPI BUTTONS ────────────────────────────────────────
+// Save Client ID whenever it changes (needed before login)
+var capiClientIdInput = document.getElementById('capi-client-id');
+if (capiClientIdInput) capiClientIdInput.addEventListener('change', async function() {
+  if (!window.electronAPI) return;
+  var val = capiClientIdInput.value.trim();
+  try { await window.electronAPI.saveConfig({ capiClientId: val }); }
+  catch { log('Failed to save cAPI Client ID', 'error'); }
+});
+
+// Login button — starts the OAuth2 flow in capiService.js
+var capiLoginBtn = document.getElementById('capi-login-btn');
+if (capiLoginBtn) capiLoginBtn.addEventListener('click', async function() {
+  if (!window.electronAPI) return;
+  // Save the client ID field first (in case user just typed it)
+  var clientIdEl = document.getElementById('capi-client-id');
+  if (clientIdEl && clientIdEl.value.trim()) {
+    try { await window.electronAPI.saveConfig({ capiClientId: clientIdEl.value.trim() }); } catch {}
+  }
+  var sub = document.getElementById('capi-login-sub');
+  if (sub) sub.textContent = 'Waiting for browser login\u2026';
+  capiLoginBtn.disabled = true;
+  try {
+    var result = await window.electronAPI.capiLogin();
+    if (result && result.success) {
+      log('cAPI login successful', 'good');
+      // Re-fetch status to update the UI (profile fetch happens in capiService)
+      var status = await window.electronAPI.capiGetStatus();
+      capiUpdateUI(status);
+    } else {
+      var errMsg = (result && result.error) ? result.error : 'Login failed';
+      log('cAPI: ' + errMsg, 'error');
+      if (sub) sub.textContent = 'Login failed \u2014 check Client ID and try again';
+      // Reset after a moment
+      setTimeout(function() { if (sub) sub.textContent = 'Opens Frontier auth in your browser'; }, 4000);
+    }
+  } catch (err) {
+    log('cAPI login error: ' + (err.message || err), 'error');
+    if (sub) sub.textContent = 'Error \u2014 see log';
+    setTimeout(function() { if (sub) sub.textContent = 'Opens Frontier auth in your browser'; }, 4000);
+  } finally {
+    capiLoginBtn.disabled = false;
+  }
+});
+
+// Logout button — clears stored tokens
+var capiLogoutBtn = document.getElementById('capi-logout-btn');
+if (capiLogoutBtn) capiLogoutBtn.addEventListener('click', async function() {
+  if (!window.electronAPI) return;
+  try {
+    await window.electronAPI.capiLogout();
+    capiUpdateUI({ isLoggedIn: false, tokenValid: false });
+    log('cAPI logged out', 'info');
+  } catch { log('cAPI logout failed', 'error'); }
+});
+
+// --- EDSM FLIGHT LOG SYNC (from index/profile options panel) ---
+if (window.electronAPI && window.electronAPI.onEdsmSyncProgress) {
+  window.electronAPI.onEdsmSyncProgress(function(p) {
+    var hint = document.getElementById('opt-edsm-sync-hint');
+    if (hint) hint.textContent = 'Fetching batch ' + p.batch + ' / ' + p.total + ' (' + p.fetched + ' entries…)';
+  });
+}
+
+var edsmSyncBtnMain = document.getElementById('opt-edsm-sync-btn');
+if (edsmSyncBtnMain) edsmSyncBtnMain.addEventListener('click', async function() {
+  if (!window.electronAPI || !window.electronAPI.edsmSyncLogs) return;
+  var hint = document.getElementById('opt-edsm-sync-hint');
+  edsmSyncBtnMain.disabled = true;
+  if (hint) hint.textContent = 'Connecting to EDSM…';
+  try {
+    // No local jumps cached on this page — pass empty array.
+    // Main fetches all EDSM data and the merged result goes to history-data.
+    var result = await window.electronAPI.edsmSyncLogs([]);
+    if (result.success) {
+      var msg = result.newFromEdsm + ' new jump' + (result.newFromEdsm !== 1 ? 's' : '') + ' pulled from EDSM';
+      if (hint) { hint.textContent = msg; hint.style.color = 'var(--green)'; }
+      log('EDSM sync: ' + msg, 'good');
+      setTimeout(function() {
+        if (hint) { hint.textContent = 'Pull your EDSM history & merge with local journals'; hint.style.color = ''; }
+      }, 5000);
+    } else {
+      if (hint) { hint.textContent = 'Error: ' + result.error; hint.style.color = 'var(--red, #e05252)'; }
+      log('EDSM sync failed: ' + result.error, 'error');
+      setTimeout(function() {
+        if (hint) { hint.textContent = 'Pull your EDSM history & merge with local journals'; hint.style.color = ''; }
+      }, 6000);
+    }
+  } catch (err) {
+    if (hint) hint.textContent = 'Sync failed: ' + (err.message || err);
+    log('EDSM sync error: ' + err.message, 'error');
+  } finally {
+    edsmSyncBtnMain.disabled = false;
+  }
 });
 
 // ─── THEMES ───────────────────────────────────────────────────────

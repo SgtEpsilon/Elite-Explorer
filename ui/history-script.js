@@ -2,6 +2,18 @@
  * history-script.js
  * Standalone script for history.html only.
  * No coupling to script.js, journalProvider, or the live/profile scans.
+ *
+ * NEW in this version:
+ *   - EDSM discovery check: after the history loads, we cross-reference every
+ *     system in your journal against EDSM's database. Systems that EDSM doesn't
+ *     know about get an extra ⭐ "EDSM Undiscovered" indicator — meaning you
+ *     likely got to them before anyone else reported them to EDSM.
+ *
+ *   NOTE: This is different from the journal's SystemAlreadyDiscovered flag.
+ *   The journal flag comes from the game servers (FC) at jump time.
+ *   The EDSM flag is about whether anyone has *reported* the system to EDSM.
+ *   They're related but not identical — a system can be "discovered" in-game
+ *   but not yet in EDSM if nobody submitted their journal data.
  */
 
 // ─── UTILITIES ────────────────────────────────────────────────────────────────
@@ -13,6 +25,11 @@ function set(id, v) {
 // ─── STATE ────────────────────────────────────────────────────────────────────
 var _allJumps   = [];
 var _isScanning = false;
+
+// Cache for EDSM discovery results.
+// Key = system name (lowercase), value = { discovered: bool|null, checked: true }
+// We store this so navigating away and back doesn't re-check everything.
+var edsmResultsCache = {};
 
 // ─── RENDER ───────────────────────────────────────────────────────────────────
 function renderHistory(jumps) {
@@ -51,20 +68,39 @@ function renderHistory(jumps) {
     var tr = document.createElement('tr');
     tr.className = 'hist-row' + (idx % 2 === 1 ? ' hist-row-alt' : '');
 
+    // Store the system name on the row so EDSM check can find it later
+    if (j.system) tr.dataset.systemName = j.system;
+
     var ts        = j.timestamp ? j.timestamp.replace('T', ' ').slice(0, 19) : '\u2014';
     var dist      = j.jumpDist  != null ? j.jumpDist.toFixed(2) + ' ly' : '\u2014';
     var bodyCount = j.bodyCount != null ? j.bodyCount : '\u2014';
-    var disco     = !j.wasDiscovered
-      ? '<span class="disco-star" title="First Discovery \u2014 you found this system!">&#9733;</span>'
+
+    // Journal first-discovery star (from game servers at jump time)
+    var disco = !j.wasDiscovered
+      ? '<span class="disco-star" title="First Discovery \u2014 game servers confirmed you found this!">&#9733;</span>'
       : '';
 
+    // EDSM undiscovered cell — starts empty, filled in after EDSM check
+    // We look up cached results immediately in case the user navigated back
+    var edsmCell = '';
+    var cacheKey = (j.system || '').toLowerCase();
+    if (edsmResultsCache[cacheKey]) {
+      var cached = edsmResultsCache[cacheKey];
+      if (cached.discovered === false) {
+        edsmCell = '<span class="edsm-undiscovered" title="Not in EDSM \u2014 you may have been first to report this system!">&#11088;</span>';
+      } else if (cached.discovered === null) {
+        edsmCell = '<span class="edsm-unknown" title="EDSM check failed">?</span>';
+      }
+    }
+
     tr.innerHTML =
-      '<td class="hist-col-disco">' + disco + '</td>' +
-      '<td class="hist-col-sys">'   + (j.system || '\u2014') + '</td>' +
-      '<td class="hist-col-ts">'    + ts + '</td>' +
-      '<td class="hist-col-dist">'  + dist + '</td>' +
-      '<td class="hist-col-star">'  + (j.starClass || '\u2014') + '</td>' +
-      '<td class="hist-col-bodies">'+ bodyCount + '</td>';
+      '<td class="hist-col-disco">'  + disco + '</td>' +
+      '<td class="hist-col-sys">'    + (j.system || '\u2014') + '</td>' +
+      '<td class="hist-col-ts">'     + ts + '</td>' +
+      '<td class="hist-col-dist">'   + dist + '</td>' +
+      '<td class="hist-col-star">'   + (j.starClass || '\u2014') + '</td>' +
+      '<td class="hist-col-bodies">' + bodyCount + '</td>' +
+      '<td class="hist-col-edsm">'   + edsmCell + '</td>';
 
     frag.appendChild(tr);
   });
@@ -92,6 +128,152 @@ function applyFilters() {
   renderHistory(filtered);
 }
 
+// ─── NEW: EDSM DISCOVERY CHECK ────────────────────────────────────────────────
+//
+// HOW IT WORKS:
+//   1. We collect all unique system names from the rendered table.
+//   2. We filter out ones we've already checked (using edsmResultsCache).
+//   3. We send them to main.js in batches via checkEdsmDiscoveryBulk().
+//   4. Main.js calls EDSM's API for each, staggered 150ms apart.
+//   5. As results come in we update the table cells in real time.
+//
+// WHY BATCHES?
+//   If you've done 1000 jumps, we can't send 1000 names at once — main.js
+//   processes them sequentially anyway (to respect rate limits). We send
+//   batches of 20 so the UI updates progressively instead of all at once at
+//   the end. This gives a nice "checking..." animation.
+
+var _edsmCheckInProgress = false;
+
+function runEdsmDiscoveryCheck() {
+  // Only run if the electronAPI bridge is available (i.e. running in Electron)
+  if (!window.electronAPI || !window.electronAPI.checkEdsmDiscoveryBulk) return;
+  if (_edsmCheckInProgress) return;
+
+  // Collect all unique system names from the current table rows
+  var rows = document.querySelectorAll('#hist-tbody tr[data-system-name]');
+  if (!rows.length) return;
+
+  // Deduplicate and filter out already-cached systems
+  var seen     = new Set();
+  var toCheck  = [];
+  rows.forEach(function(row) {
+    var name = row.dataset.systemName;
+    if (!name || seen.has(name.toLowerCase())) return;
+    seen.add(name.toLowerCase());
+    if (!edsmResultsCache[name.toLowerCase()]) {
+      toCheck.push(name);
+    }
+  });
+
+  if (!toCheck.length) {
+    // Everything already cached — just apply cached results to table
+    applyEdsmResults([]);
+    updateEdsmProgress(0, 0, true);
+    return;
+  }
+
+  console.log('[EDSM discovery] Checking', toCheck.length, 'systems...');
+  _edsmCheckInProgress = true;
+  updateEdsmProgress(0, toCheck.length, false);
+  showEdsmProgressBar(true);
+
+  // Send in batches of 20 for progressive UI updates
+  var BATCH_SIZE = 20;
+  var batches    = [];
+  for (var i = 0; i < toCheck.length; i += BATCH_SIZE) {
+    batches.push(toCheck.slice(i, i + BATCH_SIZE));
+  }
+
+  var totalChecked = 0;
+  var batchIndex   = 0;
+
+  function processBatch() {
+    if (batchIndex >= batches.length) {
+      // All done
+      _edsmCheckInProgress = false;
+      updateEdsmProgress(totalChecked, toCheck.length, true);
+      setTimeout(function() { showEdsmProgressBar(false); }, 2000);
+      return;
+    }
+
+    var batch = batches[batchIndex++];
+    window.electronAPI.checkEdsmDiscoveryBulk(batch).then(function(results) {
+      // Cache results and update the table
+      results.forEach(function(r) {
+        edsmResultsCache[r.systemName.toLowerCase()] = r;
+      });
+      applyEdsmResults(results);
+      totalChecked += results.length;
+      updateEdsmProgress(totalChecked, toCheck.length, false);
+
+      // Small delay between batches so the UI can update visually
+      setTimeout(processBatch, 50);
+    }).catch(function(err) {
+      console.warn('[EDSM discovery] Batch error:', err);
+      totalChecked += batch.length;
+      batchIndex++;
+      setTimeout(processBatch, 50);
+    });
+  }
+
+  processBatch();
+}
+
+// Apply EDSM results to the table rows that match
+function applyEdsmResults(results) {
+  // Apply the new results we just got
+  results.forEach(function(r) {
+    var rows = document.querySelectorAll('#hist-tbody tr[data-system-name]');
+    rows.forEach(function(row) {
+      if (row.dataset.systemName !== r.systemName) return;
+      var cell = row.querySelector('.hist-col-edsm');
+      if (!cell) return;
+      if (r.discovered === false) {
+        cell.innerHTML = '<span class="edsm-undiscovered" title="Not in EDSM \u2014 you may have been first to report this system!">&#11088;</span>';
+      } else if (r.discovered === null) {
+        cell.innerHTML = '<span class="edsm-unknown" title="EDSM check failed or timed out">?</span>';
+      } else {
+        cell.innerHTML = ''; // known system, no badge needed
+      }
+    });
+  });
+
+  // Also apply any already-cached results that might be in the current filtered view
+  // (e.g. user filtered the table while check was running)
+  var allRows = document.querySelectorAll('#hist-tbody tr[data-system-name]');
+  allRows.forEach(function(row) {
+    var cacheKey = (row.dataset.systemName || '').toLowerCase();
+    var cached   = edsmResultsCache[cacheKey];
+    if (!cached) return;
+    var cell = row.querySelector('.hist-col-edsm');
+    if (!cell || cell.innerHTML !== '') return; // already filled in
+    if (cached.discovered === false) {
+      cell.innerHTML = '<span class="edsm-undiscovered" title="Not in EDSM \u2014 you may have been first to report this system!">&#11088;</span>';
+    } else if (cached.discovered === null) {
+      cell.innerHTML = '<span class="edsm-unknown" title="EDSM check failed">?</span>';
+    }
+  });
+}
+
+// Update the EDSM check progress display
+function updateEdsmProgress(done, total, finished) {
+  var statusEl = document.getElementById('edsm-check-status');
+  if (!statusEl) return;
+  if (finished && total === 0) {
+    statusEl.textContent = 'EDSM: all systems checked';
+  } else if (finished) {
+    statusEl.textContent = 'EDSM: ' + done + ' systems checked';
+  } else if (total > 0) {
+    statusEl.textContent = 'EDSM: checking ' + done + ' / ' + total + '\u2026';
+  }
+}
+
+function showEdsmProgressBar(visible) {
+  var wrap = document.getElementById('edsm-progress-wrap');
+  if (wrap) wrap.style.display = visible ? 'flex' : 'none';
+}
+
 // ─── SCAN STATUS ──────────────────────────────────────────────────────────────
 function showScanStatus(text, color) {
   var el = document.getElementById('hist-scan-status');
@@ -110,9 +292,9 @@ function updateProgressBar(pct) {
 // ─── IPC ──────────────────────────────────────────────────────────────────────
 if (window.electronAPI) {
 
-  // Topbar name/credits from live-data (shared across all pages)
+  // Top bar name / credits from live-data (shared across all pages)
   window.electronAPI.onLiveData(function(d) {
-    if (d.name)    set('tb-cmdr', 'CMDR ' + d.name);
+    if (d.name)          set('tb-cmdr', 'CMDR ' + d.name);
     if (d.credits != null) set('tb-credits', Number(d.credits).toLocaleString() + ' CR');
     if (d.currentSystem) set('tb-sys', d.currentSystem);
     var star = document.getElementById('tb-discovery-star');
@@ -140,7 +322,7 @@ if (window.electronAPI) {
     updateProgressBar(overall);
   });
 
-  // Full dataset arrived
+  // Full dataset arrived — render table then kick off EDSM check
   window.electronAPI.onHistoryData(function(data) {
     _isScanning = false;
     _allJumps   = data || [];
@@ -150,6 +332,12 @@ if (window.electronAPI) {
     );
     updateProgressBar(100);
     applyFilters();
+
+    // Wait 500ms after rendering so the table is in the DOM before we start
+    // querying it for system names
+    setTimeout(function() {
+      runEdsmDiscoveryCheck();
+    }, 500);
   });
 
   // Path missing
@@ -173,12 +361,60 @@ if (window.electronAPI) {
 
 // ─── FILTERS ──────────────────────────────────────────────────────────────────
 var histSearch = document.getElementById('hist-search');
-if (histSearch) histSearch.addEventListener('input', applyFilters);
+if (histSearch) histSearch.addEventListener('input', function() {
+  applyFilters();
+  // Re-apply cached EDSM results to the newly filtered rows
+  setTimeout(function() { applyEdsmResults([]); }, 50);
+});
 
 var histDiscoFilter = document.getElementById('hist-filter-disco');
-if (histDiscoFilter) histDiscoFilter.addEventListener('change', applyFilters);
+if (histDiscoFilter) histDiscoFilter.addEventListener('change', function() {
+  applyFilters();
+  setTimeout(function() { applyEdsmResults([]); }, 50);
+});
 
 // ─── OPTIONS PANEL ────────────────────────────────────────────────────────────
+function capiUpdateUI(status) {
+  var dot       = document.getElementById('capi-dot');
+  var label     = document.getElementById('capi-status-label');
+  var expiryRow = document.getElementById('capi-expiry-row');
+  var expiryVal = document.getElementById('capi-expiry-val');
+  var loginBtn  = document.getElementById('capi-login-btn');
+  var logoutBtn = document.getElementById('capi-logout-btn');
+  var loginSub  = document.getElementById('capi-login-sub');
+  if (!dot) return;
+  if (status && status.isLoggedIn && status.tokenValid) {
+    dot.style.background = 'var(--green)';
+    label.textContent    = 'AUTHENTICATED';
+    label.style.color    = 'var(--green)';
+    if (status.tokenExpiry) {
+      expiryVal.textContent   = new Date(status.tokenExpiry).toLocaleString();
+      expiryRow.style.display = '';
+    }
+    if (loginBtn)  loginBtn.style.display  = 'none';
+    if (logoutBtn) logoutBtn.style.display = '';
+  } else if (status && status.isLoggedIn && !status.tokenValid) {
+    dot.style.background = 'var(--gold)';
+    label.textContent    = 'TOKEN EXPIRED \u2014 re-login required';
+    label.style.color    = 'var(--gold)';
+    if (status.tokenExpiry) {
+      expiryVal.textContent   = new Date(status.tokenExpiry).toLocaleString() + ' (expired)';
+      expiryRow.style.display = '';
+    }
+    if (loginSub)  loginSub.textContent  = 'Re-authenticate to refresh token';
+    if (loginBtn)  loginBtn.style.display  = '';
+    if (logoutBtn) logoutBtn.style.display = '';
+  } else {
+    dot.style.background = 'var(--border2)';
+    label.textContent    = 'NOT AUTHENTICATED';
+    label.style.color    = 'var(--text-mute)';
+    expiryRow.style.display = 'none';
+    if (loginSub)  loginSub.textContent  = 'Opens Frontier auth in your browser';
+    if (loginBtn)  loginBtn.style.display  = '';
+    if (logoutBtn) logoutBtn.style.display = 'none';
+  }
+}
+
 function openOptions() {
   document.getElementById('options-panel').classList.add('open');
   document.getElementById('options-overlay').classList.add('open');
@@ -186,6 +422,19 @@ function openOptions() {
     window.electronAPI.getJournalPath()
       .then(function(p) { if (p) document.getElementById('opt-journal-path').value = p; })
       .catch(function() {});
+  }
+  if (window.electronAPI && window.electronAPI.getConfig) {
+    window.electronAPI.getConfig().then(function(cfg) {
+      var el = document.getElementById('capi-client-id');
+      if (el) el.value = cfg.capiClientId || '';
+      var cmdrEl = document.getElementById('opt-edsm-cmdr');
+      if (cmdrEl) cmdrEl.value = cfg.edsmCommanderName || '';
+      var keyEl = document.getElementById('opt-edsm-key');
+      if (keyEl) keyEl.value = cfg.edsmApiKey || '';
+    }).catch(function() {});
+  }
+  if (window.electronAPI && window.electronAPI.capiGetStatus) {
+    window.electronAPI.capiGetStatus().then(capiUpdateUI).catch(function() {});
   }
 }
 function closeOptions() {
@@ -226,6 +475,109 @@ if (journalPathInput) journalPathInput.addEventListener('change', async function
     document.getElementById('opt-path-hint').textContent = val ? 'Path saved \u2014 restart to apply' : 'Leave blank to use the default path for your OS';
     document.getElementById('opt-path-hint').style.color = val ? 'var(--green)' : '';
   } catch {}
+});
+
+// ─── FRONTIER cAPI BUTTONS (history page) ─────────────────────────────────────
+var capiClientIdInputH = document.getElementById('capi-client-id');
+if (capiClientIdInputH) capiClientIdInputH.addEventListener('change', async function() {
+  if (!window.electronAPI) return;
+  try { await window.electronAPI.saveConfig({ capiClientId: capiClientIdInputH.value.trim() }); } catch {}
+});
+
+var capiLoginBtnH = document.getElementById('capi-login-btn');
+if (capiLoginBtnH) capiLoginBtnH.addEventListener('click', async function() {
+  if (!window.electronAPI) return;
+  var clientIdEl = document.getElementById('capi-client-id');
+  if (clientIdEl && clientIdEl.value.trim()) {
+    try { await window.electronAPI.saveConfig({ capiClientId: clientIdEl.value.trim() }); } catch {}
+  }
+  var sub = document.getElementById('capi-login-sub');
+  if (sub) sub.textContent = 'Waiting for browser login\u2026';
+  capiLoginBtnH.disabled = true;
+  try {
+    var result = await window.electronAPI.capiLogin();
+    if (result && result.success) {
+      var status = await window.electronAPI.capiGetStatus();
+      capiUpdateUI(status);
+    } else {
+      var errMsg = (result && result.error) ? result.error : 'Login failed';
+      if (sub) sub.textContent = errMsg;
+      setTimeout(function() { if (sub) sub.textContent = 'Opens Frontier auth in your browser'; }, 4000);
+    }
+  } catch (err) {
+    if (sub) sub.textContent = 'Error \u2014 check log';
+    setTimeout(function() { if (sub) sub.textContent = 'Opens Frontier auth in your browser'; }, 4000);
+  } finally {
+    capiLoginBtnH.disabled = false;
+  }
+});
+
+var capiLogoutBtnH = document.getElementById('capi-logout-btn');
+if (capiLogoutBtnH) capiLogoutBtnH.addEventListener('click', async function() {
+  if (!window.electronAPI) return;
+  try {
+    await window.electronAPI.capiLogout();
+    capiUpdateUI({ isLoggedIn: false, tokenValid: false });
+  } catch {}
+});
+
+// --- EDSM CREDENTIALS (history page) -----------------------------------------
+var edsmCmdrInput = document.getElementById('opt-edsm-cmdr');
+if (edsmCmdrInput) edsmCmdrInput.addEventListener('change', async function() {
+  if (!window.electronAPI) return;
+  try { await window.electronAPI.saveConfig({ edsmCommanderName: edsmCmdrInput.value.trim() }); } catch {}
+});
+
+var edsmKeyInput = document.getElementById('opt-edsm-key');
+if (edsmKeyInput) edsmKeyInput.addEventListener('change', async function() {
+  if (!window.electronAPI) return;
+  try { await window.electronAPI.saveConfig({ edsmApiKey: edsmKeyInput.value.trim() }); } catch {}
+});
+
+// --- EDSM FLIGHT LOG SYNC ---
+// Passes current _allJumps to main, which fetches all EDSM logs in weekly
+// batches, de-duplicates, and pushes merged array back via onHistoryData.
+if (window.electronAPI && window.electronAPI.onEdsmSyncProgress) {
+  window.electronAPI.onEdsmSyncProgress(function(p) {
+    var hint = document.getElementById('opt-edsm-sync-hint');
+    if (hint) hint.textContent = 'Fetching batch ' + p.batch + ' / ' + p.total + ' (' + p.fetched + ' entries so far…)';
+  });
+}
+
+var edsmSyncBtn = document.getElementById('opt-edsm-sync-btn');
+if (edsmSyncBtn) edsmSyncBtn.addEventListener('click', async function() {
+  if (!window.electronAPI || !window.electronAPI.edsmSyncLogs) return;
+  var hint = document.getElementById('opt-edsm-sync-hint');
+  edsmSyncBtn.disabled = true;
+  if (hint) hint.textContent = 'Connecting to EDSM…';
+  try {
+    var payload = (_allJumps || []).map(function(j) {
+      return { system: j.system, timestamp: j.timestamp };
+    });
+    var result = await window.electronAPI.edsmSyncLogs(payload);
+    if (result.success) {
+      var parts = [];
+      if (result.newFromEdsm > 0)
+        parts.push(result.newFromEdsm + ' new jump' + (result.newFromEdsm !== 1 ? 's' : '') + ' added');
+      if (result.firstDiscoFromEdsm > 0)
+        parts.push(result.firstDiscoFromEdsm + ' first discover' + (result.firstDiscoFromEdsm !== 1 ? 'ies' : 'y') + ' imported');
+      var msg = (parts.length ? parts.join(', ') : 'No new entries') +
+                ' (' + result.totalMerged + ' total)';
+      if (hint) { hint.textContent = msg; hint.style.color = 'var(--green)'; }
+      setTimeout(function() {
+        if (hint) { hint.textContent = 'Pull your EDSM history & merge with local journals'; hint.style.color = ''; }
+      }, 5000);
+    } else {
+      if (hint) { hint.textContent = 'Error: ' + result.error; hint.style.color = 'var(--red, #e05252)'; }
+      setTimeout(function() {
+        if (hint) { hint.textContent = 'Pull your EDSM history & merge with local journals'; hint.style.color = ''; }
+      }, 6000);
+    }
+  } catch (err) {
+    if (hint) hint.textContent = 'Sync failed: ' + (err.message || err);
+  } finally {
+    edsmSyncBtn.disabled = false;
+  }
 });
 
 // ─── THEMES ───────────────────────────────────────────────────────────────────

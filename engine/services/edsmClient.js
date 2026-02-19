@@ -24,7 +24,6 @@ const CONFIG_PATH    = path.join(__dirname, '../../config.json');
 const BASE_URL       = 'https://www.edsm.net';
 const SYSTEM_URL     = BASE_URL + '/api-v1/system';
 const BODIES_URL     = BASE_URL + '/api-system-v1/bodies';
-const SETLOG_URL     = BASE_URL + '/api-logs-v1/set-log';
 
 let mainWindow    = null;
 let _lastSystem   = null;   // debounce — don't re-fetch the same system twice
@@ -111,6 +110,7 @@ async function fetchSystem(systemName) {
       }));
       console.log('[EDSM] Bodies for', systemName + ':', bodies.length);
       send('edsm-bodies', { system: systemName, bodies });
+      eventBus.emit('edsm.bodies', { system: systemName, bodies });
     }
 
   } catch (err) {
@@ -121,43 +121,10 @@ async function fetchSystem(systemName) {
   }
 }
 
-// ── Optional: submit commander flight log to EDSM ─────────────────────────────
-async function submitFlightLog(systemName, timestamp, coords) {
-  const cfg = readConfig();
-  if (!cfg.edsmEnabled || !cfg.edsmApiKey || !cfg.edsmCommanderName) return;
-
-  const body = new URLSearchParams({
-    commanderName: cfg.edsmCommanderName,
-    apiKey:        cfg.edsmApiKey,
-    systemName,
-    dateVisited:   timestamp || new Date().toISOString().replace('T', ' ').slice(0, 19),
-    fromSoftware:  'EliteExplorer',
-    fromSoftwareVersion: '1.0.0',
-  });
-  if (coords) {
-    body.append('x', coords[0]);
-    body.append('y', coords[1]);
-    body.append('z', coords[2]);
-  }
-
-  try {
-    const res = await fetch(SETLOG_URL, { method: 'POST', body, signal: AbortSignal.timeout(8000) });
-    if (res.ok) {
-      const json = await res.json().catch(() => ({}));
-      console.log('[EDSM] Flight log submitted:', systemName, json.msgnum || '');
-    } else {
-      console.warn('[EDSM] Flight log failed:', res.status);
-    }
-  } catch (err) {
-    console.warn('[EDSM] Flight log error:', err.message);
-  }
-}
-
 // ── Listen to location changes ────────────────────────────────────────────────
 eventBus.on('journal.location', (data) => {
   if (!isEnabled() || !data.system) return;
   fetchSystem(data.system);
-  submitFlightLog(data.system, data.timestamp, data.coords);
 });
 
 // Reset debounce on new session so first system after launch always fetches

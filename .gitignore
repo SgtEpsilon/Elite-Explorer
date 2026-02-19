@@ -2,3 +2,4 @@ node_modules/
 buildernotes.txt
 Elite-Explorer.zip
 dist/
+package-lock.json

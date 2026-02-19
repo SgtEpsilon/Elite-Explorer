@@ -98,6 +98,7 @@
     <a class="tab-btn" href="index.html">Live</a>
     <a class="tab-btn" href="profile.html">Profile</a>
     <a class="tab-btn active" href="history.html">History</a>
+    <a class="tab-btn" href="spansh.html">Spansh</a>
   </div>
   <span class="tb-credits" id="tb-credits"></span>
   <button id="options-btn" title="Options">&#9881;</button>
@@ -178,6 +179,21 @@
     <button id="options-close">&#10005;</button>
   </div>
   <div id="options-body">
+    <div class="opt-section">
+      <div class="opt-section-title">EDSM — Flight Log</div>
+      <div style="margin-top:4px;">
+        <label style="font-size:0.72em;color:var(--text-dim);display:block;margin-bottom:3px;">EDSM Commander Name</label>
+        <input class="opt-input" id="opt-edsm-cmdr" type="text" placeholder="Your EDSM commander name" spellcheck="false"/>
+      </div>
+      <div style="margin-top:6px;">
+        <label style="font-size:0.72em;color:var(--text-dim);display:block;margin-bottom:3px;">EDSM API Key <span style="opacity:0.5">(from edsm.net/en/settings/api)</span></label>
+        <input class="opt-input" id="opt-edsm-key" type="password" placeholder="••••••••••••••••" spellcheck="false"/>
+      </div>
+      <button class="opt-action-btn" id="opt-edsm-sync-btn" style="margin-top:10px;">
+        <span class="opt-btn-icon">&#11015;</span>
+        <div><div class="opt-btn-label">Pull Data from EDSM</div><div class="opt-btn-sub" id="opt-edsm-sync-hint">Pull your EDSM history &amp; merge with local journals</div></div>
+      </button>
+    </div>
     <div class="opt-section">
       <div class="opt-section-title">Journal Folder</div>
       <div class="opt-path-row">

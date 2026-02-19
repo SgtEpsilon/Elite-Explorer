@@ -98,7 +98,15 @@ body::after { content: ''; position: fixed; inset: 0; background: repeating-line
 .val-cell.muted { color: var(--text-dim); }
 .info-text { font-size:0.75em; color: var(--text-dim); line-height: 1.5; max-width: 280px; }
 .info-tag { display: inline-block; font-size:0.6667em; padding: 1px 4px; margin: 1px 1px 0 0; border-radius: 1px; background: rgba(200,151,42,0.08); color: var(--gold-dim); border: 1px solid rgba(200,151,42,0.2); }
-.info-tag.poi { background: rgba(46,207,207,0.08); color: rgba(46,207,207,0.6); border-color: rgba(46,207,207,0.2); }
+.info-tag.poi    { background: rgba(46,207,207,0.08);  color: rgba(46,207,207,0.6);   border-color: rgba(46,207,207,0.2); }
+.info-tag.bio    { background: rgba(76,175,125,0.08);  color: rgba(76,175,125,0.8);   border-color: rgba(76,175,125,0.25); }
+.info-tag.geo    { background: rgba(200,151,42,0.08);  color: rgba(200,151,42,0.7);   border-color: rgba(200,151,42,0.2); }
+.info-tag.human  { background: rgba(46,207,207,0.06);  color: rgba(46,207,207,0.5);   border-color: rgba(46,207,207,0.15); }
+.info-tag.alien  { background: rgba(168,85,247,0.08);  color: rgba(168,85,247,0.75);  border-color: rgba(168,85,247,0.2); }
+.info-tag.atm    { background: rgba(94,232,232,0.06);  color: rgba(94,232,232,0.5);   border-color: rgba(94,232,232,0.15); }
+.info-tag.terra  { background: rgba(76,175,125,0.1);   color: rgba(76,175,125,0.9);   border-color: rgba(76,175,125,0.3); }
+.info-tag.disco  { background: rgba(200,151,42,0.12);  color: var(--gold);            border-color: rgba(200,151,42,0.35); }
+.info-tag.mapped { background: rgba(46,207,207,0.10);  color: var(--cyan);            border-color: rgba(46,207,207,0.3); }
 
 /* ─── RIGHT PANEL ────────────────────────────────────────────────── */
 #panel-scan { grid-column: 3; grid-row: 1; }

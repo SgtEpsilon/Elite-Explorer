@@ -73,6 +73,11 @@ function runWorker(files, { mode = 'all', useLastProcessed = false, updateLastPr
           eventBus.emit('journal.raw.' + msg.event, msg.entry);
           break;
 
+        case 'bodies-data':
+          send('bodies-data', { system: msg.system, bodies: msg.bodies, signals: msg.signals });
+          eventBus.emit('journal.bodies', { system: msg.system, bodies: msg.bodies, signals: msg.signals });
+          break;
+
         case 'live-data':
           send('live-data', msg.data);
           eventBus.emit('journal.live', msg.data);
