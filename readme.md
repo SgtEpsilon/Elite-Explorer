@@ -1,3 +1,4 @@
+![Open Bugs](https://img.shields.io/github/issues-search/SgtEpsilon/Elite-Explorer?query=is%3Aissue+is%3Aopen+label%3Abug&label=open%20bugs&color=red) ![Open Enhancements](https://img.shields.io/github/issues-search/SgtEpsilon/Elite-Explorer?query=is%3Aissue+is%3Aopen+label%3Aenhancement&label=open%20enhancements&color=blue&style=flat)
 # Elite-Explorer
 
 ## Overview
