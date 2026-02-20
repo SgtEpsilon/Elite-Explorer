@@ -58,4 +58,12 @@ contextBridge.exposeInMainWorld('electronAPI', {
   capiGetStatus:     ()          => ipcRenderer.invoke('capi-get-status'),
   capiGetProfile:    ()          => ipcRenderer.invoke('capi-get-profile'),
   capiGetMarket:     (id)        => ipcRenderer.invoke('capi-get-market',        id),
+
+  // Auto-updater
+  onUpdateStatus:      (cb)      => on('update-status', cb),
+  checkForUpdates:     ()        => ipcRenderer.invoke('updater-check'),
+  downloadUpdateNow:   ()        => ipcRenderer.invoke('updater-download-now'),
+  downloadUpdateOnQuit:()        => ipcRenderer.invoke('updater-download-on-quit'),
+  skipVersion:         (version) => ipcRenderer.invoke('updater-skip-version', version),
+  installAndRestart:   ()        => ipcRenderer.invoke('updater-install-restart'),
 });

@@ -11,6 +11,7 @@ const edsmClient       = require('./engine/services/edsmClient');
 const eddnRelay        = require('./engine/services/eddnRelay');
 const edsmSyncService  = require('./engine/services/edsmSyncService');
 const capiService      = require('./engine/services/capiService');
+const updaterService   = require('./engine/services/updaterService');
 const engine           = require('./engine/core/engine');
 const api              = require('./engine/api/server');
 
@@ -55,6 +56,7 @@ function createWindow() {
   eddnRelay       .setMainWindow(mainWindow);
   edsmSyncService .setMainWindow(mainWindow);
   capiService     .setMainWindow(mainWindow);
+  updaterService  .setMainWindow(mainWindow);
 
   // ── Replay cached data whenever any page (re)loads ────────────────────────
   // When the user navigates between Live / Profile / History tabs, the new
@@ -92,6 +94,9 @@ app.whenReady().then(async () => {
   historyProvider.scan();
 
   await capiService.start();
+
+  // Start auto-updater (checks after 5s, then every 4 hours)
+  updaterService.start();
 });
 
 // ── macOS / Linux: custom URI scheme for cAPI OAuth callback ──────────────────

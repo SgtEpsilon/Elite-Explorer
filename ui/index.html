@@ -280,5 +280,210 @@
 </div>
 
 <script src="script.js"></script>
+
+<!-- ── Auto-updater toast ─────────────────────────────────────────────────── -->
+<div id="update-toast" style="
+  display:none;
+  position:fixed;
+  bottom:18px;
+  right:18px;
+  z-index:9999;
+  width:340px;
+  background:#0a1628;
+  border:1px solid #1e3a5f;
+  border-radius:10px;
+  padding:16px;
+  box-shadow:0 6px 32px rgba(0,0,0,0.7);
+  font-family:inherit;
+  color:#c8d8f0;
+  font-size:0.82em;
+  box-sizing:border-box;
+">
+  <!-- Header row -->
+  <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px;">
+    <div style="display:flex;align-items:center;gap:8px;">
+      <span id="update-icon" style="font-size:1.2em;line-height:1;">🚀</span>
+      <span id="update-title" style="font-weight:700;color:#7eb8f7;font-size:1.05em;"></span>
+    </div>
+    <button id="update-dismiss" style="
+      background:none;border:none;color:#3a5a7a;cursor:pointer;
+      font-size:1.1em;padding:0;line-height:1;
+    " title="Dismiss">✕</button>
+  </div>
+
+  <!-- Body message -->
+  <div id="update-msg" style="color:#8fa8c8;line-height:1.5;margin-bottom:12px;"></div>
+
+  <!-- Release notes (collapsed, optional) -->
+  <div id="update-notes-wrap" style="display:none;margin-bottom:12px;">
+    <div style="
+      background:#061020;border:1px solid #1a3050;border-radius:6px;
+      padding:8px 10px;max-height:80px;overflow-y:auto;
+      color:#6a8aaa;font-size:0.88em;line-height:1.5;
+    " id="update-notes"></div>
+  </div>
+
+  <!-- Progress bar -->
+  <div id="update-progress-wrap" style="display:none;margin-bottom:12px;">
+    <div style="background:#0d1f35;border-radius:4px;height:6px;overflow:hidden;">
+      <div id="update-progress-bar" style="
+        height:100%;width:0%;
+        background:linear-gradient(90deg,#1a4a8f,#7eb8f7);
+        transition:width 0.25s;
+      "></div>
+    </div>
+    <div id="update-progress-label" style="margin-top:5px;font-size:0.88em;color:#4a6a8a;"></div>
+  </div>
+
+  <!-- Action buttons -->
+  <div id="update-actions" style="display:flex;flex-direction:column;gap:7px;"></div>
+</div>
+
+<script>
+(function () {
+  const toast    = document.getElementById('update-toast');
+  const icon     = document.getElementById('update-icon');
+  const title    = document.getElementById('update-title');
+  const msg      = document.getElementById('update-msg');
+  const notesWrap= document.getElementById('update-notes-wrap');
+  const notes    = document.getElementById('update-notes');
+  const actions  = document.getElementById('update-actions');
+  const progWrap = document.getElementById('update-progress-wrap');
+  const progBar  = document.getElementById('update-progress-bar');
+  const progLbl  = document.getElementById('update-progress-label');
+  const dismiss  = document.getElementById('update-dismiss');
+
+  dismiss.addEventListener('click', () => { toast.style.display = 'none'; });
+
+  let currentVersion = null;
+
+  // ── Button factory ──────────────────────────────────────────────────────────
+  function makeBtn(label, style, onClick) {
+    const b = document.createElement('button');
+    b.textContent = label;
+    const styles = {
+      primary: `background:#1a4a8f;color:#d0e8ff;border:1px solid #2a6abf;`,
+      secondary: `background:#0d1f35;color:#7eb8f7;border:1px solid #1e3a5f;`,
+      ghost: `background:transparent;color:#4a6a8a;border:1px solid transparent;`,
+    };
+    b.style.cssText = `
+      width:100%;padding:7px 10px;border-radius:6px;cursor:pointer;
+      font-size:0.9em;font-weight:600;text-align:left;
+      ${styles[style] || styles.secondary}
+    `;
+    b.addEventListener('click', onClick);
+    return b;
+  }
+
+  // ── Show helpers ────────────────────────────────────────────────────────────
+  function show(iconChar, titleText, bodyText) {
+    icon.textContent  = iconChar;
+    title.textContent = titleText;
+    msg.textContent   = bodyText;
+    actions.innerHTML = '';
+    notesWrap.style.display  = 'none';
+    progWrap.style.display   = 'none';
+    toast.style.display      = 'block';
+  }
+
+  function showReleaseNotes(html) {
+    if (!html) return;
+    const text = html.replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ').trim();
+    if (!text) return;
+    notes.textContent       = text;
+    notesWrap.style.display = 'block';
+  }
+
+  function lockButtons(message) {
+    actions.innerHTML = '';
+    const p = document.createElement('div');
+    p.style.cssText = 'color:#4a6a8a;font-size:0.88em;padding:4px 0;';
+    p.textContent   = message;
+    actions.appendChild(p);
+  }
+
+  // ── Main event handler ──────────────────────────────────────────────────────
+  if (window.electronAPI && window.electronAPI.onUpdateStatus) {
+    window.electronAPI.onUpdateStatus((data) => {
+
+      switch (data.status) {
+
+        // ── Update available: show all three choices ──────────────────────────
+        case 'available': {
+          currentVersion = data.version;
+          show('🚀', `Update v${data.version} available`,
+            'A new version of Elite Explorer is ready. How would you like to proceed?');
+          showReleaseNotes(data.releaseNotes);
+
+          actions.appendChild(makeBtn('⚡  Download and update now', 'primary', () => {
+            lockButtons('Downloading…');
+            progWrap.style.display = 'block';
+            window.electronAPI.downloadUpdateNow();
+          }));
+
+          actions.appendChild(makeBtn('🕓  Download and update next launch', 'secondary', () => {
+            lockButtons('Will download in the background and install on next launch.');
+            progWrap.style.display = 'block';
+            window.electronAPI.downloadUpdateOnQuit();
+          }));
+
+          actions.appendChild(makeBtn('✕  Skip this version', 'ghost', () => {
+            window.electronAPI.skipVersion(currentVersion);
+            toast.style.display = 'none';
+          }));
+          break;
+        }
+
+        // ── Download progress ─────────────────────────────────────────────────
+        case 'downloading': {
+          icon.textContent  = '⬇️';
+          title.textContent = 'Downloading…';
+          progWrap.style.display = 'block';
+          progBar.style.width    = data.percent + '%';
+          const mb    = (data.transferred / 1048576).toFixed(1);
+          const total = (data.total       / 1048576).toFixed(1);
+          const kbps  = (data.bytesPerSecond / 1024).toFixed(0);
+          progLbl.textContent = `${mb} / ${total} MB  ·  ${kbps} KB/s  (${data.percent}%)`;
+          toast.style.display = 'block';
+          break;
+        }
+
+        // ── Downloaded: show appropriate follow-up ────────────────────────────
+        case 'downloaded': {
+          if (data.installOnQuit) {
+            // User chose "next launch" — confirm and close toast
+            show('✅', 'Update ready', `v${data.version} will be installed the next time you launch Elite Explorer.`);
+            setTimeout(() => { toast.style.display = 'none'; }, 5000);
+          } else {
+            // User chose "now" — prompt to restart
+            show('✅', `v${data.version} ready to install`,
+              'Download complete. Restart now to apply the update.');
+            actions.appendChild(makeBtn('⚡  Restart and install', 'primary', () => {
+              window.electronAPI.installAndRestart();
+            }));
+            actions.appendChild(makeBtn('Later', 'ghost', () => {
+              toast.style.display = 'none';
+            }));
+          }
+          break;
+        }
+
+        // ── Error ─────────────────────────────────────────────────────────────
+        case 'error': {
+          show('⚠️', 'Update error', data.message || 'Could not check for updates.');
+          actions.appendChild(makeBtn('Retry', 'secondary', () => {
+            toast.style.display = 'none';
+            window.electronAPI.checkForUpdates();
+          }));
+          setTimeout(() => { toast.style.display = 'none'; }, 10000);
+          break;
+        }
+
+        // 'checking' and 'not-available' are intentionally silent
+      }
+    });
+  }
+})();
+</script>
 </body>
 </html>
