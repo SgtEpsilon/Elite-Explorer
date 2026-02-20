@@ -19,7 +19,6 @@
     <a class="tab-btn active" href="index.html">Live</a>
     <a class="tab-btn" href="profile.html">Profile</a>
     <a class="tab-btn" href="history.html">History</a>
-    <a class="tab-btn" href="spansh.html">Spansh</a>
   </div>
   <span class="tb-credits" id="tb-credits"></span>
   <span id="eddn-dot" title="EDDN: disabled" style="width:6px;height:6px;border-radius:50%;background:var(--border2);display:inline-block;margin-right:4px;transition:background 0.4s;"></span>
@@ -31,125 +30,145 @@
 
   <div id="view-live" class="active">
 
-    <div class="panel" id="panel-commander">
-      <div class="panel-header">
-        <span class="label">Commander</span>
-        <div class="accent-line"></div>
-      </div>
-      <div class="panel-body">
-        <div class="stat-group">
-          <div class="stat-group-title">Navigation</div>
-          <div class="stat-row"><span class="stat-key">System</span><span class="stat-val highlight" id="sys-name">&#8212;</span></div>
-          <div class="stat-row"><span class="stat-key">Pos</span><span class="stat-val" id="sys-pos" style="font-size:0.75em">&#8212;</span></div>
-          <div class="stat-row"><span class="stat-key">Security</span><span class="stat-val" id="sys-security" style="font-size:0.75em;color:var(--text-dim)">&#8212;</span></div>
-          <div class="stat-row"><span class="stat-key">Allegiance</span><span class="stat-val" id="sys-allegiance" style="font-size:0.75em;color:var(--text-dim)">&#8212;</span></div>
-          <div class="stat-row"><span class="stat-key">Economy</span><span class="stat-val" id="sys-economy" style="font-size:0.75em;color:var(--text-dim)">&#8212;</span></div>
-          <div class="stat-row"><span class="stat-key">Population</span><span class="stat-val" id="sys-population" style="font-size:0.75em;color:var(--text-dim)">&#8212;</span></div>
-          <div class="stat-row">
-            <span class="stat-key">EDSM</span>
-            <a id="edsm-link" href="#" title="View on Elite Dangerous Star Map"
-               style="font-size:0.75em;color:var(--cyan);text-decoration:none;font-family:var(--mono);cursor:pointer;opacity:0.5;pointer-events:none;"
-               onclick="return false;">&#8599; View system</a>
+    <!-- LEFT COLUMN: Commander (scrollable) + Scan Summary (locked bottom) -->
+    <div class="live-col" id="live-col-left">
+
+      <div class="panel" id="panel-commander">
+        <div class="panel-header">
+          <span class="label">Commander</span>
+          <div class="accent-line"></div>
+        </div>
+        <div class="panel-body">
+          <div class="stat-group">
+            <div class="stat-group-title">Navigation</div>
+            <div class="stat-row"><span class="stat-key">System</span><span class="stat-val highlight" id="sys-name">&#8212;</span></div>
+            <div class="stat-row"><span class="stat-key">Pos</span><span class="stat-val" id="sys-pos" style="font-size:0.75em">&#8212;</span></div>
+            <div class="stat-row"><span class="stat-key">Security</span><span class="stat-val" id="sys-security" style="font-size:0.75em;color:var(--text-dim)">&#8212;</span></div>
+            <div class="stat-row"><span class="stat-key">Allegiance</span><span class="stat-val" id="sys-allegiance" style="font-size:0.75em;color:var(--text-dim)">&#8212;</span></div>
+            <div class="stat-row"><span class="stat-key">Economy</span><span class="stat-val" id="sys-economy" style="font-size:0.75em;color:var(--text-dim)">&#8212;</span></div>
+            <div class="stat-row"><span class="stat-key">Population</span><span class="stat-val" id="sys-population" style="font-size:0.75em;color:var(--text-dim)">&#8212;</span></div>
+            <div class="stat-row">
+              <span class="stat-key">EDSM</span>
+              <a id="edsm-link" href="#" title="View on Elite Dangerous Star Map"
+                 style="font-size:0.75em;color:var(--cyan);text-decoration:none;font-family:var(--mono);cursor:pointer;opacity:0.5;pointer-events:none;"
+                 onclick="return false;">&#8599; View system</a>
+            </div>
+          </div>
+          <div class="stat-group">
+            <div class="stat-group-title">Ship Status</div>
+            <div class="stat-row"><span class="stat-key">Name</span><span class="stat-val" id="ship-name" style="font-size:0.75em">&#8212;</span></div>
+            <div class="stat-row"><span class="stat-key">Type</span><span class="stat-val" id="ship-type" style="font-size:0.75em;color:var(--text-dim)">&#8212;</span></div>
+            <div class="stat-row"><span class="stat-key">Ident</span><span class="stat-val" id="ship-ident" style="font-size:0.75em;color:var(--text-dim)">&#8212;</span></div>
+            <div class="stat-row"><span class="stat-key">Jump Range</span><span class="stat-val highlight" id="ship-range">&#8212;</span></div>
+            <div class="stat-row"><span class="stat-key">Cargo Cap</span><span class="stat-val" id="ship-cargo">&#8212;</span></div>
+            <div class="stat-row"><span class="stat-key">Fuel</span><span class="stat-val" id="ship-fuel">&#8212;</span></div>
+            <div class="fuel-bar-wrap"><div class="fuel-bar-fill" id="fuel-bar" style="width:0%"></div></div>
+            <div class="stat-row" style="margin-top:4px;"><span class="stat-key">Hull</span><span class="stat-val green" id="ship-hull">&#8212;</span></div>
+            <div class="stat-row"><span class="stat-key">Rebuy</span><span class="stat-val red" id="ship-rebuy">&#8212;</span></div>
+          </div>
+          <div class="stat-group">
+            <div class="stat-group-title">Station</div>
+            <div class="stat-row"><span class="stat-key">Name</span><span class="stat-val" id="station-name" style="font-size:0.75em;color:var(--text-dim)">&#8212;</span></div>
+            <div class="stat-row"><span class="stat-key">Type</span><span class="stat-val" id="station-type" style="font-size:0.75em;color:var(--text-dim)">&#8212;</span></div>
+            <div class="stat-row"><span class="stat-key">Faction</span><span class="stat-val" id="station-faction" style="font-size:0.75em;color:var(--text-dim)">&#8212;</span></div>
+            <div class="stat-row"><span class="stat-key">Credits</span><span class="stat-val gold" id="credits">&#8212;</span></div>
           </div>
         </div>
-        <div class="stat-group">
-          <div class="stat-group-title">Ship Status</div>
-          <div class="stat-row"><span class="stat-key">Name</span><span class="stat-val" id="ship-name" style="font-size:0.75em">&#8212;</span></div>
-          <div class="stat-row"><span class="stat-key">Type</span><span class="stat-val" id="ship-type" style="font-size:0.75em;color:var(--text-dim)">&#8212;</span></div>
-          <div class="stat-row"><span class="stat-key">Ident</span><span class="stat-val" id="ship-ident" style="font-size:0.75em;color:var(--text-dim)">&#8212;</span></div>
-          <div class="stat-row"><span class="stat-key">Jump Range</span><span class="stat-val highlight" id="ship-range">&#8212;</span></div>
-          <div class="stat-row"><span class="stat-key">Cargo Cap</span><span class="stat-val" id="ship-cargo">&#8212;</span></div>
-          <div class="stat-row"><span class="stat-key">Fuel</span><span class="stat-val" id="ship-fuel">&#8212;</span></div>
-          <div class="fuel-bar-wrap"><div class="fuel-bar-fill" id="fuel-bar" style="width:0%"></div></div>
-          <div class="stat-row" style="margin-top:4px;"><span class="stat-key">Hull</span><span class="stat-val green" id="ship-hull">&#8212;</span></div>
-          <div class="stat-row"><span class="stat-key">Rebuy</span><span class="stat-val red" id="ship-rebuy">&#8212;</span></div>
+      </div>
+
+      <div class="panel" id="panel-summary">
+        <div class="panel-header">
+          <span class="label">Scan Summary</span>
+          <div class="accent-line"></div>
         </div>
-        <div class="stat-group">
-          <div class="stat-group-title">Station</div>
-          <div class="stat-row"><span class="stat-key">Name</span><span class="stat-val" id="station-name" style="font-size:0.75em;color:var(--text-dim)">&#8212;</span></div>
-          <div class="stat-row"><span class="stat-key">Type</span><span class="stat-val" id="station-type" style="font-size:0.75em;color:var(--text-dim)">&#8212;</span></div>
-          <div class="stat-row"><span class="stat-key">Faction</span><span class="stat-val" id="station-faction" style="font-size:0.75em;color:var(--text-dim)">&#8212;</span></div>
-          <div class="stat-row"><span class="stat-key">Credits</span><span class="stat-val gold" id="credits">&#8212;</span></div>
+        <div class="panel-body">
+          <div class="summary-grid">
+            <div><div class="summary-num" id="sum-stars">0</div><div class="summary-lbl">Stars</div></div>
+            <div><div class="summary-num" id="sum-planets">0</div><div class="summary-lbl">Planets</div></div>
+            <div><div class="summary-num" id="sum-moons">0</div><div class="summary-lbl">Moons</div></div>
+            <div><div class="summary-num" id="sum-total">0</div><div class="summary-lbl">Total</div></div>
+          </div>
         </div>
       </div>
-    </div>
 
-    <div class="panel" id="panel-system">
-      <div class="panel-header">
-        <span class="label">System Bodies</span>
-        <div class="accent-line"></div>
-        <span style="font-family:var(--mono);font-size:0.75em;color:var(--text-mute)" id="body-count">0 bodies</span>
-      </div>
-      <div class="panel-body" style="padding:0;">
-        <table class="bodies-table">
-          <thead>
-            <tr>
-              <th style="width:28px"></th>
-              <th>Name</th>
-              <th>Class</th>
-              <th>Distance</th>
-              <th>Information</th>
-              <th style="text-align:right">Value</th>
-              <th style="text-align:right">Max</th>
-            </tr>
-          </thead>
-          <tbody id="bodies-tbody">
-            <tr><td colspan="7"><div class="empty-state"><div class="icon">&#9678;</div><div class="msg">Awaiting scan data</div></div></td></tr>
-          </tbody>
-        </table>
-      </div>
-    </div>
+    </div><!-- /live-col-left -->
 
-    <div class="panel" id="panel-scan">
-      <div class="panel-header"><span class="label">Scan Values</span><div class="accent-line"></div></div>
-      <div class="scan-total-bar"><span class="scan-total-label">EST. TOTAL</span><span class="scan-total-val" id="scan-total">0 cr</span></div>
-      <div class="panel-body" style="padding:0;">
-        <table class="scan-table">
-          <thead>
-            <tr>
-              <th>Body</th>
-              <th>Type</th>
-              <th style="text-align:center">Mapped</th>
-              <th style="text-align:right">Value</th>
-            </tr>
-          </thead>
-          <tbody id="scan-tbody">
-            <tr><td colspan="4"><div class="empty-state" style="height:60px;"><div class="msg">No scans yet</div></div></td></tr>
-          </tbody>
-        </table>
-      </div>
-    </div>
+    <!-- MIDDLE COLUMN: System Bodies (scrollable) + Journal Scan (locked bottom) + Log spacer -->
+    <div class="live-col" id="live-col-mid">
 
-    <div id="panel-summary">
-      <div class="summary-title">Scan Summary</div>
-      <div class="summary-grid">
-        <div><div class="summary-num" id="sum-stars">0</div><div class="summary-lbl">Stars</div></div>
-        <div><div class="summary-num" id="sum-planets">0</div><div class="summary-lbl">Planets</div></div>
-        <div><div class="summary-num" id="sum-moons">0</div><div class="summary-lbl">Moons</div></div>
-        <div><div class="summary-num" id="sum-total">0</div><div class="summary-lbl">Total</div></div>
+      <div class="panel" id="panel-system">
+        <div class="panel-header">
+          <span class="label">System Bodies</span>
+          <div class="accent-line"></div>
+          <span style="font-family:var(--mono);font-size:0.75em;color:var(--text-mute)" id="body-count">0 bodies</span>
+        </div>
+        <div class="panel-body" style="padding:0;">
+          <table class="bodies-table">
+            <thead>
+              <tr>
+                <th style="width:28px"></th>
+                <th>Name</th>
+                <th>Class</th>
+                <th>Distance</th>
+                <th>Information</th>
+                <th style="text-align:right">Value</th>
+                <th style="text-align:right">Max</th>
+              </tr>
+            </thead>
+            <tbody id="bodies-tbody">
+              <tr><td colspan="7"><div class="empty-state"><div class="icon">&#9678;</div><div class="msg">Awaiting scan data</div></div></td></tr>
+            </tbody>
+          </table>
+        </div>
       </div>
-    </div>
 
-    <div id="panel-progress">
-      <div class="panel-header" style="padding:6px 10px;">
-        <span class="label">Journal Scan</span><div class="accent-line"></div>
-        <span style="font-family:var(--mono);font-size:0.75em;color:var(--text-mute)" id="progress-pct">&#8212;</span>
+      <div id="panel-progress">
+        <div class="panel-header" style="padding:6px 10px;">
+          <span class="label">Journal Scan</span><div class="accent-line"></div>
+          <span style="font-family:var(--mono);font-size:0.75em;color:var(--text-mute)" id="progress-pct">&#8212;</span>
+          <span style="font-family:var(--mono);font-size:0.7em;color:var(--text-mute);margin-left:6px;" id="progress-info">Ready</span>
+        </div>
+        <div class="progress-track"><div class="progress-fill" id="progress-bar"></div></div>
+        <div id="progress-detail" style="display:none;"></div>
       </div>
-      <div class="progress-track"><div class="progress-fill" id="progress-bar"></div></div>
-      <div class="progress-info" id="progress-info">Ready</div>
-      <div class="panel-body" style="padding:6px 10px;overflow:hidden;">
-        <div style="font-family:var(--mono);font-size:0.75em;color:var(--text-mute)" id="progress-detail"></div>
-      </div>
-    </div>
 
-    <div class="panel" id="panel-log">
-      <div class="panel-header">
-        <span class="label">Application Log</span>
-        <div class="accent-line"></div>
-        <span id="log-count" style="font-family:var(--mono);font-size:0.75em;color:var(--text-mute)">0 entries</span>
+      <div class="col-log-spacer"></div>
+
+    </div><!-- /live-col-mid -->
+
+    <!-- RIGHT COLUMN: Scan Values (scrollable) + Application Log (locked bottom) -->
+    <div class="live-col" id="live-col-right">
+
+      <div class="panel" id="panel-scan">
+        <div class="panel-header"><span class="label">Scan Values</span><div class="accent-line"></div></div>
+        <div class="scan-total-bar"><span class="scan-total-label">EST. TOTAL</span><span class="scan-total-val" id="scan-total">0 cr</span></div>
+        <div class="panel-body" style="padding:0;">
+          <table class="scan-table">
+            <thead>
+              <tr>
+                <th>Body</th>
+                <th>Type</th>
+                <th style="text-align:center">Mapped</th>
+                <th style="text-align:right">Value</th>
+              </tr>
+            </thead>
+            <tbody id="scan-tbody">
+              <tr><td colspan="4"><div class="empty-state" style="height:60px;"><div class="msg">No scans yet</div></div></td></tr>
+            </tbody>
+          </table>
+        </div>
       </div>
-      <div id="log-entries"></div>
-    </div>
+
+      <div class="panel" id="panel-log">
+        <div class="panel-header">
+          <span class="label">Application Log</span>
+          <div class="accent-line"></div>
+          <span id="log-count" style="font-family:var(--mono);font-size:0.75em;color:var(--text-mute)">0 entries</span>
+        </div>
+        <div id="log-entries"></div>
+      </div>
+
+    </div><!-- /live-col-right -->
 
   </div><!-- /view-live -->
 
@@ -226,14 +245,15 @@
       <div class="sl-group">
         <div class="sl-group-title">Scale &amp; Size</div>
         <div class="sl-row"><div class="sl-header"><span class="sl-label">UI Scale</span><span class="sl-val" id="sv-scale">100%</span></div><input type="range" class="sl-input" id="sl-scale" min="70" max="130" step="1" value="100"></div>
-        <div class="sl-row"><div class="sl-header"><span class="sl-label">Font Size</span><span class="sl-val" id="sv-font">12px</span></div><input type="range" class="sl-input" id="sl-font" min="9" max="32" step="0.5" value="12"></div>
+        <div class="sl-row"><div class="sl-header"><span class="sl-label">Font Size</span><span class="sl-val" id="sv-font">24px</span></div><input type="range" class="sl-input" id="sl-font" min="1" max="32" step="0.5" value="24"></div>
         <div class="sl-row"><div class="sl-header"><span class="sl-label">Row Density</span><span class="sl-val" id="sv-density">Normal</span></div><input type="range" class="sl-input" id="sl-density" min="1" max="5" step="1" value="3"></div>
       </div>
       <div class="sl-group">
         <div class="sl-group-title">Panel Layout</div>
-        <div class="sl-row"><div class="sl-header"><span class="sl-label">Left Panel Width</span><span class="sl-val" id="sv-left">220px</span></div><input type="range" class="sl-input" id="sl-left" min="160" max="360" step="5" value="220"></div>
-        <div class="sl-row"><div class="sl-header"><span class="sl-label">Right Panel Width</span><span class="sl-val" id="sv-right">320px</span></div><input type="range" class="sl-input" id="sl-right" min="200" max="500" step="5" value="320"></div>
-        <div class="sl-row"><div class="sl-header"><span class="sl-label">Bottom Bar Height</span><span class="sl-val" id="sv-bottom">120px</span></div><input type="range" class="sl-input" id="sl-bottom" min="95" max="240" step="5" value="120"></div>
+        <div class="sl-row"><div class="sl-header"><span class="sl-label">Left Panel Width</span><span class="sl-val" id="sv-left">250px</span></div><input type="range" class="sl-input" id="sl-left" min="1" max="360" step="5" value="250"></div>
+        <div class="sl-row"><div class="sl-header"><span class="sl-label">Right Panel Width</span><span class="sl-val" id="sv-right">320px</span></div><input type="range" class="sl-input" id="sl-right" min="1" max="500" step="5" value="320"></div>
+        <div class="sl-row"><div class="sl-header"><span class="sl-label">Bottom Bar Height</span><span class="sl-val" id="sv-bottom">120px</span></div><input type="range" class="sl-input" id="sl-bottom" min="1" max="240" step="5" value="120"></div>
+        <div class="sl-row"><div class="sl-header"><span class="sl-label">Log Height</span><span class="sl-val" id="sv-log">130px</span></div><input type="range" class="sl-input" id="sl-log" min="1" max="400" step="5" value="130"></div>
       </div>
       <div class="sl-group">
         <div class="sl-group-title">Atmosphere</div>

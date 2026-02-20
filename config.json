@@ -1,10 +1,10 @@
 {
-  "journalPath": "",
-  "apiPort": 3721,
-  "commanderName": "Epsilon Niner",
-  "eddnEnabled": true,
-  "edsmEnabled": true,
-  "edsmCommanderName": "EpsilonNiner",
-  "edsmApiKey": "97a46868977aaf2ad62619fd7e339be9be191b05",
-  "capiClientId": ""
+  "journalDir": "C:\\Users\\YourName\\Saved Games\\Frontier Developments\\Elite Dangerous",
+  "enableEdsmFetch": true,
+  "edsmCacheSize": 50,
+  "edsmCommanderName": "",
+  "edsmApiKey": "",
+  "eddnEnabled": false,
+  "edsmEnabled": false,
+  "commanderName": ""
 }

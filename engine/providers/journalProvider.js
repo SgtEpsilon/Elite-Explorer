@@ -20,6 +20,20 @@ async function saveLastProcessed() {
 let mainWindow = null;
 function setMainWindow(win) { mainWindow = win; }
 
+// ── Replay cache — keeps the last payload of each type so any page that loads
+// after the initial scan still gets populated data immediately. ──────────────
+const _cache = {
+  liveData:    null,   // last live-data payload
+  profileData: null,   // last profile-data payload
+  bodiesData:  null,   // last bodies-data payload
+};
+
+function replayToPage() {
+  if (_cache.liveData)    send('live-data',    _cache.liveData);
+  if (_cache.profileData) send('profile-data', _cache.profileData);
+  if (_cache.bodiesData)  send('bodies-data',  _cache.bodiesData);
+}
+
 function send(channel, data) {
   if (mainWindow && !mainWindow.isDestroyed()) {
     mainWindow.webContents.send(channel, data);
@@ -66,6 +80,8 @@ function runWorker(files, { mode = 'all', useLastProcessed = false, updateLastPr
             eventBus.emit('journal.location', msg.data);
             send('location-data', msg.data);
           }
+          if (msg.event === 'journal.fss-scan')
+            eventBus.emit('journal.fss-scan', msg.data);
           break;
 
         case 'raw':
@@ -74,16 +90,23 @@ function runWorker(files, { mode = 'all', useLastProcessed = false, updateLastPr
           break;
 
         case 'bodies-data':
+          _cache.bodiesData = { system: msg.system, bodies: msg.bodies, signals: msg.signals };
           send('bodies-data', { system: msg.system, bodies: msg.bodies, signals: msg.signals });
           eventBus.emit('journal.bodies', { system: msg.system, bodies: msg.bodies, signals: msg.signals });
           break;
 
         case 'live-data':
+          // partial:true means this is a mid-file real-time update (Loadout, HullHealth,
+          // Resurrect). Send it to the renderer immediately but do NOT overwrite the cache —
+          // the cache must always hold the complete end-of-file payload so replayToPage
+          // gives new pages a full data set rather than a sparse mid-session snapshot.
+          if (!msg.partial) _cache.liveData = msg.data;
           send('live-data', msg.data);
           eventBus.emit('journal.live', msg.data);
           break;
 
         case 'profile-data':
+          _cache.profileData = msg.data;
           send('profile-data', msg.data);
           eventBus.emit('journal.profile', msg.data);
           break;
@@ -207,4 +230,12 @@ function start() {
   watcher.on('change', handleFileEvent);
 }
 
-module.exports = { start, scanAll, setMainWindow, getJournalPath };
+// ── refreshProfile: re-scan profile data on demand (used by 2-min poll) ──────
+async function refreshProfile() {
+  let journalPath;
+  try { journalPath = getJournalPath(); } catch { return; }
+  if (!fs.existsSync(journalPath)) return;
+  await readProfileData(journalPath);
+}
+
+module.exports = { start, scanAll, refreshProfile, setMainWindow, getJournalPath, replayToPage };

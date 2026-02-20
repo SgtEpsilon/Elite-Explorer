@@ -66,6 +66,18 @@
     animation: discoveryPulse 2.4s ease-in-out infinite;
   }
 
+  /* ImportStars.txt badge — shown next to the system name */
+  .import-star-badge {
+    display: inline-block;
+    margin-left: 5px;
+    font-size: 0.8em;
+    color: var(--cyan);
+    opacity: 0.75;
+    cursor: default;
+    vertical-align: middle;
+    line-height: 1;
+  }
+
   /* Stats bar */
   #hist-stats-bar {
     flex-shrink: 0;
@@ -192,6 +204,10 @@
       <button class="opt-action-btn" id="opt-edsm-sync-btn" style="margin-top:10px;">
         <span class="opt-btn-icon">&#11015;</span>
         <div><div class="opt-btn-label">Pull Data from EDSM</div><div class="opt-btn-sub" id="opt-edsm-sync-hint">Pull your EDSM history &amp; merge with local journals</div></div>
+      </button>
+      <button class="opt-action-btn" id="opt-import-stars-btn" style="margin-top:6px;">
+        <span class="opt-btn-icon">&#9733;</span>
+        <div><div class="opt-btn-label">Import First Discoveries (ImportStars.txt)</div><div class="opt-btn-sub" id="opt-import-stars-hint">Import your EDSM first-discovery list</div></div>
       </button>
     </div>
     <div class="opt-section">

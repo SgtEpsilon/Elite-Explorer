@@ -1,329 +1,290 @@
-// main.js
-// Electron main process — boots the app, creates the window, wires up all IPC.
+'use strict';
 
-const { app, BrowserWindow, ipcMain, shell } = require('electron');
+const { app, BrowserWindow, ipcMain, shell, dialog, protocol } = require('electron');
 const path   = require('path');
 const fs     = require('fs');
-const https  = require('https');  // NEW: used for EDSM discovery checks
 
-const engine          = require('./engine/core/engine');
-const journalProvider = require('./engine/providers/journalProvider');
-const historyProvider = require('./engine/providers/historyProvider');
-const eddnRelay       = require('./engine/services/eddnRelay');
-const edsmClient      = require('./engine/services/edsmClient');
-const capiService     = require('./engine/services/capiService');
-const edsmSyncService = require('./engine/services/edsmSyncService');
-const eventBus        = require('./engine/core/eventBus');
-const api             = require('./engine/api/server');
+// ── Engine / service imports ──────────────────────────────────────────────────
+const journalProvider  = require('./engine/providers/journalProvider');
+const historyProvider  = require('./engine/providers/historyProvider');
+const edsmClient       = require('./engine/services/edsmClient');
+const eddnRelay        = require('./engine/services/eddnRelay');
+const edsmSyncService  = require('./engine/services/edsmSyncService');
+const capiService      = require('./engine/services/capiService');
+const engine           = require('./engine/core/engine');
+const api              = require('./engine/api/server');
 
 const CONFIG_PATH = path.join(__dirname, 'config.json');
 
-function readConfig()     { try { return JSON.parse(fs.readFileSync(CONFIG_PATH, 'utf8')); } catch { return {}; } }
-function writeConfig(obj) { fs.writeFileSync(CONFIG_PATH, JSON.stringify(obj, null, 2)); }
-
-let mainWindow;
-let isScanning = false;
-
-// ── NEW: EDSM discovery cache ────────────────────────────────────────────────
-// Calling EDSM for every system in history would be thousands of requests.
-// We cache results for 10 minutes so navigating away and back doesn't re-fetch.
-//
-// Map structure: systemName (lowercase) → { discovered: bool|null, cachedAt: timestamp }
-const edsmDiscoveryCache = new Map();
-const EDSM_CACHE_TTL = 10 * 60 * 1000; // 10 minutes in milliseconds
-
-// Check a single system against EDSM's database.
-// EDSM returns id: 0 or missing when the system is unknown (i.e. you found it!)
-function checkEdsmDiscoverySingle(systemName) {
-  return new Promise((resolve) => {
-    // Check the cache first — don't re-fetch something we just looked up
-    const cacheKey = systemName.toLowerCase();
-    const cached   = edsmDiscoveryCache.get(cacheKey);
-    if (cached && (Date.now() - cached.cachedAt) < EDSM_CACHE_TTL) {
-      return resolve({ systemName, discovered: cached.discovered });
-    }
-
-    const url = 'https://www.edsm.net/api-v1/system?systemName=' +
-      encodeURIComponent(systemName) + '&showId=1&showInformation=1';
-
-    // Node's https.get — no CORS, no browser restrictions
-    const req = https.get(url, { timeout: 8000 }, (res) => {
-      let raw = '';
-      res.on('data', chunk => raw += chunk);
-      res.on('end', () => {
-        try {
-          const json = JSON.parse(raw);
-          // EDSM returns id > 0 if the system is in their database (discovered)
-          // id === 0 or missing means it wasn't in EDSM when you visited
-          const discovered = !!(json && json.id && json.id > 0);
-          edsmDiscoveryCache.set(cacheKey, { discovered, cachedAt: Date.now() });
-          resolve({ systemName, discovered });
-        } catch {
-          resolve({ systemName, discovered: null, error: 'parse error' });
-        }
-      });
-    });
-
-    req.on('error', (err) => resolve({ systemName, discovered: null, error: err.message }));
-    req.on('timeout', ()  => { req.destroy(); resolve({ systemName, discovered: null, error: 'timeout' }); });
-  });
+// ── Config helpers ────────────────────────────────────────────────────────────
+function readConfig() {
+  try { return JSON.parse(fs.readFileSync(CONFIG_PATH, 'utf8')); } catch { return {}; }
+}
+function writeConfig(patch) {
+  const cfg = readConfig();
+  Object.assign(cfg, patch);
+  fs.writeFileSync(CONFIG_PATH, JSON.stringify(cfg, null, 2));
+  return cfg;
 }
 
-// ── Scan all journals (Options button) ──────────────────────────────────────
-async function runScan() {
-  if (isScanning) return;
-  isScanning = true;
-  try {
-    await journalProvider.scanAll();
-  } catch (err) {
-    console.error('Error during full scan:', err);
-  } finally {
-    isScanning = false;
-  }
-}
+// ── Window ────────────────────────────────────────────────────────────────────
+let mainWindow = null;
 
-// ── Create Main Window ───────────────────────────────────────────────────────
 function createWindow() {
-  try {
-    mainWindow = new BrowserWindow({
-      width: 1200,
-      height: 800,
-      frame: true,
-      transparent: false,
-      resizable: true,
-      webPreferences: {
-        preload: path.join(__dirname, 'preload.js'),
-        nodeIntegration: false,
-        contextIsolation: true
-      }
-    });
+  mainWindow = new BrowserWindow({
+    width:  1280,
+    height: 880,
+    minWidth:  900,
+    minHeight: 600,
+    icon: path.join(__dirname, 'icon.png'),
+    backgroundColor: '#090e18',
+    webPreferences: {
+      preload:          path.join(__dirname, 'preload.js'),
+      contextIsolation: true,
+      nodeIntegration:  false,
+      sandbox:          false,
+    },
+  });
 
-    mainWindow.loadFile(path.join(__dirname, 'ui', 'index.html'));
+  mainWindow.loadFile(path.join(__dirname, 'ui', 'index.html'));
 
-    journalProvider.setMainWindow(mainWindow);
-    historyProvider.setMainWindow(mainWindow);
-    eddnRelay.setMainWindow(mainWindow);
-    edsmClient.setMainWindow(mainWindow);
-    capiService.setMainWindow(mainWindow);
-    edsmSyncService.setMainWindow(mainWindow);
+  // ── Wire mainWindow into every service that sends to the renderer ─────────
+  journalProvider .setMainWindow(mainWindow);
+  historyProvider .setMainWindow(mainWindow);
+  edsmClient      .setMainWindow(mainWindow);
+  eddnRelay       .setMainWindow(mainWindow);
+  edsmSyncService .setMainWindow(mainWindow);
+  capiService     .setMainWindow(mainWindow);
 
-    // ── Cache payloads for page-navigation replays ───────────────────────────
-    // When the user clicks Live / Profile / History tabs, a new HTML page loads.
-    // The new page fires 'did-finish-load' and we replay the last known data
-    // so it shows something immediately rather than waiting for the next event.
-    let cachedLive    = null;
-    let cachedProfile = null;
-    let cachedEdsm    = null;
-    let cachedBodies  = null;
-    let cachedEdsmBodies = null;
+  // ── Replay cached data whenever any page (re)loads ────────────────────────
+  // When the user navigates between Live / Profile / History tabs, the new
+  // page fires 'did-finish-load' and we push whatever was cached so data
+  // appears immediately without re-scanning.
+  mainWindow.webContents.on('did-finish-load', () => {
+    historyProvider.replayToPage();      // → history-data
+    journalProvider.replayToPage();      // → live-data, profile-data, bodies-data
+    edsmClient.replayToPage();           // → edsm-system, edsm-bodies
+  });
 
-    eventBus.on('journal.live',    d => { cachedLive    = d; });
-    eventBus.on('journal.profile', d => { cachedProfile = d; });
-    eventBus.on('edsm.system',     d => { cachedEdsm    = d; });
-    eventBus.on('journal.bodies',  d => { cachedBodies  = d; });
-
-    eventBus.on('edsm.bodies',    d => { cachedEdsmBodies = d; });
-
-    mainWindow.webContents.on('did-finish-load', () => {
-      if (mainWindow.isDestroyed()) return;
-      if (cachedLive)       mainWindow.webContents.send('live-data',    cachedLive);
-      if (cachedProfile)    mainWindow.webContents.send('profile-data', cachedProfile);
-      if (cachedEdsm)       mainWindow.webContents.send('edsm-system',  cachedEdsm);
-      if (cachedBodies)     mainWindow.webContents.send('bodies-data',  cachedBodies);
-      if (cachedEdsmBodies) mainWindow.webContents.send('edsm-bodies',  cachedEdsmBodies);
-      historyProvider.replayToPage();
-    });
-
-    // ── Start engine on first load ───────────────────────────────────────────
-    mainWindow.webContents.once('did-finish-load', () => {
-      engine.start();
-      api.start();
-      eddnRelay.start();
-      edsmClient.start();
-      capiService.start();   // NEW — boots token refresh loop if already logged in
-      historyProvider.scan();
-    });
-
-    // ════════════════════════════════════════════════════════════════════════
-    // IPC HANDLERS
-    // Each ipcMain.handle() corresponds to one ipcRenderer.invoke() in preload.js
-    // ════════════════════════════════════════════════════════════════════════
-
-    ipcMain.handle('trigger-scan-all',     () => runScan());
-    ipcMain.handle('trigger-history-scan', () => historyProvider.scan());
-
-    // Open URL in system browser (for EDSM "View System" link)
-    ipcMain.handle('open-external', (e, url) => {
-      if (typeof url === 'string' && (url.startsWith('https://') || url.startsWith('http://'))) {
-        shell.openExternal(url);
-      }
-    });
-
-    ipcMain.handle('get-config',    ()         => readConfig());
-    ipcMain.handle('save-config',   (e, patch) => {
-      const cfg = readConfig();
-      Object.assign(cfg, patch);
-      writeConfig(cfg);
-      return cfg;
-    });
-
-    ipcMain.handle('app-quit', () => {
-      if (mainWindow && !mainWindow.isDestroyed()) mainWindow.close();
-    });
-
-    ipcMain.handle('get-journal-path', () => readConfig().journalPath || '');
-
-    ipcMain.handle('save-journal-path', (e, newPath) => {
-      try {
-        const cfg = readConfig();
-        cfg.journalPath = newPath;
-        writeConfig(cfg);
-        return true;
-      } catch { return false; }
-    });
-
-    ipcMain.handle('browse-journal-path', async () => {
-      const { dialog } = require('electron');
-      const result = await dialog.showOpenDialog(mainWindow, {
-        title: 'Select Elite Dangerous Journal Folder',
-        properties: ['openDirectory'],
-      });
-      return result.canceled ? null : result.filePaths[0];
-    });
-
-    ipcMain.handle('open-journal-folder', async (e, folderPath) => {
-      const target = folderPath || journalProvider.getJournalPath?.() || '';
-      if (target) await shell.openPath(target);
-    });
-
-    // ── NEW: EDSM Discovery IPC handlers ─────────────────────────────────────
-    //
-    // WHY here and not in edsmClient.js?
-    //   edsmClient.js handles live system lookups (security, population etc.)
-    //   Discovery checking is a separate concern used only by the history page.
-    //   Keeping them separate avoids coupling and is easier to maintain.
-
-    // Single system check — called one at a time from the history page
-    ipcMain.handle('check-edsm-discovery', async (e, systemName) => {
-      if (!systemName || typeof systemName !== 'string') {
-        return { systemName, discovered: null, error: 'invalid name' };
-      }
-      return checkEdsmDiscoverySingle(systemName.trim());
-    });
-
-    // Bulk check — called with an array of names.
-    // We stagger requests 150ms apart so we don't flood EDSM's API.
-    // EDSM has a rate limit; being polite prevents your IP getting blocked.
-    ipcMain.handle('check-edsm-discovery-bulk', async (e, systemNames) => {
-      if (!Array.isArray(systemNames)) return [];
-
-      const results = [];
-      for (const name of systemNames) {
-        if (!name || typeof name !== 'string') {
-          results.push({ systemName: name, discovered: null, error: 'invalid' });
-          continue;
-        }
-        const result = await checkEdsmDiscoverySingle(name.trim());
-        results.push(result);
-        // Wait 150ms between each request — polite rate limiting
-        await new Promise(r => setTimeout(r, 150));
-      }
-      return results;
-    });
-
-    // ── NEW: cAPI IPC handlers ────────────────────────────────────────────────
-    // All cAPI logic lives in engine/services/capiService.js
-    // These handlers are just thin wires connecting the UI to that service.
-
-    // Start the OAuth2 login flow
-    ipcMain.handle('capi-login', async () => {
-      return capiService.startOAuthLogin();
-    });
-
-    // Log out (clear tokens from config)
-    ipcMain.handle('capi-logout', async () => {
-      return capiService.logout();
-    });
-
-    // Check auth status without hitting the API
-    ipcMain.handle('capi-get-status', async () => {
-      return capiService.getStatus();
-    });
-
-    // Fetch commander profile from Frontier's servers
-    ipcMain.handle('capi-get-profile', async () => {
-      return capiService.getProfile();
-    });
-
-    // -- EDSM flight log sync --
-    // Fetches the full flight log from EDSM in weekly batches, merges with
-    // local journal jumps, pushes merged result back via history-data.
-    ipcMain.handle('edsm-sync-logs', async (e, journalJumps) => {
-      try {
-        const result = await edsmSyncService.syncFromEdsm(
-          journalJumps || [],
-          (progress) => {
-            if (mainWindow && !mainWindow.isDestroyed()) {
-              mainWindow.webContents.send('edsm-sync-progress', progress);
-            }
-          }
-        );
-        if (mainWindow && !mainWindow.isDestroyed()) {
-          mainWindow.webContents.send('history-data', result.jumps);
-        }
-        return { success: true, totalEdsm: result.totalEdsm, newFromEdsm: result.newFromEdsm, totalMerged: result.totalMerged };
-      } catch (err) {
-        return { success: false, error: err.message };
-      }
-    });
-
-    mainWindow.on('closed', () => { mainWindow = null; });
-
-  } catch (err) {
-    console.error('Failed to create main window:', err);
-  }
+  mainWindow.on('closed', () => { mainWindow = null; });
 }
 
-// ── App Lifecycle ────────────────────────────────────────────────────────────
+// ── App lifecycle ─────────────────────────────────────────────────────────────
+app.whenReady().then(async () => {
+  app.setAsDefaultProtocolClient('eliteexplorer');
 
-// Single-instance lock — required on Windows so the OS can pass the
-// eliteexplorer:// callback URI to the already-running instance rather than
-// launching a second one. On macOS/Linux the open-url event handles this.
-const gotTheLock = app.requestSingleInstanceLock();
-if (!gotTheLock) {
-  // A second instance was launched (e.g. by the OS handling the URI scheme).
-  // Quit immediately — the first instance will receive the URI via second-instance.
+  createWindow();
+
+  engine.start();      // DB + eventBus listeners
+  api.start();         // REST API on :3721
+
+  edsmClient.start();  // listens on eventBus for location events
+  eddnRelay.start();   // listens on eventBus for raw journal events
+
+  // journalProvider.start() kicks off three things in parallel:
+  //   1. readLiveJournal()  → emits bodies-data, live-data to renderer
+  //   2. readProfileData()  → emits profile-data to renderer
+  //   3. chokidar watcher   → tails latest journal for real-time updates
+  journalProvider.start();
+
+  // historyProvider.scan() spawns a Worker Thread that reads ALL journal files
+  // for FSDJump entries and emits history-data when done.
+  historyProvider.scan();
+
+  await capiService.start();
+});
+
+// ── macOS / Linux: custom URI scheme for cAPI OAuth callback ──────────────────
+app.on('open-url', (event, url) => {
+  event.preventDefault();
+  capiService.handleCallback(url).catch(console.error);
+});
+
+// ── Windows: second-instance carries the custom URI as a CLI arg ──────────────
+const gotLock = app.requestSingleInstanceLock();
+if (!gotLock) {
   app.quit();
 } else {
-  // Windows: when the OS launches a second instance to handle eliteexplorer://,
-  // we get the URI here in argv. Focus the existing window too.
-  app.on('second-instance', (event, argv) => {
-    const callbackUrl = argv.find(a => a.startsWith('eliteexplorer://'));
-    if (callbackUrl) capiService.handleCallback(callbackUrl);
+  app.on('second-instance', (_e, argv) => {
+    const url = argv.find(a => a.startsWith('eliteexplorer://'));
+    if (url) capiService.handleCallback(url).catch(console.error);
     if (mainWindow) {
       if (mainWindow.isMinimized()) mainWindow.restore();
       mainWindow.focus();
     }
   });
-
-  app.whenReady().then(() => {
-    createWindow();
-    app.on('activate', () => {
-      if (BrowserWindow.getAllWindows().length === 0) createWindow();
-    });
-  });
 }
-
-// macOS / Linux: the OS fires open-url when eliteexplorer:// is handled.
-// Must be registered before app is ready.
-app.on('open-url', (event, url) => {
-  event.preventDefault();
-  if (url.startsWith('eliteexplorer://')) capiService.handleCallback(url);
-});
 
 app.on('window-all-closed', () => {
   if (process.platform !== 'darwin') app.quit();
 });
+app.on('activate', () => {
+  if (BrowserWindow.getAllWindows().length === 0) createWindow();
+});
 
-process.on('uncaughtException',  err    => console.error('Uncaught Exception:', err));
-process.on('unhandledRejection', reason => console.error('Unhandled Rejection:', reason));
+// ═══════════════════════════════════════════════════════════════════════════════
+// IPC HANDLERS — expose operations to the renderer via preload.js
+// ═══════════════════════════════════════════════════════════════════════════════
+
+// ── Journal path ──────────────────────────────────────────────────────────────
+ipcMain.handle('get-journal-path', () => journalProvider.getJournalPath());
+
+ipcMain.handle('save-journal-path', (_e, newPath) => {
+  writeConfig({ journalPath: newPath || '' });
+  return true;
+});
+
+ipcMain.handle('browse-journal-path', async () => {
+  if (!mainWindow) return null;
+  const result = await dialog.showOpenDialog(mainWindow, {
+    properties: ['openDirectory'],
+    title: 'Select Elite Dangerous Journal Folder',
+  });
+  if (result.canceled || !result.filePaths.length) return null;
+  const chosen = result.filePaths[0];
+  writeConfig({ journalPath: chosen });
+  return chosen;
+});
+
+ipcMain.handle('open-journal-folder', async (_e, folderPath) => {
+  const target = folderPath || journalProvider.getJournalPath();
+  if (target) await shell.openPath(target);
+});
+
+// ── Config ────────────────────────────────────────────────────────────────────
+ipcMain.handle('get-config', () => readConfig());
+ipcMain.handle('save-config', (_e, patch) => { writeConfig(patch); return true; });
+
+// ── Scan triggers ─────────────────────────────────────────────────────────────
+ipcMain.handle('trigger-scan-all', () => { journalProvider.scanAll(); return true; });
+ipcMain.handle('trigger-history-scan', () => { historyProvider.scan(); return true; });
+ipcMain.handle('trigger-profile-refresh', () => { journalProvider.refreshProfile(); return true; });
+
+// ── External links ────────────────────────────────────────────────────────────
+ipcMain.handle('open-external', (_e, url) => {
+  if (url && (url.startsWith('https://') || url.startsWith('http://'))) {
+    shell.openExternal(url);
+  }
+});
+
+// ── EDSM discovery bulk check (history page) ─────────────────────────────────
+ipcMain.handle('check-edsm-discovery-bulk', async (_e, systemNames) => {
+  const results = [];
+  for (const name of systemNames) {
+    try {
+      const url = `https://www.edsm.net/api-v1/system?systemName=${encodeURIComponent(name)}&showId=1`;
+      const res = await fetch(url, { signal: AbortSignal.timeout(6000) });
+      if (res.ok) {
+        const data = await res.json();
+        results.push({ systemName: name, discovered: !!(data && data.id) });
+      } else {
+        results.push({ systemName: name, discovered: null });
+      }
+    } catch {
+      results.push({ systemName: name, discovered: null });
+    }
+    await new Promise(r => setTimeout(r, 150)); // respect EDSM rate limit
+  }
+  return results;
+});
+
+// ── EDSM flight log sync ──────────────────────────────────────────────────────
+ipcMain.handle('edsm-sync-logs', (_e, localJumps) => edsmSyncService.syncFromEdsm(localJumps));
+
+// ── ImportStars.txt import ────────────────────────────────────────────────────
+// ImportStars.txt is an EDSM export of systems the commander was FIRST to
+// discover and report. Every line is a system name. We import these as first-
+// discovery stubs (wasDiscovered: false) and flag them with isImportedStar: true
+// so the UI can show a distinct "imported first discovery" badge.
+//
+// De-duplication: if a system already exists in the local jump list we just
+// ensure wasDiscovered is set to false on that entry (back-fill). If it's
+// entirely new we create a stub entry. Either way the star icon is shown.
+ipcMain.handle('import-stars-file', async (_e, localJumps) => {
+  if (!mainWindow) return { success: false, error: 'No window' };
+
+  const result = await dialog.showOpenDialog(mainWindow, {
+    title: 'Select your EDSM ImportStars.txt',
+    filters: [
+      { name: 'ImportStars Text File', extensions: ['txt'] },
+      { name: 'All Files',             extensions: ['*']   },
+    ],
+    properties: ['openFile'],
+  });
+
+  if (result.canceled || !result.filePaths.length) {
+    return { success: false, canceled: true };
+  }
+
+  try {
+    const fs  = require('fs');
+    const raw = fs.readFileSync(result.filePaths[0], 'utf8');
+
+    // One system name per line; skip blanks and comment lines
+    const importedNames = raw
+      .split(/\r?\n/)
+      .map(l => l.trim())
+      .filter(l => l && !l.startsWith('#') && !l.startsWith('//'));
+
+    if (!importedNames.length) {
+      return { success: false, error: 'No system names found in file' };
+    }
+
+    // Index existing jumps by lowercase system name for O(1) lookup
+    const existingByName = new Map();
+    for (const j of (localJumps || [])) {
+      if (j.system) existingByName.set(j.system.toLowerCase(), j);
+    }
+
+    const importedSet    = new Set(importedNames.map(n => n.toLowerCase()));
+    let backFilled  = 0;
+    let newStubs    = 0;
+
+    // 1. Back-fill wasDiscovered + isImportedStar on existing entries
+    const enriched = (localJumps || []).map(j => {
+      if (j.system && importedSet.has(j.system.toLowerCase())) {
+        const changed = j.wasDiscovered !== false || !j.isImportedStar;
+        if (changed) backFilled++;
+        return { ...j, wasDiscovered: false, isImportedStar: true };
+      }
+      return j;
+    });
+
+    // 2. Add stub entries for names not already in the jump list
+    const stubs = importedNames
+      .filter(name => !existingByName.has(name.toLowerCase()))
+      .map(name => {
+        newStubs++;
+        return {
+          system:        name,
+          timestamp:     null,   // no timestamp — imported stubs
+          jumpDist:      null,
+          starClass:     null,
+          bodyCount:     null,
+          wasDiscovered: false,  // IS a first discovery — that's the whole point
+          fromEdsm:      true,
+          isImportedStar: true,  // show the special imported-star badge
+        };
+      });
+
+    // Stubs go at the end (timestamp null sorts last)
+    const merged = [...enriched, ...stubs];
+
+    return {
+      success:    true,
+      imported:   importedNames.length,
+      backFilled,
+      newStubs,
+      merged,
+    };
+  } catch (err) {
+    return { success: false, error: err.message || String(err) };
+  }
+});
+
+// ── Frontier cAPI ─────────────────────────────────────────────────────────────
+ipcMain.handle('capi-login',       ()       => capiService.startOAuthLogin());
+ipcMain.handle('capi-logout',      ()       => capiService.logout());
+ipcMain.handle('capi-get-status',  ()       => capiService.getStatus());
+ipcMain.handle('capi-get-profile', ()       => capiService.getProfile());
+ipcMain.handle('capi-get-market',  (_e, id) => capiService.getMarket(id));

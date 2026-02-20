@@ -27,8 +27,7 @@ function log(msg, type = 'info') {
   const e = document.createElement('div');
   e.className = 'log-entry';
   e.innerHTML = '<span class="log-ts">' + ts() + '</span><span class="log-msg ' + type + '">' + msg + '</span>';
-  entriesEl.appendChild(e);
-  entriesEl.scrollTop = entriesEl.scrollHeight;
+  entriesEl.insertBefore(e, entriesEl.firstChild);
 }
 
 // ─── BODY RENDERING ───────────────────────────────────────────────
@@ -335,7 +334,10 @@ if (window.electronAPI) {
     if (d.name)          set('tb-cmdr', 'CMDR ' + d.name);
     if (d.currentSystem) set('tb-sys',  d.currentSystem);
     if (d.credits != null) set('tb-credits', Number(d.credits).toLocaleString() + ' CR');
-    if (d.currentSystem && !_currentSystem) _currentSystem = d.currentSystem;
+
+    // Always track the current system — needed so onBodiesData renders correctly
+    // regardless of whether live-data or bodies-data arrives first on launch
+    if (d.currentSystem) _currentSystem = d.currentSystem;
 
     // Live panel elements (only exist on index.html — set() is a no-op on other pages)
     if (d.currentSystem) set('sys-name',   d.currentSystem);
@@ -349,6 +351,16 @@ if (window.electronAPI) {
     if (d.fuelDisplay)   set('ship-fuel',  d.fuelDisplay);
     if (d.rebuy  != null) set('ship-rebuy', fmtCr(d.rebuy));
     if (d.credits != null) set('credits',  fmtCr(d.credits));
+
+    // Hull — colour-coded: green ≥70%, gold 40–69%, red <40%
+    if (d.hull != null) {
+      var hullEl = document.getElementById('ship-hull');
+      if (hullEl) {
+        hullEl.textContent = d.hull + '%';
+        hullEl.className   = 'stat-val ' + (d.hull >= 70 ? 'green' : d.hull >= 40 ? 'gold' : 'red');
+      }
+    }
+
     var fuelBar = document.getElementById('fuel-bar');
     if (fuelBar && d.fuelPct != null) fuelBar.style.width = d.fuelPct + '%';
     set('station-name',    d.dockedStation     || '\u2014');
@@ -376,9 +388,18 @@ if (window.electronAPI) {
       }
     }
 
-    // Profile page: current system + jump range come from live data, not profile snapshot
+    // Profile page: live data provides always-current values for fields that
+    // change during play (system, jump range, ship, credits) — these must
+    // reflect the actual current state, not just the profile snapshot from boot.
     if (d.currentSystem) set('prof-system', d.currentSystem);
     if (d.maxJumpRange)  set('prof-jump',   d.maxJumpRange);
+    // Ship identity on profile page — kept in sync with live Loadout events
+    if (d.ship || d.shipName) {
+      set('prof-ship-type',  d.ship      || '\u2014');
+      set('prof-ship-name',  d.shipName  || '\u2014');
+    }
+    if (d.shipIdent)     set('prof-ship-ident', d.shipIdent);
+    if (d.credits != null) set('prof-credits', Number(d.credits).toLocaleString() + ' cr');
     var discoBadge = document.getElementById('prof-discovery-badge');
     if (discoBadge) discoBadge.style.display = d.lastJumpWasFirstDiscovery ? 'inline' : 'none';
 
@@ -398,13 +419,29 @@ if (window.electronAPI) {
     // Top bar (name visible on all pages)
     if (id.name) set('tb-cmdr', 'CMDR ' + id.name);
 
-    // Identity card
-    set('prof-name',       id.name      ? 'CMDR ' + id.name : '\u2014');
-    set('prof-ship-type',  id.ship      || '\u2014');
-    set('prof-ship-name',  id.shipName  || '\u2014');
-    set('prof-ship-ident', id.shipIdent || '\u2014');
-    set('prof-credits',    id.credits != null ? Number(id.credits).toLocaleString() + ' cr' : '\u2014');
-    set('prof-mode',       id.gameMode  || '\u2014');
+    // Identity card — set name and game mode from the profile snapshot.
+    // Ship, credits, and system are kept live via onLiveData so they stay
+    // accurate after ship switches, purchases, or jumps mid-session.
+    // We only write these here if live data hasn't populated them yet
+    // (i.e. the element still shows the default dash).
+    set('prof-name', id.name ? 'CMDR ' + id.name : '\u2014');
+    set('prof-mode', id.gameMode || '\u2014');
+
+    var shipTypeEl = document.getElementById('prof-ship-type');
+    if (shipTypeEl && (shipTypeEl.textContent === '\u2014' || shipTypeEl.textContent === '—'))
+      shipTypeEl.textContent = id.ship || '\u2014';
+
+    var shipNameEl = document.getElementById('prof-ship-name');
+    if (shipNameEl && (shipNameEl.textContent === '\u2014' || shipNameEl.textContent === '—'))
+      shipNameEl.textContent = id.shipName || '\u2014';
+
+    var shipIdentEl = document.getElementById('prof-ship-ident');
+    if (shipIdentEl && (shipIdentEl.textContent === '\u2014' || shipIdentEl.textContent === '—'))
+      shipIdentEl.textContent = id.shipIdent || '\u2014';
+
+    var creditsEl = document.getElementById('prof-credits');
+    if (creditsEl && (creditsEl.textContent === '\u2014' || creditsEl.textContent === '—'))
+      creditsEl.textContent = id.credits != null ? Number(id.credits).toLocaleString() + ' cr' : '\u2014';
 
     // Ranks grid
     var ranksGrid = document.getElementById('prof-ranks-grid');
@@ -528,13 +565,22 @@ if (window.electronAPI) {
     log('Profile data loaded: ' + (id.name || '?'), 'good');
   });
 
-  // ── REAL-TIME LOCATION (watcher fires on every FSDJump while game is live) ──
+  // ── REAL-TIME LOCATION (watcher fires on FSDJump AND Location events) ───────
+  // Location events fire for many in-system activities: entering FSS mode,
+  // supercruise exit, approaching a body, etc. We must only clear body state
+  // when the system actually changes - not every time Location fires.
   window.electronAPI.onLocation(function(data) {
-    if (data.system) {
-      set('sys-name', data.system);
-      set('tb-sys',   data.system);
+    if (!data.system) return;
+
+    var isNewSystem = data.system !== _currentSystem;
+
+    set('sys-name', data.system);
+    set('tb-sys',   data.system);
+
+    if (isNewSystem) {
       log('Jump: ' + data.system, 'info');
-      // Clear body state for new system
+
+      // Clear body state - entering a new system
       _currentSystem  = data.system;
       _journalBodies  = {};
       _journalSignals = {};
@@ -542,13 +588,14 @@ if (window.electronAPI) {
       _scanEntries    = {};
       renderBodies(data.system);
       renderScans();
+
       // Clear EDSM fields until new system data arrives
       set('sys-security',   '\u2014');
       set('sys-allegiance', '\u2014');
       set('sys-economy',    '\u2014');
       set('sys-population', '\u2014');
-      // Activate EDSM link immediately with a fallback URL built from system name.
-      // This makes the link functional even if EDSM lookup is disabled or fails.
+
+      // Activate EDSM link immediately with a fallback URL
       var link = document.getElementById('edsm-link');
       if (link) {
         var fallbackUrl = 'https://www.edsm.net/en/system/id/-/name/' + encodeURIComponent(data.system);
@@ -564,17 +611,28 @@ if (window.electronAPI) {
       var dot = document.getElementById('edsm-dot');
       if (dot) { dot.style.background = 'var(--text-mute)'; dot.title = 'EDSM: fetching\u2026'; }
     }
+    // Same-system Location events (FSS entry, supercruise exit, approach body, etc.)
+    // are intentionally ignored here - body state is preserved.
   });
 
-  // ── JOURNAL SCAN DATA → live bodies panel ─────────────────────────────────
+  // ── JOURNAL SCAN DATA → live bodies panel ───────────────────────────────────────────
   if (window.electronAPI.onBodiesData) {
     window.electronAPI.onBodiesData(function(data) {
       if (!data || !data.bodies) return;
-      _currentSystem = data.system || _currentSystem;
-      _journalBodies = {};
-      (data.bodies || []).forEach(function(b) { _journalBodies[b.name] = b; });
+
+      var incomingSystem = data.system || _currentSystem;
+
+      // If the system changed, flush stale EDSM bodies and scan entries
+      if (incomingSystem && incomingSystem !== _currentSystem) {
+        _edsmBodies  = [];
+        _scanEntries = {};
+      }
+
+      _currentSystem  = incomingSystem;
+      _journalBodies  = {};
       _journalSignals = data.signals || {};
       (data.bodies || []).forEach(function(b) {
+        _journalBodies[b.name] = b;
         if (b.estimatedValue || b.mappedValue) {
           _scanEntries[b.name] = {
             body:   b.name,
@@ -590,14 +648,27 @@ if (window.electronAPI) {
   }
 
   // ── EDSM BODIES → merge into bodies panel ─────────────────────────────────
-  window.electronAPI.onEdsmBodies(function(data) {
-    if (!data || !data.bodies) return;
-    _edsmBodies = data.bodies || [];
-    renderBodies(data.system || _currentSystem);
-    log('EDSM: ' + _edsmBodies.length + ' bodies for ' + (data.system || '?'), 'info');
-  });
+  if (window.electronAPI.onEdsmBodies) {
+    window.electronAPI.onEdsmBodies(function(data) {
+      if (!data || !data.bodies) return;
 
-  // ── EDSM: system info ─────────────────────────────────────────────────────
+      // Discard only genuinely stale data: we know the player is in a different
+      // system AND _currentSystem is already confirmed. On boot or right after a
+      // jump _currentSystem may not be set yet — in that case always accept.
+      if (data.system && _currentSystem && data.system !== _currentSystem) {
+        log('EDSM: discarding stale bodies for ' + data.system + ' (now in ' + _currentSystem + ')', 'warn');
+        return;
+      }
+
+      // If _currentSystem wasn't known yet, set it now from the EDSM response.
+      if (data.system && !_currentSystem) _currentSystem = data.system;
+
+      _edsmBodies = data.bodies || [];
+      renderBodies(data.system || _currentSystem);
+      log('EDSM: ' + _edsmBodies.length + ' bodies for ' + (data.system || _currentSystem || '?'), 'info');
+    });
+  }
+
   window.electronAPI.onEdsmSystem(function(d) {
     // Security colour coding
     var secColor = 'var(--text-dim)';
@@ -945,7 +1016,7 @@ document.querySelectorAll('.opt-theme-swatch').forEach(function(el) {
 applyTheme(localStorage.getItem('ee-theme') || 'default');
 
 // ─── DISPLAY SLIDERS ──────────────────────────────────────────────
-var SLIDER_DEFAULTS = { scale:100, font:12, density:3, left:220, right:320, bottom:120, bright:100, opacity:100, scan:1, glow:100, border:2 };
+var SLIDER_DEFAULTS = { scale:100, font:24, density:3, left:250, right:320, bottom:120, log:130, bright:100, opacity:100, scan:1, glow:100, border:2 };
 var DENSITY_LABELS  = ['Compact','Tight','Normal','Relaxed','Spacious'];
 var SCAN_LABELS     = ['Off','Low','Medium','High','Intense','Max'];
 var BORDER_LABELS   = ['None','Faint','Medium','Bold','Heavy'];
@@ -987,7 +1058,8 @@ function applyDisplay(key, v) {
       break;
     case 'left':   root.style.setProperty('--left-w',   v + 'px'); break;
     case 'right':  root.style.setProperty('--right-w',  v + 'px'); break;
-    case 'bottom': root.style.setProperty('--bottom-h', Math.max(105, v) + 'px'); break;
+    case 'bottom': root.style.setProperty('--bottom-h', v + 'px'); break;
+    case 'log':    root.style.setProperty('--log-h',    v + 'px'); break;
     case 'bright':
       if (wrap) wrap.style.filter = 'brightness(' + (v/100) + ') saturate(' + (0.8 + (v/100)*0.4) + ')';
       break;
@@ -1047,7 +1119,8 @@ function updateSliderUI(key, v) {
     case 'density': valEl.textContent = DENSITY_LABELS[v-1] || v; break;
     case 'left':
     case 'right':
-    case 'bottom':  valEl.textContent = v + 'px'; break;
+    case 'bottom':
+    case 'log':    valEl.textContent = v + 'px'; break;
     case 'bright':
     case 'opacity':
     case 'glow':    valEl.textContent = v + '%'; break;
@@ -1128,3 +1201,13 @@ log('Elite Explorer initialised', 'good');
 log('Journal watcher active', 'info');
 log('API connected on :3721', 'info');
 setInterval(refreshStats, 30000);
+
+// ── Profile refresh poll (every 2 minutes) ─────────────────────────
+// Keeps profile.html accurate without requiring a manual rescan.
+// The main process re-reads journals and pushes fresh profile-data,
+// which onProfileData above applies immediately.
+if (window.electronAPI && window.electronAPI.triggerProfileRefresh) {
+  setInterval(function() {
+    window.electronAPI.triggerProfileRefresh();
+  }, 2 * 60 * 1000);
+}

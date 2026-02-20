@@ -92,8 +92,10 @@ async function run() {
           });
         }
 
-        // ── Raw event forwarding for EDDN (live watcher only) ─────────
-        if (doLive && (ev === 'FSDJump' || ev === 'Docked')) {
+        // ── Raw event forwarding for EDDN relay (live watcher only) ──
+        // Location and CarrierJump are needed so eddnRelay can track
+        // StarPos from the moment the session starts (not just on jumps).
+        if (doLive && (ev === 'FSDJump' || ev === 'Docked' || ev === 'Location' || ev === 'CarrierJump')) {
           parentPort.postMessage({ type: 'raw', event: ev, entry });
         }
 
@@ -103,6 +105,21 @@ async function run() {
             if (!liveData) liveData = {};
             liveData.currentSystem = entry.StarSystem;
             liveData.pos = entry.StarPos ? entry.StarPos.map(n => n.toFixed(2)).join(', ') : null;
+            // Track current system for bodies so scans logged before this point
+            // (e.g. from a previous session in the same file) are attributed correctly.
+            // Only update liveBodySystem — do NOT clear liveBodies here; scans
+            // already accumulated in this file's pass belong to this system.
+            if (!liveBodySystem) {
+              liveBodySystem = entry.StarSystem;
+              // Emit whatever bodies have been collected so far in this file
+              // so the panel populates on app boot when the game is already running.
+              parentPort.postMessage({
+                type: 'bodies-data',
+                system:  liveBodySystem,
+                bodies:  Object.values(liveBodies),
+                signals: liveSignals,
+              });
+            }
           }
 
           if (ev === 'FSDJump') {
@@ -167,6 +184,24 @@ async function run() {
             });
           }
 
+          // ── FSSDiscoveryScan (Discovery Scanner fired) ───────────────────────
+          // Flush current bodies immediately and signal edsmClient to re-fetch,
+          // so the System Bodies panel gets the freshest data right away.
+          if (ev === 'FSSDiscoveryScan') {
+            liveBodySystem = entry.SystemName || liveBodySystem;
+            parentPort.postMessage({
+              type:    'bodies-data',
+              system:  liveBodySystem,
+              bodies:  Object.values(liveBodies),
+              signals: liveSignals,
+            });
+            parentPort.postMessage({
+              type:  'event',
+              event: 'journal.fss-scan',
+              data:  { system: entry.SystemName || liveBodySystem, timestamp: entry.timestamp },
+            });
+          }
+
           // ── SAASignalsFound → biological / geological signals per body ─────
           if (ev === 'SAASignalsFound') {
             const bodyName = entry.BodyName || '';
@@ -220,6 +255,27 @@ async function run() {
                 : entry.FuelCapacity;
             }
             liveData.rebuy = entry.Rebuy ?? null;
+            // Hull resets to 100% on a fresh Loadout (subsequent HullHealth events update it)
+            liveData.hull = 100;
+            // Emit immediately so ship switches (SRV, fighter, stored ship) update the UI in real time.
+            // partial:true tells journalProvider NOT to cache this — only the final complete
+            // emit at end-of-file should be cached, so replayToPage always sends full data.
+            parentPort.postMessage({ type: 'live-data', partial: true, data: { ...liveData } });
+          }
+
+          // Hull health — fires after combat damage, repairs, and on resurrection
+          if (ev === 'HullHealth') {
+            if (!liveData) liveData = {};
+            // Health field is 0.0–1.0; display as integer percentage
+            if (entry.Health != null) liveData.hull = Math.round(entry.Health * 100);
+            parentPort.postMessage({ type: 'live-data', partial: true, data: { ...liveData } });
+          }
+
+          // Resurrect — player rebought their ship; hull is restored to 100%
+          if (ev === 'Resurrect') {
+            if (!liveData) liveData = {};
+            liveData.hull = 100;
+            parentPort.postMessage({ type: 'live-data', partial: true, data: { ...liveData } });
           }
 
           if (ev === 'LoadGame') {
@@ -254,9 +310,6 @@ async function run() {
             liveData.dockedFaction     = null;
           }
 
-          if (ev === 'ShipTargeted' && entry.ScanStage === 3) {
-            // hull health updates from targeting (not critical for live, skip)
-          }
         }
 
         // ── PROFILE DATA ──────────────────────────────────────────────

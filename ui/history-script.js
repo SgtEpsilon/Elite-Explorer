@@ -80,6 +80,11 @@ function renderHistory(jumps) {
       ? '<span class="disco-star" title="First Discovery \u2014 game servers confirmed you found this!">&#9733;</span>'
       : '';
 
+    // ImportStars.txt badge — cyan star after the system name
+    var importBadge = j.isImportedStar
+      ? '<span class="import-star-badge" title="First discovery imported from EDSM ImportStars.txt">&#9733;</span>'
+      : '';
+
     // EDSM undiscovered cell — starts empty, filled in after EDSM check
     // We look up cached results immediately in case the user navigated back
     var edsmCell = '';
@@ -95,7 +100,7 @@ function renderHistory(jumps) {
 
     tr.innerHTML =
       '<td class="hist-col-disco">'  + disco + '</td>' +
-      '<td class="hist-col-sys">'    + (j.system || '\u2014') + '</td>' +
+      '<td class="hist-col-sys">'    + (j.system || '\u2014') + importBadge + '</td>' +
       '<td class="hist-col-ts">'     + ts + '</td>' +
       '<td class="hist-col-dist">'   + dist + '</td>' +
       '<td class="hist-col-star">'   + (j.starClass || '\u2014') + '</td>' +
@@ -580,7 +585,58 @@ if (edsmSyncBtn) edsmSyncBtn.addEventListener('click', async function() {
   }
 });
 
-// ─── THEMES ───────────────────────────────────────────────────────────────────
+// --- IMPORTSTARS.TXT IMPORT ---
+// ImportStars.txt = EDSM export of systems the commander first discovered.
+// We mark every system in the file as wasDiscovered:false (first disco) and
+// add isImportedStar:true so a distinct cyan ★ badge appears beside the name.
+var importStarsBtn = document.getElementById('opt-import-stars-btn');
+if (importStarsBtn) importStarsBtn.addEventListener('click', async function() {
+  if (!window.electronAPI || !window.electronAPI.importStarsFile) return;
+  var hint = document.getElementById('opt-import-stars-hint');
+  importStarsBtn.disabled = true;
+  if (hint) { hint.textContent = 'Choose your ImportStars.txt\u2026'; hint.style.color = ''; }
+
+  try {
+    // Pass full jump objects so main.js can back-fill existing entries in place
+    var result = await window.electronAPI.importStarsFile(_allJumps || []);
+
+    if (result.canceled) {
+      if (hint) { hint.textContent = 'Import cancelled'; hint.style.color = 'var(--text-mute)'; }
+      setTimeout(function() {
+        if (hint) { hint.textContent = 'Import your EDSM first-discovery list'; hint.style.color = ''; }
+      }, 3000);
+      return;
+    }
+
+    if (result.success) {
+      _allJumps = result.merged;
+      applyFilters();
+
+      var parts = [];
+      if (result.newStubs   > 0) parts.push(result.newStubs   + ' new entr' + (result.newStubs   !== 1 ? 'ies' : 'y') + ' added');
+      if (result.backFilled > 0) parts.push(result.backFilled + ' existing updated');
+      var msg = (parts.length ? parts.join(', ') : 'No new entries') +
+                ' \u2014 ' + result.imported + ' first discoveries in file';
+      if (hint) { hint.textContent = msg; hint.style.color = 'var(--green)'; }
+      showScanStatus(
+        _allJumps.length.toLocaleString() + ' jumps (incl. ImportStars)',
+        'var(--cyan)'
+      );
+      setTimeout(function() {
+        if (hint) { hint.textContent = 'Import your EDSM first-discovery list'; hint.style.color = ''; }
+      }, 6000);
+    } else {
+      if (hint) { hint.textContent = 'Error: ' + (result.error || 'Unknown'); hint.style.color = 'var(--red, #e05252)'; }
+      setTimeout(function() {
+        if (hint) { hint.textContent = 'Import your EDSM first-discovery list'; hint.style.color = ''; }
+      }, 6000);
+    }
+  } catch (err) {
+    if (hint) hint.textContent = 'Import failed: ' + (err.message || err);
+  } finally {
+    importStarsBtn.disabled = false;
+  }
+});
 var THEMES = {
   default: { '--gold':'#c8972a','--gold2':'#e8b840','--gold-dim':'#7a5a10','--gold-glow':'rgba(200,151,42,0.15)','--cyan':'#2ecfcf','--cyan2':'#5ee8e8','--cyan-dim':'rgba(46,207,207,0.1)' },
   red:     { '--gold':'#e05252','--gold2':'#f07070','--gold-dim':'#a03030','--gold-glow':'rgba(224,82,82,0.15)' ,'--cyan':'#cf7a3e','--cyan2':'#e89060','--cyan-dim':'rgba(207,122,62,0.1)' },
