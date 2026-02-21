@@ -1,6 +1,6 @@
 'use strict';
 
-const { app, BrowserWindow, ipcMain, shell, dialog, protocol } = require('electron');
+const { app, BrowserWindow, ipcMain, shell, dialog, protocol, Menu } = require('electron');
 const path   = require('path');
 const fs     = require('fs');
 
@@ -26,6 +26,50 @@ function writeConfig(patch) {
   Object.assign(cfg, patch);
   fs.writeFileSync(CONFIG_PATH, JSON.stringify(cfg, null, 2));
   return cfg;
+}
+
+// ── Application Menu ──────────────────────────────────────────────────────────
+function buildMenu() {
+  const cfg     = readConfig();
+  const isBeta  = cfg.updateChannel === 'beta';
+
+  const template = [
+    {
+      label: 'File',
+      submenu: [
+        {
+          label: 'Preferences…',
+          accelerator: 'CmdOrCtrl+,',
+          click() {
+            if (mainWindow) mainWindow.webContents.send('open-preferences');
+          },
+        },
+        { type: 'separator' },
+        {
+          label: 'Quit Elite Explorer',
+          accelerator: process.platform === 'darwin' ? 'Cmd+Q' : 'Alt+F4',
+          click() { app.quit(); },
+        },
+      ],
+    },
+    {
+      label: 'Edit',
+      submenu: [
+        { role: 'undo' }, { role: 'redo' }, { type: 'separator' },
+        { role: 'cut' }, { role: 'copy' }, { role: 'paste' }, { role: 'selectAll' },
+      ],
+    },
+    {
+      label: 'View',
+      submenu: [
+        { role: 'reload' }, { role: 'forceReload' }, { type: 'separator' },
+        { role: 'toggleDevTools' }, { type: 'separator' },
+        { role: 'resetZoom' }, { role: 'zoomIn' }, { role: 'zoomOut' },
+      ],
+    },
+  ];
+
+  Menu.setApplicationMenu(Menu.buildFromTemplate(template));
 }
 
 // ── Window ────────────────────────────────────────────────────────────────────
@@ -75,6 +119,7 @@ function createWindow() {
 app.whenReady().then(async () => {
   app.setAsDefaultProtocolClient('eliteexplorer');
 
+  buildMenu();
   createWindow();
 
   engine.start();      // DB + eventBus listeners

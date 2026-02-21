@@ -121,11 +121,23 @@ function buildMergedBodies(system) {
   });
 
   return Object.values(merged).sort(function(a, b) {
-    // Stars first, then by distance
+    // Helper: is this entry the arrival/main star (distance ≈ 0 or missing)?
+    function isMainStar(entry) {
+      var jb = entry.journal, eb = entry.edsm;
+      var isStar = (jb && jb.type === 'Star') || (eb && eb.type === 'Star');
+      if (!isStar) return false;
+      var dist = (jb && jb.distanceFromArrival) || (eb && eb.distanceToArrival);
+      return !dist || dist < 0.001;
+    }
+    var aMain = isMainStar(a), bMain = isMainStar(b);
+    if (aMain && !bMain) return -1;
+    if (!aMain && bMain) return 1;
+    // Stars before non-stars
     var aIsstar = (a.journal && a.journal.type === 'Star') || (a.edsm && a.edsm.type === 'Star');
     var bIsStar = (b.journal && b.journal.type === 'Star') || (b.edsm && b.edsm.type === 'Star');
     if (aIsstar && !bIsStar) return -1;
     if (!aIsstar && bIsStar)  return 1;
+    // Within same tier, sort by distance
     var aDist = (a.journal && a.journal.distanceFromArrival) || (a.edsm && a.edsm.distanceToArrival) || 999999;
     var bDist = (b.journal && b.journal.distanceFromArrival) || (b.edsm && b.edsm.distanceToArrival) || 999999;
     return aDist - bDist;
@@ -266,7 +278,7 @@ function renderBodies(system) {
         '<td class="' + (isMain ? '' : 'body-indent') + '">' +
           '<div class="body-name-cell">' +
             (!isMain ? '<span class="moon-indicator"></span>' : '') +
-            '<span style="font-size:' + (isMain ? '10' : '9') + 'px;color:' + (isMain ? 'var(--text)' : 'var(--text-dim)') + '">' + shortName + '</span>' +
+            '<span style="font-size:' + (isMain ? '1em' : '0.9em') + ';font-weight:' + (isMain ? '600' : '400') + ';color:' + (isMain ? 'var(--text)' : 'var(--text-dim)') + '">' + shortName + '</span>' +
           '</div>' +
         '</td>' +
         '<td class="body-class">' + displayClass + '</td>' +
@@ -1016,7 +1028,7 @@ document.querySelectorAll('.opt-theme-swatch').forEach(function(el) {
 applyTheme(localStorage.getItem('ee-theme') || 'default');
 
 // ─── DISPLAY SLIDERS ──────────────────────────────────────────────
-var SLIDER_DEFAULTS = { scale:100, font:24, density:3, left:250, right:320, bottom:120, log:130, bright:100, opacity:100, scan:1, glow:100, border:2 };
+var SLIDER_DEFAULTS = { scale:100, font:18, density:3, left:250, right:320, bright:100, opacity:100, scan:1, glow:100, border:2 };
 var DENSITY_LABELS  = ['Compact','Tight','Normal','Relaxed','Spacious'];
 var SCAN_LABELS     = ['Off','Low','Medium','High','Intense','Max'];
 var BORDER_LABELS   = ['None','Faint','Medium','Bold','Heavy'];
@@ -1042,9 +1054,7 @@ function applyDisplay(key, v) {
       }
       break;
     case 'font':
-      document.body.style.fontSize = v + 'px';
-      var tb = document.getElementById('topbar');
-      if (tb) tb.style.fontSize = v + 'px';
+      document.documentElement.style.fontSize = v + 'px';
       break;
     case 'density':
       var pad = [2,3,4,6,8][v-1] + 'px';
@@ -1058,8 +1068,6 @@ function applyDisplay(key, v) {
       break;
     case 'left':   root.style.setProperty('--left-w',   v + 'px'); break;
     case 'right':  root.style.setProperty('--right-w',  v + 'px'); break;
-    case 'bottom': root.style.setProperty('--bottom-h', v + 'px'); break;
-    case 'log':    root.style.setProperty('--log-h',    v + 'px'); break;
     case 'bright':
       if (wrap) wrap.style.filter = 'brightness(' + (v/100) + ') saturate(' + (0.8 + (v/100)*0.4) + ')';
       break;

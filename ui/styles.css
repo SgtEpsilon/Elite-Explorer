@@ -26,7 +26,7 @@
   --body:       'Exo 2', sans-serif;
 }
 * { box-sizing: border-box; margin: 0; padding: 0; }
-html, body { width: 100%; height: 100vh; background: var(--bg); color: var(--text); font-family: var(--body); font-size:1em; overflow: hidden; }
+html, body { width: 100%; height: 100vh; background: var(--bg); color: var(--text); font-family: var(--body); font-size:18px; overflow: hidden; }
 body::after { content: ''; position: fixed; inset: 0; background: repeating-linear-gradient(0deg, transparent, transparent 2px, rgba(0,0,0,0.04) 2px, rgba(0,0,0,0.04) 4px); pointer-events: none; z-index: 9999; }
 
 /* ─── TOPBAR ─────────────────────────────────────────────────────── */
@@ -58,13 +58,13 @@ body::after { content: ''; position: fixed; inset: 0; background: repeating-line
 
 /* ── Left column: commander scrolls, summary locked to bottom ── */
 #panel-commander { flex: 1; min-height: 0; overflow: hidden; }
-#panel-summary   { flex-shrink: 0; height: var(--bottom-h, 120px); overflow: hidden; border-top: 1px solid var(--border); }
+#panel-summary   { flex-shrink: 0; height: 120px; overflow: hidden; border-top: 1px solid var(--border); }
 
 /* ── Middle column: system scrolls, progress auto-height at bottom, spacer aligns log ── */
 #panel-system   { flex: 1; min-height: 0; }
-.col-log-spacer { flex-shrink: 0; height: var(--log-h, 130px); background: var(--panel); border-top: 1px solid var(--border); }
+.col-log-spacer { flex-shrink: 0; height: 130px; background: var(--panel); border-top: 1px solid var(--border); }
 #panel-scan { flex: 1; min-height: 0; overflow: hidden; }
-#panel-log  { flex-shrink: 0; height: var(--log-h, 130px); border-top: 1px solid var(--border); }
+#panel-log  { flex-shrink: 0; height: 130px; border-top: 1px solid var(--border); }
 
 /* ─── PANELS ─────────────────────────────────────────────────────── */
 .panel { background: var(--panel); display: flex; flex-direction: column; overflow: hidden; }
@@ -135,7 +135,7 @@ body::after { content: ''; position: fixed; inset: 0; background: repeating-line
 .scan-val { color: var(--gold); text-align: right; }
 
 /* ─── BOTTOM PANELS ──────────────────────────────────────────────── */
-#panel-progress { background: var(--panel); display: flex; flex-direction: column; flex-shrink: 0; border-top: 1px solid var(--border); }
+#panel-progress { background: var(--panel); display: flex; flex-direction: column; flex-shrink: 0; height: 40px; border-top: 1px solid var(--border); }
 .progress-track { height: 2px; background: var(--border); flex-shrink: 0; }
 .progress-fill { height: 100%; background: linear-gradient(to right, var(--cyan-dim), var(--cyan)); width: 0%; transition: width 0.3s ease; }
 

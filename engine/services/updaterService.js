@@ -5,12 +5,16 @@
  * -----------------
  * Wraps electron-updater and bridges update events to the renderer via IPC.
  *
+ * Update channels:
+ *   'stable'  — tracks the 'main' branch / stable GitHub releases only
+ *   'beta'    — tracks the 'development' branch / pre-release builds too
+ *
  * Events pushed to renderer (channel: 'update-status'):
  *   { status: 'checking' }
- *   { status: 'available',     version, releaseNotes }
+ *   { status: 'available',     version, releaseNotes, channel }
  *   { status: 'not-available', version }
  *   { status: 'downloading',   percent, bytesPerSecond, transferred, total }
- *   { status: 'downloaded',    version, releaseNotes, installOnQuit }
+ *   { status: 'downloaded',    version, releaseNotes, installOnQuit, channel }
  *   { status: 'error',         message }
  *
  * IPC handlers exposed to renderer:
@@ -19,6 +23,8 @@
  *   'updater-download-on-quit'   — download silently, install on next quit
  *   'updater-skip-version'       — persist skipped version, suppress future toasts
  *   'updater-install-restart'    — quit and install an already-downloaded update
+ *   'updater-get-channel'        — returns current channel ('stable' | 'beta')
+ *   'updater-set-channel'        — sets channel, saves to config, re-checks
  */
 
 const { autoUpdater } = require('electron-updater');
@@ -26,10 +32,45 @@ const { ipcMain, app } = require('electron');
 const path             = require('path');
 const fs               = require('fs');
 
+// ── Config helpers (inline to avoid circular dep with main.js) ────────────────
+const CONFIG_PATH = path.join(path.dirname(app.getPath('exe')), '..', '..', 'config.json');
+
+// Resolve config path robustly: packaged app puts config next to resources,
+// dev mode has it in the project root (same dir as package.json).
+function getConfigPath() {
+  // In dev mode __dirname is .../Elite-Explorer/engine/services
+  const devPath = path.join(__dirname, '..', '..', 'config.json');
+  if (fs.existsSync(devPath)) return devPath;
+  // Packaged: resources/app/engine/services → resources/../config.json
+  return path.join(__dirname, '..', '..', '..', 'config.json');
+}
+
+function readConfig() {
+  try { return JSON.parse(fs.readFileSync(getConfigPath(), 'utf8')); } catch { return {}; }
+}
+function patchConfig(patch) {
+  const cfg = readConfig();
+  Object.assign(cfg, patch);
+  try { fs.writeFileSync(getConfigPath(), JSON.stringify(cfg, null, 2)); } catch { /* ignore */ }
+}
+
+// ── Channel helpers ───────────────────────────────────────────────────────────
+// 'stable' = main branch releases only (allowPrerelease: false)
+// 'beta'   = development branch pre-releases too (allowPrerelease: true)
+function getChannel() {
+  return readConfig().updateChannel === 'beta' ? 'beta' : 'stable';
+}
+
+function applyChannel(channel) {
+  const isBeta = channel === 'beta';
+  autoUpdater.allowPrerelease = isBeta;
+  autoUpdater.channel         = isBeta ? 'beta' : 'latest';
+}
+
 // ── Configuration ─────────────────────────────────────────────────────────────
 autoUpdater.autoDownload         = false; // we control all downloads manually
 autoUpdater.autoInstallOnAppQuit = false; // we set this per-choice
-autoUpdater.allowPrerelease      = false;
+applyChannel(getChannel());               // honour saved preference on startup
 
 // ── Skipped-version persistence ───────────────────────────────────────────────
 // Stored in userData so it survives app updates/reinstalls correctly.
@@ -75,6 +116,7 @@ autoUpdater.on('update-available', (info) => {
     status:       'available',
     version:      info.version,
     releaseNotes: info.releaseNotes || '',
+    channel:      getChannel(),
   });
 });
 
@@ -104,6 +146,7 @@ autoUpdater.on('update-downloaded', (info) => {
     version:       info.version,
     releaseNotes:  info.releaseNotes || '',
     installOnQuit,
+    channel:       getChannel(),
   });
 });
 
@@ -146,6 +189,20 @@ ipcMain.handle('updater-skip-version', (_e, version) => {
 // Restart and install (called from renderer after "downloaded" with installOnQuit=false)
 ipcMain.handle('updater-install-restart', () => {
   autoUpdater.quitAndInstall(false, true);
+});
+
+// Get current update channel
+ipcMain.handle('updater-get-channel', () => getChannel());
+
+// Set update channel — saves to config, re-applies to autoUpdater, then re-checks
+ipcMain.handle('updater-set-channel', async (_e, channel) => {
+  const validated = channel === 'beta' ? 'beta' : 'stable';
+  patchConfig({ updateChannel: validated });
+  applyChannel(validated);
+  console.log(`[updater] channel switched to "${validated}"`);
+  // Trigger a fresh check so the user gets immediate feedback
+  try { await autoUpdater.checkForUpdates(); } catch { /* ignore */ }
+  return validated;
 });
 
 // ── Public API ────────────────────────────────────────────────────────────────

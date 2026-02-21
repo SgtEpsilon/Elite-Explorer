@@ -252,8 +252,6 @@
         <div class="sl-group-title">Panel Layout</div>
         <div class="sl-row"><div class="sl-header"><span class="sl-label">Left Panel Width</span><span class="sl-val" id="sv-left">250px</span></div><input type="range" class="sl-input" id="sl-left" min="1" max="360" step="5" value="250"></div>
         <div class="sl-row"><div class="sl-header"><span class="sl-label">Right Panel Width</span><span class="sl-val" id="sv-right">320px</span></div><input type="range" class="sl-input" id="sl-right" min="1" max="500" step="5" value="320"></div>
-        <div class="sl-row"><div class="sl-header"><span class="sl-label">Bottom Bar Height</span><span class="sl-val" id="sv-bottom">120px</span></div><input type="range" class="sl-input" id="sl-bottom" min="1" max="240" step="5" value="120"></div>
-        <div class="sl-row"><div class="sl-header"><span class="sl-label">Log Height</span><span class="sl-val" id="sv-log">130px</span></div><input type="range" class="sl-input" id="sl-log" min="1" max="400" step="5" value="130"></div>
       </div>
       <div class="sl-group">
         <div class="sl-group-title">Atmosphere</div>
@@ -281,93 +279,235 @@
 
 <script src="script.js"></script>
 
-<!-- ── Auto-updater toast ─────────────────────────────────────────────────── -->
-<div id="update-toast" style="
-  display:none;
-  position:fixed;
-  bottom:18px;
-  right:18px;
-  z-index:9999;
-  width:340px;
-  background:#0a1628;
-  border:1px solid #1e3a5f;
-  border-radius:10px;
-  padding:16px;
-  box-shadow:0 6px 32px rgba(0,0,0,0.7);
-  font-family:inherit;
-  color:#c8d8f0;
-  font-size:0.82em;
-  box-sizing:border-box;
+<!-- ══════════════════════════════════════════════════════════════════════════
+     UPDATE AVAILABLE MODAL
+     ══════════════════════════════════════════════════════════════════════════ -->
+<div id="update-overlay" style="
+  display:none;position:fixed;inset:0;z-index:9990;
+  background:rgba(0,0,0,0.65);backdrop-filter:blur(3px);
+  align-items:center;justify-content:center;
+"></div>
+
+<div id="update-modal" style="
+  display:none;position:fixed;z-index:9999;
+  top:50%;left:50%;transform:translate(-50%,-50%);
+  width:420px;max-width:calc(100vw - 32px);
+  background:linear-gradient(160deg,#0b1a30 0%,#091220 100%);
+  border:1px solid #1e3f6a;border-radius:14px;
+  padding:24px;box-shadow:0 20px 60px rgba(0,0,0,0.8),0 0 0 1px rgba(100,180,255,0.06);
+  font-family:inherit;color:#c8d8f0;font-size:0.88em;box-sizing:border-box;
 ">
-  <!-- Header row -->
-  <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px;">
-    <div style="display:flex;align-items:center;gap:8px;">
-      <span id="update-icon" style="font-size:1.2em;line-height:1;">🚀</span>
-      <span id="update-title" style="font-weight:700;color:#7eb8f7;font-size:1.05em;"></span>
+  <!-- Header -->
+  <div style="display:flex;align-items:flex-start;justify-content:space-between;margin-bottom:16px;">
+    <div style="display:flex;align-items:center;gap:10px;">
+      <div id="um-icon" style="font-size:2em;line-height:1;">🚀</div>
+      <div>
+        <div id="um-title" style="font-weight:700;color:#7eb8f7;font-size:1.15em;line-height:1.2;"></div>
+        <div id="um-channel-badge" style="
+          display:inline-block;margin-top:4px;padding:2px 8px;border-radius:20px;font-size:0.78em;font-weight:600;
+          background:#1a3a1a;color:#4caf82;border:1px solid #2a5a2a;
+        "></div>
+      </div>
     </div>
-    <button id="update-dismiss" style="
+    <button id="um-close" style="
       background:none;border:none;color:#3a5a7a;cursor:pointer;
-      font-size:1.1em;padding:0;line-height:1;
+      font-size:1.3em;padding:0 0 0 8px;line-height:1;flex-shrink:0;
     " title="Dismiss">✕</button>
   </div>
 
-  <!-- Body message -->
-  <div id="update-msg" style="color:#8fa8c8;line-height:1.5;margin-bottom:12px;"></div>
+  <!-- Body -->
+  <div id="um-body" style="color:#8fa8c8;line-height:1.6;margin-bottom:14px;"></div>
 
-  <!-- Release notes (collapsed, optional) -->
-  <div id="update-notes-wrap" style="display:none;margin-bottom:12px;">
-    <div style="
-      background:#061020;border:1px solid #1a3050;border-radius:6px;
-      padding:8px 10px;max-height:80px;overflow-y:auto;
-      color:#6a8aaa;font-size:0.88em;line-height:1.5;
-    " id="update-notes"></div>
+  <!-- Release notes -->
+  <div id="um-notes-wrap" style="display:none;margin-bottom:14px;">
+    <div style="font-size:0.82em;color:#4a6a8a;margin-bottom:5px;text-transform:uppercase;letter-spacing:.06em;">What's new</div>
+    <div id="um-notes" style="
+      background:#060f1e;border:1px solid #1a3050;border-radius:8px;
+      padding:10px 12px;max-height:100px;overflow-y:auto;
+      color:#6a8aaa;font-size:0.9em;line-height:1.55;
+    "></div>
   </div>
 
-  <!-- Progress bar -->
-  <div id="update-progress-wrap" style="display:none;margin-bottom:12px;">
+  <!-- Progress -->
+  <div id="um-progress-wrap" style="display:none;margin-bottom:14px;">
     <div style="background:#0d1f35;border-radius:4px;height:6px;overflow:hidden;">
-      <div id="update-progress-bar" style="
+      <div id="um-progress-bar" style="
         height:100%;width:0%;
         background:linear-gradient(90deg,#1a4a8f,#7eb8f7);
         transition:width 0.25s;
       "></div>
     </div>
-    <div id="update-progress-label" style="margin-top:5px;font-size:0.88em;color:#4a6a8a;"></div>
+    <div id="um-progress-lbl" style="margin-top:6px;font-size:0.85em;color:#4a6a8a;"></div>
   </div>
 
-  <!-- Action buttons -->
-  <div id="update-actions" style="display:flex;flex-direction:column;gap:7px;"></div>
+  <!-- Actions -->
+  <div id="um-actions" style="display:flex;flex-direction:column;gap:8px;"></div>
+</div>
+
+<!-- ══════════════════════════════════════════════════════════════════════════
+     PREFERENCES MODAL
+     ══════════════════════════════════════════════════════════════════════════ -->
+<div id="prefs-overlay" style="
+  display:none;position:fixed;inset:0;z-index:9980;
+  background:rgba(0,0,0,0.65);backdrop-filter:blur(3px);
+"></div>
+
+<div id="prefs-modal" style="
+  display:none;position:fixed;z-index:9989;
+  top:50%;left:50%;transform:translate(-50%,-50%);
+  width:440px;max-width:calc(100vw - 32px);
+  background:linear-gradient(160deg,#0b1a30 0%,#091220 100%);
+  border:1px solid #1e3f6a;border-radius:14px;
+  padding:24px;box-shadow:0 20px 60px rgba(0,0,0,0.8),0 0 0 1px rgba(100,180,255,0.06);
+  font-family:inherit;color:#c8d8f0;font-size:0.88em;box-sizing:border-box;
+">
+  <!-- Header -->
+  <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:20px;">
+    <div style="display:flex;align-items:center;gap:10px;">
+      <span style="font-size:1.4em;">⚙️</span>
+      <span style="font-weight:700;color:#7eb8f7;font-size:1.1em;">Preferences</span>
+    </div>
+    <button id="prefs-close" style="
+      background:none;border:none;color:#3a5a7a;cursor:pointer;font-size:1.3em;padding:0;line-height:1;
+    " title="Close">✕</button>
+  </div>
+
+  <!-- Section: Updates -->
+  <div style="margin-bottom:20px;">
+    <div style="
+      font-size:0.78em;font-weight:600;text-transform:uppercase;letter-spacing:.08em;
+      color:#4a6a8a;margin-bottom:12px;padding-bottom:6px;border-bottom:1px solid #0e2040;
+    ">Software Updates</div>
+
+    <!-- Channel selector -->
+    <div style="margin-bottom:14px;">
+      <div style="font-weight:600;color:#a0c0e8;margin-bottom:4px;">Update Channel</div>
+      <div style="color:#5a7a9a;font-size:0.88em;margin-bottom:10px;line-height:1.5;">
+        Choose whether you want stable releases or early access to new features.
+      </div>
+
+      <div style="display:flex;flex-direction:column;gap:8px;">
+        <!-- Stable option -->
+        <label id="pref-ch-stable-label" style="
+          display:flex;align-items:flex-start;gap:12px;padding:10px 12px;
+          border-radius:8px;border:2px solid #1e3f6a;cursor:pointer;
+          background:#060f1e;transition:border-color .15s;
+        ">
+          <input type="radio" name="update-channel" value="stable" id="pref-ch-stable" style="margin-top:2px;accent-color:#7eb8f7;">
+          <div>
+            <div style="font-weight:600;color:#c8d8f0;display:flex;align-items:center;gap:6px;">
+              🛡️ Stable
+              <span style="
+                font-size:0.72em;padding:2px 7px;border-radius:20px;font-weight:600;
+                background:#1a2a1a;color:#4caf82;border:1px solid #2a4a2a;
+              ">Recommended</span>
+            </div>
+            <div style="font-size:0.85em;color:#5a7a9a;margin-top:2px;line-height:1.4;">
+              Tracks the <code style="color:#7eb8f7;background:#0a1830;padding:1px 4px;border-radius:3px;">main</code> branch. Tested, reliable builds only.
+            </div>
+          </div>
+        </label>
+
+        <!-- Alpha/Beta option -->
+        <label id="pref-ch-beta-label" style="
+          display:flex;align-items:flex-start;gap:12px;padding:10px 12px;
+          border-radius:8px;border:2px solid #1e3f6a;cursor:pointer;
+          background:#060f1e;transition:border-color .15s;
+        ">
+          <input type="radio" name="update-channel" value="beta" id="pref-ch-beta" style="margin-top:2px;accent-color:#f0a030;">
+          <div>
+            <div style="font-weight:600;color:#c8d8f0;display:flex;align-items:center;gap:6px;">
+              🧪 Alpha / Beta
+              <span style="
+                font-size:0.72em;padding:2px 7px;border-radius:20px;font-weight:600;
+                background:#2a1a0a;color:#f0a030;border:1px solid #4a3010;
+              ">Early Access</span>
+            </div>
+            <div style="font-size:0.85em;color:#5a7a9a;margin-top:2px;line-height:1.4;">
+              Tracks the <code style="color:#f0a030;background:#0a1830;padding:1px 4px;border-radius:3px;">development</code> branch. New features, may be unstable.
+            </div>
+          </div>
+        </label>
+      </div>
+    </div>
+
+    <!-- Status line -->
+    <div id="pref-channel-status" style="
+      font-size:0.82em;color:#4a6a8a;min-height:1.4em;margin-top:2px;
+    "></div>
+  </div>
+
+  <!-- Footer -->
+  <div style="display:flex;justify-content:flex-end;gap:8px;margin-top:4px;">
+    <button id="prefs-check-now" style="
+      padding:7px 16px;border-radius:6px;cursor:pointer;font-size:0.88em;font-weight:600;
+      background:#0d1f35;color:#7eb8f7;border:1px solid #1e3a5f;
+    ">Check for Updates</button>
+    <button id="prefs-done" style="
+      padding:7px 18px;border-radius:6px;cursor:pointer;font-size:0.88em;font-weight:600;
+      background:#1a4a8f;color:#d0e8ff;border:1px solid #2a6abf;
+    ">Done</button>
+  </div>
 </div>
 
 <script>
 (function () {
-  const toast    = document.getElementById('update-toast');
-  const icon     = document.getElementById('update-icon');
-  const title    = document.getElementById('update-title');
-  const msg      = document.getElementById('update-msg');
-  const notesWrap= document.getElementById('update-notes-wrap');
-  const notes    = document.getElementById('update-notes');
-  const actions  = document.getElementById('update-actions');
-  const progWrap = document.getElementById('update-progress-wrap');
-  const progBar  = document.getElementById('update-progress-bar');
-  const progLbl  = document.getElementById('update-progress-label');
-  const dismiss  = document.getElementById('update-dismiss');
-
-  dismiss.addEventListener('click', () => { toast.style.display = 'none'; });
+  // ════════════════════════════════════════════════════════════════════════════
+  // UPDATE MODAL
+  // ════════════════════════════════════════════════════════════════════════════
+  const overlay    = document.getElementById('update-overlay');
+  const modal      = document.getElementById('update-modal');
+  const umIcon     = document.getElementById('um-icon');
+  const umTitle    = document.getElementById('um-title');
+  const umBadge    = document.getElementById('um-channel-badge');
+  const umBody     = document.getElementById('um-body');
+  const umNotesW   = document.getElementById('um-notes-wrap');
+  const umNotes    = document.getElementById('um-notes');
+  const umProgW    = document.getElementById('um-progress-wrap');
+  const umProgBar  = document.getElementById('um-progress-bar');
+  const umProgLbl  = document.getElementById('um-progress-lbl');
+  const umActions  = document.getElementById('um-actions');
+  const umClose    = document.getElementById('um-close');
 
   let currentVersion = null;
 
-  // ── Button factory ──────────────────────────────────────────────────────────
+  function showChannelBadge(channel) {
+    if (channel === 'beta') {
+      umBadge.textContent = '🧪 Alpha / Beta channel';
+      umBadge.style.background = '#2a1a0a';
+      umBadge.style.color      = '#f0a030';
+      umBadge.style.border     = '1px solid #4a3010';
+    } else {
+      umBadge.textContent = '🛡️ Stable channel';
+      umBadge.style.background = '#1a3a1a';
+      umBadge.style.color      = '#4caf82';
+      umBadge.style.border     = '1px solid #2a5a2a';
+    }
+    umBadge.style.display = 'inline-block';
+  }
+
+  function openModal() {
+    overlay.style.display = 'flex';
+    modal.style.display   = 'block';
+  }
+  function closeModal() {
+    overlay.style.display = 'none';
+    modal.style.display   = 'none';
+  }
+
+  umClose.addEventListener('click', closeModal);
+  overlay.addEventListener('click', closeModal);
+
   function makeBtn(label, style, onClick) {
     const b = document.createElement('button');
     b.textContent = label;
     const styles = {
-      primary: `background:#1a4a8f;color:#d0e8ff;border:1px solid #2a6abf;`,
-      secondary: `background:#0d1f35;color:#7eb8f7;border:1px solid #1e3a5f;`,
-      ghost: `background:transparent;color:#4a6a8a;border:1px solid transparent;`,
+      primary:   'background:#1a4a8f;color:#d0e8ff;border:1px solid #2a6abf;',
+      secondary: 'background:#0d1f35;color:#7eb8f7;border:1px solid #1e3a5f;',
+      ghost:     'background:transparent;color:#4a6a8a;border:1px solid transparent;',
     };
     b.style.cssText = `
-      width:100%;padding:7px 10px;border-radius:6px;cursor:pointer;
+      width:100%;padding:8px 12px;border-radius:7px;cursor:pointer;
       font-size:0.9em;font-weight:600;text-align:left;
       ${styles[style] || styles.secondary}
     `;
@@ -375,107 +515,103 @@
     return b;
   }
 
-  // ── Show helpers ────────────────────────────────────────────────────────────
-  function show(iconChar, titleText, bodyText) {
-    icon.textContent  = iconChar;
-    title.textContent = titleText;
-    msg.textContent   = bodyText;
-    actions.innerHTML = '';
-    notesWrap.style.display  = 'none';
-    progWrap.style.display   = 'none';
-    toast.style.display      = 'block';
+  function showUpdate(iconChar, titleText, bodyText, channel) {
+    umIcon.textContent  = iconChar;
+    umTitle.textContent = titleText;
+    umBody.textContent  = bodyText;
+    umActions.innerHTML = '';
+    umNotesW.style.display  = 'none';
+    umProgW.style.display   = 'none';
+    showChannelBadge(channel || 'stable');
+    openModal();
   }
 
   function showReleaseNotes(html) {
     if (!html) return;
-    const text = html.replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ').trim();
+    if (Array.isArray(html)) {
+      html = html.map(r => (typeof r === 'object' ? (r.note || r.body || '') : r)).join('\n');
+    }
+    const decoder = document.createElement('textarea');
+    decoder.innerHTML = String(html);
+    let decoded = decoder.value;
+    decoded = decoded.replace(/<[^>]+>/g, ' ');
+    const text = decoded.replace(/\s+/g, ' ').trim();
     if (!text) return;
-    notes.textContent       = text;
-    notesWrap.style.display = 'block';
+    umNotes.textContent    = text;
+    umNotesW.style.display = 'block';
   }
 
   function lockButtons(message) {
-    actions.innerHTML = '';
+    umActions.innerHTML = '';
     const p = document.createElement('div');
     p.style.cssText = 'color:#4a6a8a;font-size:0.88em;padding:4px 0;';
     p.textContent   = message;
-    actions.appendChild(p);
+    umActions.appendChild(p);
   }
 
-  // ── Main event handler ──────────────────────────────────────────────────────
   if (window.electronAPI && window.electronAPI.onUpdateStatus) {
     window.electronAPI.onUpdateStatus((data) => {
-
       switch (data.status) {
 
-        // ── Update available: show all three choices ──────────────────────────
         case 'available': {
           currentVersion = data.version;
-          show('🚀', `Update v${data.version} available`,
-            'A new version of Elite Explorer is ready. How would you like to proceed?');
+          showUpdate('🚀', `Update v${data.version} Available`,
+            'A new version of Elite Explorer is ready. How would you like to proceed?',
+            data.channel);
           showReleaseNotes(data.releaseNotes);
 
-          actions.appendChild(makeBtn('⚡  Download and update now', 'primary', () => {
+          umActions.appendChild(makeBtn('⚡  Download and update now', 'primary', () => {
             lockButtons('Downloading…');
-            progWrap.style.display = 'block';
+            umProgW.style.display = 'block';
             window.electronAPI.downloadUpdateNow();
           }));
-
-          actions.appendChild(makeBtn('🕓  Download and update next launch', 'secondary', () => {
+          umActions.appendChild(makeBtn('🕓  Download and update next launch', 'secondary', () => {
             lockButtons('Will download in the background and install on next launch.');
-            progWrap.style.display = 'block';
+            umProgW.style.display = 'block';
             window.electronAPI.downloadUpdateOnQuit();
           }));
-
-          actions.appendChild(makeBtn('✕  Skip this version', 'ghost', () => {
+          umActions.appendChild(makeBtn('✕  Skip this version', 'ghost', () => {
             window.electronAPI.skipVersion(currentVersion);
-            toast.style.display = 'none';
+            closeModal();
           }));
           break;
         }
 
-        // ── Download progress ─────────────────────────────────────────────────
         case 'downloading': {
-          icon.textContent  = '⬇️';
-          title.textContent = 'Downloading…';
-          progWrap.style.display = 'block';
-          progBar.style.width    = data.percent + '%';
+          umIcon.textContent  = '⬇️';
+          umTitle.textContent = 'Downloading Update…';
+          umProgW.style.display = 'block';
+          umProgBar.style.width = data.percent + '%';
           const mb    = (data.transferred / 1048576).toFixed(1);
           const total = (data.total       / 1048576).toFixed(1);
           const kbps  = (data.bytesPerSecond / 1024).toFixed(0);
-          progLbl.textContent = `${mb} / ${total} MB  ·  ${kbps} KB/s  (${data.percent}%)`;
-          toast.style.display = 'block';
+          umProgLbl.textContent = `${mb} / ${total} MB  ·  ${kbps} KB/s  (${data.percent}%)`;
+          openModal();
           break;
         }
 
-        // ── Downloaded: show appropriate follow-up ────────────────────────────
         case 'downloaded': {
           if (data.installOnQuit) {
-            // User chose "next launch" — confirm and close toast
-            show('✅', 'Update ready', `v${data.version} will be installed the next time you launch Elite Explorer.`);
-            setTimeout(() => { toast.style.display = 'none'; }, 5000);
+            showUpdate('✅', 'Update Ready', `v${data.version} will be installed the next time you launch Elite Explorer.`, data.channel);
+            setTimeout(closeModal, 5000);
           } else {
-            // User chose "now" — prompt to restart
-            show('✅', `v${data.version} ready to install`,
-              'Download complete. Restart now to apply the update.');
-            actions.appendChild(makeBtn('⚡  Restart and install', 'primary', () => {
+            showUpdate('✅', `v${data.version} Ready to Install`,
+              'Download complete. Restart now to apply the update.', data.channel);
+            umActions.appendChild(makeBtn('⚡  Restart and install', 'primary', () => {
               window.electronAPI.installAndRestart();
             }));
-            actions.appendChild(makeBtn('Later', 'ghost', () => {
-              toast.style.display = 'none';
-            }));
+            umActions.appendChild(makeBtn('Later', 'ghost', closeModal));
           }
           break;
         }
 
-        // ── Error ─────────────────────────────────────────────────────────────
         case 'error': {
-          show('⚠️', 'Update error', data.message || 'Could not check for updates.');
-          actions.appendChild(makeBtn('Retry', 'secondary', () => {
-            toast.style.display = 'none';
+          showUpdate('⚠️', 'Update Error', data.message || 'Could not check for updates.', data.channel || 'stable');
+          umActions.appendChild(makeBtn('Retry', 'secondary', () => {
+            closeModal();
             window.electronAPI.checkForUpdates();
           }));
-          setTimeout(() => { toast.style.display = 'none'; }, 10000);
+          setTimeout(closeModal, 10000);
           break;
         }
 
@@ -483,6 +619,76 @@
       }
     });
   }
+
+  // ════════════════════════════════════════════════════════════════════════════
+  // PREFERENCES MODAL
+  // ════════════════════════════════════════════════════════════════════════════
+  const prefsOverlay   = document.getElementById('prefs-overlay');
+  const prefsModal     = document.getElementById('prefs-modal');
+  const prefsClose     = document.getElementById('prefs-close');
+  const prefsDone      = document.getElementById('prefs-done');
+  const prefsCheckNow  = document.getElementById('prefs-check-now');
+  const prefsStatus    = document.getElementById('pref-channel-status');
+  const radioStable    = document.getElementById('pref-ch-stable');
+  const radioBeta      = document.getElementById('pref-ch-beta');
+  const labelStable    = document.getElementById('pref-ch-stable-label');
+  const labelBeta      = document.getElementById('pref-ch-beta-label');
+
+  function highlightSelected() {
+    const isBeta = radioBeta.checked;
+    labelStable.style.borderColor = isBeta ? '#1e3f6a' : '#7eb8f7';
+    labelBeta.style.borderColor   = isBeta ? '#f0a030' : '#1e3f6a';
+  }
+
+  async function openPreferences() {
+    prefsStatus.textContent = '';
+    if (window.electronAPI && window.electronAPI.getUpdateChannel) {
+      const ch = await window.electronAPI.getUpdateChannel();
+      radioStable.checked = ch !== 'beta';
+      radioBeta.checked   = ch === 'beta';
+      highlightSelected();
+    }
+    prefsOverlay.style.display = 'block';
+    prefsModal.style.display   = 'block';
+  }
+
+  function closePreferences() {
+    prefsOverlay.style.display = 'none';
+    prefsModal.style.display   = 'none';
+  }
+
+  prefsClose.addEventListener('click', closePreferences);
+  prefsDone.addEventListener('click', closePreferences);
+  prefsOverlay.addEventListener('click', closePreferences);
+
+  radioStable.addEventListener('change', highlightSelected);
+  radioBeta.addEventListener('change', highlightSelected);
+
+  // Save channel when radio changes
+  [radioStable, radioBeta].forEach(r => {
+    r.addEventListener('change', async () => {
+      if (!window.electronAPI || !window.electronAPI.setUpdateChannel) return;
+      const ch = r.value;
+      prefsStatus.textContent = 'Saving…';
+      await window.electronAPI.setUpdateChannel(ch);
+      prefsStatus.textContent = `✓ Switched to ${ch === 'beta' ? 'Alpha / Beta' : 'Stable'} channel. Checking for updates…`;
+      setTimeout(() => { prefsStatus.textContent = ''; }, 4000);
+    });
+  });
+
+  prefsCheckNow.addEventListener('click', async () => {
+    if (window.electronAPI && window.electronAPI.checkForUpdates) {
+      prefsStatus.textContent = 'Checking for updates…';
+      await window.electronAPI.checkForUpdates();
+      setTimeout(() => { prefsStatus.textContent = ''; }, 3000);
+    }
+  });
+
+  // Listen for menu → open preferences
+  if (window.electronAPI && window.electronAPI.onOpenPreferences) {
+    window.electronAPI.onOpenPreferences(() => openPreferences());
+  }
+
 })();
 </script>
 </body>

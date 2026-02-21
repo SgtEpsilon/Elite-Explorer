@@ -66,4 +66,9 @@ contextBridge.exposeInMainWorld('electronAPI', {
   downloadUpdateOnQuit:()        => ipcRenderer.invoke('updater-download-on-quit'),
   skipVersion:         (version) => ipcRenderer.invoke('updater-skip-version', version),
   installAndRestart:   ()        => ipcRenderer.invoke('updater-install-restart'),
+  getUpdateChannel:    ()        => ipcRenderer.invoke('updater-get-channel'),
+  setUpdateChannel:    (ch)      => ipcRenderer.invoke('updater-set-channel', ch),
+
+  // Preferences panel
+  onOpenPreferences:   (cb)      => on('open-preferences', cb),
 });
