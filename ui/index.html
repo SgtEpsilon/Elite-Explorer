@@ -606,7 +606,33 @@
         }
 
         case 'error': {
-          showUpdate('⚠️', 'Update Error', data.message || 'Could not check for updates.', data.channel || 'stable');
+          let rawMsg = data.message || '';
+
+          // Sanitise the message — electron-updater can dump raw XML feed content,
+          // full HTTP headers, or multi-line stack traces into the error message.
+          // Extract only the first readable sentence before any newline or markup.
+          let errMsg = rawMsg
+            .split(/?
+/)[0]
+            .replace(/<[^>]*>/g, '')
+            .replace(/,?\s*XML:.*$/s, '')
+            .replace(/,?\s*Headers:.*$/s, '')
+            .trim();
+
+          // If what remains is empty, too long, or contains raw markup, use a
+          // clean generic message instead.
+          if (
+            !errMsg ||
+            errMsg.length > 120 ||
+            errMsg.includes('<?xml') ||
+            errMsg.includes('<feed') ||
+            errMsg.includes('HttpError') ||
+            errMsg.toLowerCase().includes('unable to find latest')
+          ) {
+            errMsg = 'Could not reach the update server. Check your internet connection or try again later.';
+          }
+
+          showUpdate('⚠️', 'Update Error', errMsg, data.channel || 'stable');
           umActions.appendChild(makeBtn('Retry', 'secondary', () => {
             closeModal();
             window.electronAPI.checkForUpdates();
