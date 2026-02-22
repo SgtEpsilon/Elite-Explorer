@@ -6,8 +6,17 @@
  * Wraps electron-updater and bridges update events to the renderer via IPC.
  *
  * Update channels:
- *   'stable'  — tracks the 'main' branch / stable GitHub releases only
- *   'beta'    — tracks the 'development' branch / pre-release builds too
+ *   'stable'  — checks the main branch on GitHub (https://github.com/SgtEpsilon/Elite-Explorer)
+ *               Downloads latest.yml, only non-prerelease builds.
+ *   'beta'    — checks the development branch on GitHub (https://github.com/SgtEpsilon/Elite-Explorer/tree/development)
+ *               Downloads beta.yml, includes pre-release builds.
+ *
+ * How GitHub releasing works with two channels:
+ *   - Stable builds: tagged on main, electron-builder publishes latest.yml to the release assets.
+ *   - Beta builds:   tagged on development, electron-builder publishes beta.yml to the release assets.
+ *                    Run: electron-builder --publish always -c.publish.channel=beta
+ *   autoUpdater.setFeedURL() switches which YAML manifest it fetches, so each
+ *   channel only ever sees its own releases — stable users never get beta builds.
  *
  * Events pushed to renderer (channel: 'update-status'):
  *   { status: 'checking' }
@@ -32,39 +41,50 @@ const { ipcMain, app } = require('electron');
 const path             = require('path');
 const fs               = require('fs');
 
-// ── Config helpers (inline to avoid circular dep with main.js) ────────────────
-const CONFIG_PATH = path.join(path.dirname(app.getPath('exe')), '..', '..', 'config.json');
+// ── GitHub repo coordinates ───────────────────────────────────────────────────
+const GITHUB_OWNER = 'SgtEpsilon';
+const GITHUB_REPO  = 'Elite-Explorer';
 
-// Resolve config path robustly: packaged app puts config next to resources,
-// dev mode has it in the project root (same dir as package.json).
-function getConfigPath() {
-  // In dev mode __dirname is .../Elite-Explorer/engine/services
-  const devPath = path.join(__dirname, '..', '..', 'config.json');
-  if (fs.existsSync(devPath)) return devPath;
-  // Packaged: resources/app/engine/services → resources/../config.json
-  return path.join(__dirname, '..', '..', '..', 'config.json');
-}
+// ── Config helpers (inline to avoid circular dep with main.js) ────────────────
+// Config is stored in userData (writable at runtime, even inside an asar).
+// This must match the CONFIG_PATH used by main.js.
+const CONFIG_PATH = path.join(app.getPath('userData'), 'config.json');
 
 function readConfig() {
-  try { return JSON.parse(fs.readFileSync(getConfigPath(), 'utf8')); } catch { return {}; }
+  try { return JSON.parse(fs.readFileSync(CONFIG_PATH, 'utf8')); } catch { return {}; }
 }
 function patchConfig(patch) {
   const cfg = readConfig();
   Object.assign(cfg, patch);
-  try { fs.writeFileSync(getConfigPath(), JSON.stringify(cfg, null, 2)); } catch { /* ignore */ }
+  try { fs.writeFileSync(CONFIG_PATH, JSON.stringify(cfg, null, 2)); } catch { /* ignore */ }
 }
 
 // ── Channel helpers ───────────────────────────────────────────────────────────
-// 'stable' = main branch releases only (allowPrerelease: false)
-// 'beta'   = development branch pre-releases too (allowPrerelease: true)
+// 'stable' → reads latest.yml  from main-branch GitHub releases (non-prerelease only)
+// 'beta'   → reads beta.yml    from development-branch GitHub releases (prerelease)
 function getChannel() {
   return readConfig().updateChannel === 'beta' ? 'beta' : 'stable';
 }
 
 function applyChannel(channel) {
   const isBeta = channel === 'beta';
+
+  // Point autoUpdater at the correct YAML manifest for this channel.
+  // electron-updater fetches:  https://github.com/<owner>/<repo>/releases/latest/download/<channel>.yml
+  // Stable publishes latest.yml;  beta builds publish beta.yml (via -c.publish.channel=beta).
+  autoUpdater.setFeedURL({
+    provider:        'github',
+    owner:           GITHUB_OWNER,
+    repo:            GITHUB_REPO,
+    channel:         isBeta ? 'beta' : 'latest',
+    releaseType:     isBeta ? 'prerelease' : 'release',
+  });
+
+  // Also set the flag so electron-updater won't filter out prerelease entries
+  // when reading a beta manifest.
   autoUpdater.allowPrerelease = isBeta;
-  autoUpdater.channel         = isBeta ? 'beta' : 'latest';
+
+  console.log(`[updater] feed set → channel="${isBeta ? 'beta' : 'latest'}" allowPrerelease=${isBeta}`);
 }
 
 // ── Configuration ─────────────────────────────────────────────────────────────
@@ -194,7 +214,7 @@ ipcMain.handle('updater-install-restart', () => {
 // Get current update channel
 ipcMain.handle('updater-get-channel', () => getChannel());
 
-// Set update channel — saves to config, re-applies to autoUpdater, then re-checks
+// Set update channel — saves to config, re-applies feed URL, then re-checks
 ipcMain.handle('updater-set-channel', async (_e, channel) => {
   const validated = channel === 'beta' ? 'beta' : 'stable';
   patchConfig({ updateChannel: validated });

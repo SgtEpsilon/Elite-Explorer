@@ -6,5 +6,6 @@
   "edsmApiKey": "",
   "eddnEnabled": false,
   "edsmEnabled": false,
-  "commanderName": ""
+  "commanderName": "",
+  "updateChannel": "stable"
 }

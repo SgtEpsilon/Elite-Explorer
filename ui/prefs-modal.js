@@ -3,7 +3,11 @@
  *
  * Injected into every page via <script src="prefs-modal.js"></script>.
  * Dynamically inserts its own HTML so no page needs to carry the markup.
- * Listens for the 'open-preferences' IPC push from main.js.
+ *
+ * Opens via:
+ *   1. window.electronAPI.onOpenPreferences IPC push from main.js
+ *   2. A "Preferences…" button auto-injected into #options-panel
+ *   3. window.dispatchEvent(new CustomEvent('open-preferences'))
  */
 (function () {
   'use strict';
@@ -90,11 +94,11 @@
   }
 
   // ── 2. Wire up behaviour ────────────────────────────────────────────────────
-  var overlay    = document.getElementById('prefs-overlay');
-  var modal      = document.getElementById('prefs-modal');
-  var btnClose   = document.getElementById('prefs-close');
-  var btnDone    = document.getElementById('prefs-done');
-  var btnCheck   = document.getElementById('prefs-check-now');
+  var overlay     = document.getElementById('prefs-overlay');
+  var modal       = document.getElementById('prefs-modal');
+  var btnClose    = document.getElementById('prefs-close');
+  var btnDone     = document.getElementById('prefs-done');
+  var btnCheck    = document.getElementById('prefs-check-now');
   var radioStable = document.getElementById('pref-ch-stable');
   var radioBeta   = document.getElementById('pref-ch-beta');
   var lblStable   = document.getElementById('pref-ch-stable-label');
@@ -211,6 +215,43 @@
   // ── 3. Listen for the IPC push from main.js ─────────────────────────────────
   if (window.electronAPI && window.electronAPI.onOpenPreferences) {
     window.electronAPI.onOpenPreferences(openPreferences);
+  }
+
+  // ── 4. Also respond to a DOM custom event ────────────────────────────────────
+  window.addEventListener('open-preferences', openPreferences);
+
+  // ── 5. Inject a "Preferences…" button into #options-panel ───────────────────
+  //   Deferred so the options panel markup is guaranteed to be in the DOM.
+  function injectPanelButton() {
+    var panel = document.getElementById('options-panel');
+    if (!panel || document.getElementById('prefs-open-from-panel')) return;
+
+    var section = document.createElement('div');
+    section.className = 'opt-section';
+    section.innerHTML =
+      '<div class="opt-section-title">Application</div>' +
+      '<button class="opt-action-btn" id="prefs-open-from-panel">' +
+        '<span class="opt-btn-icon">&#9881;</span>' +
+        '<div>' +
+          '<div class="opt-btn-label">Preferences\u2026</div>' +
+          '<div class="opt-btn-sub">Update channel, debug log &amp; more</div>' +
+        '</div>' +
+      '</button>';
+
+    var body = document.getElementById('options-body') || panel;
+    body.appendChild(section);
+
+    document.getElementById('prefs-open-from-panel').addEventListener('click', function () {
+      var closeBtn = document.getElementById('options-close');
+      if (closeBtn) closeBtn.click();
+      openPreferences();
+    });
+  }
+
+  if (document.readyState === 'loading') {
+    document.addEventListener('DOMContentLoaded', injectPanelButton);
+  } else {
+    injectPanelButton();
   }
 
 }());

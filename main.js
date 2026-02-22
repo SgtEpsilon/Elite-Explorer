@@ -16,13 +16,31 @@ const updaterService   = require('./engine/services/updaterService');
 const engine           = require('./engine/core/engine');
 const api              = require('./engine/api/server');
 
-const CONFIG_PATH = path.join(__dirname, 'config.json');
+// ── Config path ───────────────────────────────────────────────────────────────────
+// Live config lives in userData so it is always writable, even when the app
+// is packaged inside an asar archive where __dirname is read-only.
+// On first launch we seed it from the bundled config.json defaults.
+const CONFIG_DEFAULTS_PATH = path.join(__dirname, 'config.json');
+const CONFIG_PATH = path.join(app.getPath('userData'), 'config.json');
 
 // ── Config helpers ────────────────────────────────────────────────────────────
+function ensureConfig() {
+  if (!fs.existsSync(CONFIG_PATH)) {
+    try {
+      const defaults = fs.existsSync(CONFIG_DEFAULTS_PATH)
+        ? fs.readFileSync(CONFIG_DEFAULTS_PATH, 'utf8')
+        : '{}';
+      fs.mkdirSync(path.dirname(CONFIG_PATH), { recursive: true });
+      fs.writeFileSync(CONFIG_PATH, defaults);
+    } catch { /* leave empty; readConfig will return {} */ }
+  }
+}
 function readConfig() {
+  ensureConfig();
   try { return JSON.parse(fs.readFileSync(CONFIG_PATH, 'utf8')); } catch { return {}; }
 }
 function writeConfig(patch) {
+  ensureConfig();
   const cfg = readConfig();
   Object.assign(cfg, patch);
   fs.writeFileSync(CONFIG_PATH, JSON.stringify(cfg, null, 2));
