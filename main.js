@@ -30,10 +30,6 @@ function writeConfig(patch) {
 }
 
 // ── Application Menu ──────────────────────────────────────────────────────────
-// Flag set by the Preferences menu item when it needs to navigate to index.html
-// first. The renderer polls this on startup and clears it.
-let pendingOpenPreferences = false;
-
 function buildMenu() {
   const cfg     = readConfig();
   const isBeta  = cfg.updateChannel === 'beta';
@@ -47,18 +43,9 @@ function buildMenu() {
           accelerator: 'CmdOrCtrl+,',
           click() {
             if (!mainWindow) return;
-            const currentURL  = mainWindow.webContents.getURL();
-            const indexURL    = 'file://' + path.join(__dirname, 'ui', 'index.html').replace(/\\/g, '/');
-            const currentPath = new URL(currentURL).pathname.replace(/\\/g, '/').toLowerCase();
-            const indexPath   = new URL(indexURL).pathname.replace(/\\/g, '/').toLowerCase();
-            if (currentPath === indexPath) {
-              // Already on the Live page — send directly
-              mainWindow.webContents.send('open-preferences');
-            } else {
-              // Set flag so index.html can pick it up via IPC once ready
-              pendingOpenPreferences = true;
-              mainWindow.loadFile(path.join(__dirname, 'ui', 'index.html'));
-            }
+            // The prefs modal is injected into every page by prefs-modal.js.
+            // Just send the IPC message — no navigation needed.
+            mainWindow.webContents.send('open-preferences');
           },
         },
         { type: 'separator' },
@@ -231,15 +218,6 @@ ipcMain.handle('open-journal-folder', async (_e, folderPath) => {
 // ── Config ────────────────────────────────────────────────────────────────────
 ipcMain.handle('get-config', () => readConfig());
 ipcMain.handle('save-config', (_e, patch) => { writeConfig(patch); return true; });
-
-// ── Pending UI actions ────────────────────────────────────────────────────────
-// The renderer calls this on startup to check if it should open the prefs panel
-// immediately (e.g. user clicked File > Preferences while on a different page).
-ipcMain.handle('check-pending-preferences', () => {
-  const pending = pendingOpenPreferences;
-  pendingOpenPreferences = false;   // consume — one-shot
-  return pending;
-});
 
 // ── Scan triggers ─────────────────────────────────────────────────────────────
 ipcMain.handle('trigger-scan-all', () => { journalProvider.scanAll(); return true; });

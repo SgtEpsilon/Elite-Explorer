@@ -40,7 +40,6 @@ contextBridge.exposeInMainWorld('electronAPI', {
 
   getConfig:         ()          => ipcRenderer.invoke('get-config'),
   saveConfig:        (patch)     => ipcRenderer.invoke('save-config',            patch),
-  checkPendingPreferences: ()    => ipcRenderer.invoke('check-pending-preferences'),
 
   triggerScanAll:    ()          => ipcRenderer.invoke('trigger-scan-all'),
   triggerHistoryScan:()          => ipcRenderer.invoke('trigger-history-scan'),
@@ -70,10 +69,10 @@ contextBridge.exposeInMainWorld('electronAPI', {
   getUpdateChannel:    ()        => ipcRenderer.invoke('updater-get-channel'),
   setUpdateChannel:    (ch)      => ipcRenderer.invoke('updater-set-channel', ch),
 
-  // Preferences panel — remove any stale listener before registering the new one
+  // Preferences: direct push when already on index.html
   onOpenPreferences:   (cb)      => {
     ipcRenderer.removeAllListeners('open-preferences');
-    ipcRenderer.on('open-preferences', () => cb());
+    ipcRenderer.on('open-preferences', function () { cb(); });
   },
 
   // Debug log
