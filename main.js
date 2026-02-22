@@ -5,6 +5,7 @@ const path   = require('path');
 const fs     = require('fs');
 
 // ── Engine / service imports ──────────────────────────────────────────────────
+const logger           = require('./engine/core/logger');
 const journalProvider  = require('./engine/providers/journalProvider');
 const historyProvider  = require('./engine/providers/historyProvider');
 const edsmClient       = require('./engine/services/edsmClient');
@@ -29,6 +30,10 @@ function writeConfig(patch) {
 }
 
 // ── Application Menu ──────────────────────────────────────────────────────────
+// Flag set by the Preferences menu item when it needs to navigate to index.html
+// first. The renderer polls this on startup and clears it.
+let pendingOpenPreferences = false;
+
 function buildMenu() {
   const cfg     = readConfig();
   const isBeta  = cfg.updateChannel === 'beta';
@@ -41,7 +46,19 @@ function buildMenu() {
           label: 'Preferences…',
           accelerator: 'CmdOrCtrl+,',
           click() {
-            if (mainWindow) mainWindow.webContents.send('open-preferences');
+            if (!mainWindow) return;
+            const currentURL  = mainWindow.webContents.getURL();
+            const indexURL    = 'file://' + path.join(__dirname, 'ui', 'index.html').replace(/\\/g, '/');
+            const currentPath = new URL(currentURL).pathname.replace(/\\/g, '/').toLowerCase();
+            const indexPath   = new URL(indexURL).pathname.replace(/\\/g, '/').toLowerCase();
+            if (currentPath === indexPath) {
+              // Already on the Live page — send directly
+              mainWindow.webContents.send('open-preferences');
+            } else {
+              // Set flag so index.html can pick it up via IPC once ready
+              pendingOpenPreferences = true;
+              mainWindow.loadFile(path.join(__dirname, 'ui', 'index.html'));
+            }
           },
         },
         { type: 'separator' },
@@ -117,13 +134,23 @@ function createWindow() {
 
 // ── App lifecycle ─────────────────────────────────────────────────────────────
 app.whenReady().then(async () => {
+  const { version } = require('./package.json');
+  logger.info('APP', `Elite Explorer v${version} starting`, {
+    platform: process.platform,
+    arch: process.arch,
+    electron: process.versions.electron,
+    node: process.versions.node,
+  });
+
   app.setAsDefaultProtocolClient('eliteexplorer');
 
   buildMenu();
   createWindow();
 
   engine.start();      // DB + eventBus listeners
+  logger.info('ENGINE', 'Engine started');
   api.start();         // REST API on :3721
+  logger.info('API', 'REST API started on :3721');
 
   edsmClient.start();  // listens on eventBus for location events
   eddnRelay.start();   // listens on eventBus for raw journal events
@@ -204,6 +231,15 @@ ipcMain.handle('open-journal-folder', async (_e, folderPath) => {
 // ── Config ────────────────────────────────────────────────────────────────────
 ipcMain.handle('get-config', () => readConfig());
 ipcMain.handle('save-config', (_e, patch) => { writeConfig(patch); return true; });
+
+// ── Pending UI actions ────────────────────────────────────────────────────────
+// The renderer calls this on startup to check if it should open the prefs panel
+// immediately (e.g. user clicked File > Preferences while on a different page).
+ipcMain.handle('check-pending-preferences', () => {
+  const pending = pendingOpenPreferences;
+  pendingOpenPreferences = false;   // consume — one-shot
+  return pending;
+});
 
 // ── Scan triggers ─────────────────────────────────────────────────────────────
 ipcMain.handle('trigger-scan-all', () => { journalProvider.scanAll(); return true; });
@@ -338,3 +374,47 @@ ipcMain.handle('capi-logout',      ()       => capiService.logout());
 ipcMain.handle('capi-get-status',  ()       => capiService.getStatus());
 ipcMain.handle('capi-get-profile', ()       => capiService.getProfile());
 ipcMain.handle('capi-get-market',  (_e, id) => capiService.getMarket(id));
+
+// ── Debug Log ─────────────────────────────────────────────────────────────────
+ipcMain.handle('debug-get-log', () => {
+  const { version } = require('./package.json');
+  return logger.format({
+    'App Ver': version,
+    'Platform': `${process.platform} ${process.arch}`,
+    'Electron': process.versions.electron,
+    'Node':     process.versions.node,
+  });
+});
+
+ipcMain.handle('debug-save-log', async () => {
+  if (!mainWindow) return { success: false, error: 'No window' };
+
+  const { version } = require('./package.json');
+  const content = logger.format({
+    'App Ver': version,
+    'Platform': `${process.platform} ${process.arch}`,
+    'Electron': process.versions.electron,
+    'Node':     process.versions.node,
+  });
+
+  const ts = new Date().toISOString().replace(/[:.]/g, '-').slice(0, 19);
+  const result = await dialog.showSaveDialog(mainWindow, {
+    title:       'Save Debug Log',
+    defaultPath: `elite-explorer-debug-${ts}.log`,
+    filters: [
+      { name: 'Log Files', extensions: ['log', 'txt'] },
+      { name: 'All Files', extensions: ['*'] },
+    ],
+  });
+
+  if (result.canceled || !result.filePath) return { success: false, canceled: true };
+
+  try {
+    fs.writeFileSync(result.filePath, content, 'utf8');
+    logger.info('DEBUG-LOG', `Debug log saved to ${result.filePath}`);
+    return { success: true, filePath: result.filePath };
+  } catch (err) {
+    logger.error('DEBUG-LOG', 'Failed to save debug log', err);
+    return { success: false, error: err.message };
+  }
+});

@@ -19,6 +19,7 @@
     <a class="tab-btn active" href="index.html">Live</a>
     <a class="tab-btn" href="profile.html">Profile</a>
     <a class="tab-btn" href="history.html">History</a>
+	<a class="tab-btn" href="spansh.html">Spansh</a>
   </div>
   <span class="tb-credits" id="tb-credits"></span>
   <span id="eddn-dot" title="EDDN: disabled" style="width:6px;height:6px;border-radius:50%;background:var(--border2);display:inline-block;margin-right:4px;transition:background 0.4s;"></span>
@@ -437,6 +438,38 @@
     "></div>
   </div>
 
+  <!-- Section: Debug Log -->
+  <div style="margin-bottom:20px;">
+    <div style="
+      font-size:0.78em;font-weight:600;text-transform:uppercase;letter-spacing:.08em;
+      color:#4a6a8a;margin-bottom:12px;padding-bottom:6px;border-bottom:1px solid #0e2040;
+    ">Debug &amp; Bug Reports</div>
+    <div style="color:#5a7a9a;font-size:0.88em;margin-bottom:12px;line-height:1.5;">
+      Save a debug log file and attach it when filing a bug report on GitHub. It includes
+      recent application events but <strong style="color:#a0b8d0;">no personal game data</strong>.
+    </div>
+    <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap;">
+      <button id="prefs-save-log" style="
+        padding:7px 16px;border-radius:6px;cursor:pointer;font-size:0.88em;font-weight:600;
+        background:#0d1f35;color:#7eb8f7;border:1px solid #1e3a5f;
+        display:flex;align-items:center;gap:6px;
+      ">📄 Save Debug Log…</button>
+      <button id="prefs-view-log" style="
+        padding:7px 16px;border-radius:6px;cursor:pointer;font-size:0.88em;font-weight:600;
+        background:#0d1f35;color:#5a9abf;border:1px solid #1a3050;
+        display:flex;align-items:center;gap:6px;
+      ">🔍 Preview Log</button>
+    </div>
+    <div id="prefs-log-status" style="font-size:0.82em;color:#4a6a8a;min-height:1.4em;margin-top:8px;"></div>
+    <!-- Inline log preview -->
+    <div id="prefs-log-preview" style="
+      display:none;margin-top:10px;max-height:180px;overflow-y:auto;
+      background:#040b14;border:1px solid #0e2040;border-radius:6px;
+      padding:8px 10px;font-family:'Share Tech Mono',monospace;font-size:0.75em;
+      color:#5a8aaa;white-space:pre;line-height:1.5;
+    "></div>
+  </div>
+
   <!-- Footer -->
   <div style="display:flex;justify-content:flex-end;gap:8px;margin-top:4px;">
     <button id="prefs-check-now" style="
@@ -612,7 +645,8 @@
           // full HTTP headers, or multi-line stack traces into the error message.
           // Extract only the first readable sentence before any newline or markup.
           let errMsg = rawMsg
-            .split(/?
+            .split(/
+?
 /)[0]
             .replace(/<[^>]*>/g, '')
             .replace(/,?\s*XML:.*$/s, '')
@@ -659,60 +693,131 @@
   const radioBeta      = document.getElementById('pref-ch-beta');
   const labelStable    = document.getElementById('pref-ch-stable-label');
   const labelBeta      = document.getElementById('pref-ch-beta-label');
+  const prefsLogStatus  = document.getElementById('prefs-log-status');
+  const prefsSaveLog    = document.getElementById('prefs-save-log');
+  const prefsViewLog    = document.getElementById('prefs-view-log');
+  const prefsLogPreview = document.getElementById('prefs-log-preview');
+
+  let logPreviewVisible = false;
 
   function highlightSelected() {
-    const isBeta = radioBeta.checked;
-    labelStable.style.borderColor = isBeta ? '#1e3f6a' : '#7eb8f7';
-    labelBeta.style.borderColor   = isBeta ? '#f0a030' : '#1e3f6a';
+    labelStable.style.borderColor = radioBeta.checked ? '#1e3f6a' : '#7eb8f7';
+    labelBeta.style.borderColor   = radioBeta.checked ? '#f0a030' : '#1e3f6a';
   }
 
-  async function openPreferences() {
-    prefsStatus.textContent = '';
-    if (window.electronAPI && window.electronAPI.getUpdateChannel) {
-      const ch = await window.electronAPI.getUpdateChannel();
-      radioStable.checked = ch !== 'beta';
-      radioBeta.checked   = ch === 'beta';
-      highlightSelected();
-    }
+  function openPreferences() {
+    // Show the modal immediately — don't await anything first
+    prefsStatus.textContent    = '';
     prefsOverlay.style.display = 'block';
     prefsModal.style.display   = 'block';
+
+    // Load update channel asynchronously after modal is visible
+    if (window.electronAPI && window.electronAPI.getUpdateChannel) {
+      window.electronAPI.getUpdateChannel().then(function(ch) {
+        radioStable.checked = (ch !== 'beta');
+        radioBeta.checked   = (ch === 'beta');
+        highlightSelected();
+      }).catch(function() {});
+    }
   }
 
   function closePreferences() {
-    prefsOverlay.style.display = 'none';
-    prefsModal.style.display   = 'none';
+    prefsOverlay.style.display  = 'none';
+    prefsModal.style.display    = 'none';
+    prefsLogPreview.style.display = 'none';
+    prefsViewLog.textContent    = '🔍 Preview Log';
+    logPreviewVisible           = false;
+    prefsLogStatus.textContent  = '';
+    prefsLogStatus.style.color  = '';
   }
 
+  // ── Close triggers ────────────────────────────────────────────────────────
   prefsClose.addEventListener('click', closePreferences);
   prefsDone.addEventListener('click', closePreferences);
   prefsOverlay.addEventListener('click', closePreferences);
 
+  // ── Update channel ────────────────────────────────────────────────────────
   radioStable.addEventListener('change', highlightSelected);
   radioBeta.addEventListener('change', highlightSelected);
 
-  // Save channel when radio changes
-  [radioStable, radioBeta].forEach(r => {
-    r.addEventListener('change', async () => {
+  [radioStable, radioBeta].forEach(function(r) {
+    r.addEventListener('change', function() {
       if (!window.electronAPI || !window.electronAPI.setUpdateChannel) return;
-      const ch = r.value;
+      var ch = r.value;
       prefsStatus.textContent = 'Saving…';
-      await window.electronAPI.setUpdateChannel(ch);
-      prefsStatus.textContent = `✓ Switched to ${ch === 'beta' ? 'Alpha / Beta' : 'Stable'} channel. Checking for updates…`;
-      setTimeout(() => { prefsStatus.textContent = ''; }, 4000);
+      window.electronAPI.setUpdateChannel(ch).then(function() {
+        prefsStatus.textContent = '✓ Switched to ' + (ch === 'beta' ? 'Alpha / Beta' : 'Stable') + ' channel. Checking for updates…';
+        setTimeout(function() { prefsStatus.textContent = ''; }, 4000);
+      }).catch(function() {
+        prefsStatus.textContent = 'Error saving channel.';
+      });
     });
   });
 
-  prefsCheckNow.addEventListener('click', async () => {
-    if (window.electronAPI && window.electronAPI.checkForUpdates) {
-      prefsStatus.textContent = 'Checking for updates…';
-      await window.electronAPI.checkForUpdates();
-      setTimeout(() => { prefsStatus.textContent = ''; }, 3000);
-    }
+  prefsCheckNow.addEventListener('click', function() {
+    if (!window.electronAPI || !window.electronAPI.checkForUpdates) return;
+    prefsStatus.textContent = 'Checking for updates…';
+    window.electronAPI.checkForUpdates().then(function() {
+      setTimeout(function() { prefsStatus.textContent = ''; }, 3000);
+    }).catch(function() {
+      prefsStatus.textContent = 'Update check failed.';
+    });
   });
 
-  // Listen for menu → open preferences
+  // ── Debug log ─────────────────────────────────────────────────────────────
+  prefsSaveLog.addEventListener('click', function() {
+    if (!window.electronAPI || !window.electronAPI.saveDebugLog) return;
+    prefsLogStatus.style.color  = '';
+    prefsLogStatus.textContent  = 'Saving…';
+    window.electronAPI.saveDebugLog().then(function(result) {
+      if (result && result.success) {
+        prefsLogStatus.style.color = '#4caf82';
+        prefsLogStatus.textContent = '✓ Log saved to ' + result.filePath;
+      } else if (result && result.canceled) {
+        prefsLogStatus.textContent = '';
+      } else {
+        prefsLogStatus.style.color = '#f05050';
+        prefsLogStatus.textContent = 'Error: ' + ((result && result.error) || 'Unknown error');
+      }
+      setTimeout(function() { prefsLogStatus.textContent = ''; prefsLogStatus.style.color = ''; }, 6000);
+    }).catch(function(e) {
+      prefsLogStatus.style.color = '#f05050';
+      prefsLogStatus.textContent = 'Error: ' + e.message;
+    });
+  });
+
+  prefsViewLog.addEventListener('click', function() {
+    if (!window.electronAPI || !window.electronAPI.getDebugLog) return;
+    if (logPreviewVisible) {
+      prefsLogPreview.style.display = 'none';
+      prefsViewLog.textContent      = '🔍 Preview Log';
+      logPreviewVisible             = false;
+      return;
+    }
+    window.electronAPI.getDebugLog().then(function(content) {
+      prefsLogPreview.textContent   = content;
+      prefsLogPreview.style.display = 'block';
+      prefsLogPreview.scrollTop     = prefsLogPreview.scrollHeight;
+      prefsViewLog.textContent      = '🙈 Hide Preview';
+      logPreviewVisible             = true;
+    }).catch(function(e) {
+      prefsLogStatus.style.color = '#f05050';
+      prefsLogStatus.textContent = 'Error fetching log: ' + e.message;
+    });
+  });
+
+  // ── IPC triggers from the application menu ────────────────────────────────
+  // Same-page trigger: user clicks File > Preferences while already on this page
   if (window.electronAPI && window.electronAPI.onOpenPreferences) {
-    window.electronAPI.onOpenPreferences(() => openPreferences());
+    window.electronAPI.onOpenPreferences(openPreferences);
+  }
+
+  // Cross-page trigger: user clicked File > Preferences from a different page,
+  // main.js navigated here and set a flag — we consume it now that we're ready.
+  if (window.electronAPI && window.electronAPI.checkPendingPreferences) {
+    window.electronAPI.checkPendingPreferences().then(function(pending) {
+      if (pending) openPreferences();
+    }).catch(function() {});
   }
 
 })();

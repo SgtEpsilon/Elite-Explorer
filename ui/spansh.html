@@ -8,7 +8,14 @@
 <link rel="stylesheet" href="styles.css">
 <style>
 
-/* ── Spansh page layout ─────────────────────────────────────────── */
+/* ═══════════════════════════════════════════════════════════════════
+   PAGE SHELL
+   #view-spansh  →  flex column  (subtabs on top, body below)
+   #spansh-body  →  grid 300px | 1fr  (left col, right col)
+   Left col      →  flex column  (scrollable panels + pinned submit)
+   Right col     →  flex column  (results panel, full height)
+═══════════════════════════════════════════════════════════════════ */
+
 #view-spansh {
   display: flex;
   flex-direction: column;
@@ -17,7 +24,7 @@
   background: var(--bg2);
 }
 
-/* ── Router sub-tabs ────────────────────────────────────────────── */
+/* ── Sub-tabs ───────────────────────────────────────────────────── */
 #spansh-subtabs {
   display: flex;
   align-items: center;
@@ -50,26 +57,52 @@
   background: var(--panel);
 }
 
-/* ── Main split: form | results ─────────────────────────────────── */
+/* ── Two-column body ────────────────────────────────────────────── */
 #spansh-body {
+  flex: 1;          /* fill all height below subtabs */
+  min-height: 0;    /* critical — lets flex child shrink */
   display: grid;
   grid-template-columns: 300px 1fr;
-  flex: 1;
+  grid-template-rows: 1fr;   /* single row that fills all remaining height */
   overflow: hidden;
-  gap: 0;
 }
 
-/* ── Form sidebar ───────────────────────────────────────────────── */
-#spansh-form-wrap {
-  border-right: 1px solid var(--border);
-  background: var(--panel);
+/* ── LEFT COLUMN  (form panels + submit) ────────────────────────── */
+#spansh-left {
   display: flex;
   flex-direction: column;
+  overflow: hidden;
+  border-right: 1px solid var(--border);
+  background: var(--panel);
+  min-height: 0;
+}
+
+/* Scrollable form area */
+#spansh-panels-scroll {
+  flex: 1;
+  min-height: 0;
   overflow-y: auto;
 }
-#spansh-form-wrap::-webkit-scrollbar { width: 3px; }
-#spansh-form-wrap::-webkit-scrollbar-thumb { background: var(--border2); }
+#spansh-panels-scroll::-webkit-scrollbar { width: 3px; }
+#spansh-panels-scroll::-webkit-scrollbar-thumb { background: var(--border2); }
 
+/* Submit — always pinned to the bottom of the left column */
+#spansh-submit-wrap {
+  flex-shrink: 0;
+  padding: 14px 16px;
+  border-top: 1px solid var(--border);
+  background: var(--panel);
+}
+
+/* ── RIGHT COLUMN  (results) ────────────────────────────────────── */
+#spansh-results-wrap {
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  min-height: 0;
+}
+
+/* ── Form sections ──────────────────────────────────────────────── */
 .form-section {
   padding: 16px;
   border-bottom: 1px solid var(--border);
@@ -127,6 +160,7 @@
   outline: none;
   transition: border-color 0.18s;
   width: 100%;
+  box-sizing: border-box;
 }
 .field-input:focus { border-color: var(--cyan); }
 .field-input::placeholder { color: var(--text-mute); }
@@ -166,7 +200,7 @@
   background: linear-gradient(to right, rgba(200,151,42,0.5) var(--fill,50%), var(--border2) var(--fill,50%));
 }
 
-/* ── Toggle group ───────────────────────────────────────────────── */
+/* ── Toggle pills ───────────────────────────────────────────────── */
 .toggle-group {
   display: grid;
   grid-template-columns: 1fr 1fr;
@@ -189,12 +223,6 @@
 .toggle-pill:hover:not(.active) { color: var(--text-dim); border-color: var(--border2); }
 
 /* ── Submit button ──────────────────────────────────────────────── */
-#spansh-submit-wrap {
-  padding: 14px 16px;
-  margin-top: auto;
-  border-top: 1px solid var(--border);
-  background: var(--panel);
-}
 .submit-btn {
   width: 100%;
   font-family: var(--mono);
@@ -219,14 +247,7 @@
 .submit-btn.loading .icon-static { display: none; }
 @keyframes spin { to { transform: rotate(360deg); } }
 
-/* ── Results panel ──────────────────────────────────────────────── */
-#spansh-results-wrap {
-  display: flex;
-  flex-direction: column;
-  overflow: hidden;
-}
-
-/* Status bar */
+/* ── Status bar ─────────────────────────────────────────────────── */
 #spansh-status-bar {
   display: flex;
   align-items: center;
@@ -244,9 +265,9 @@
   flex-shrink: 0;
   transition: background 0.3s;
 }
-.status-dot.ok     { background: var(--green); box-shadow: 0 0 6px var(--green); }
-.status-dot.busy   { background: var(--gold);  box-shadow: 0 0 6px var(--gold); animation: statusPulse 1s ease-in-out infinite; }
-.status-dot.error  { background: var(--red);   box-shadow: 0 0 6px var(--red); }
+.status-dot.ok    { background: var(--green); box-shadow: 0 0 6px var(--green); }
+.status-dot.busy  { background: var(--gold);  box-shadow: 0 0 6px var(--gold); animation: statusPulse 1s ease-in-out infinite; }
+.status-dot.error { background: var(--red);   box-shadow: 0 0 6px var(--red); }
 @keyframes statusPulse { 0%,100%{opacity:1} 50%{opacity:0.4} }
 .status-text {
   font-family: var(--mono);
@@ -261,7 +282,7 @@
   color: var(--text-mute);
 }
 
-/* Progress bar */
+/* ── Progress bar ───────────────────────────────────────────────── */
 #spansh-progress-bar-wrap {
   display: none;
   height: 2px;
@@ -275,7 +296,7 @@
   transition: width 0.25s ease;
 }
 
-/* Route summary strip */
+/* ── Route summary strip ────────────────────────────────────────── */
 #route-summary {
   display: none;
   align-items: center;
@@ -290,7 +311,6 @@
 .rsm-lbl { font-family: var(--mono); font-size: 0.6em; color: var(--text-mute); letter-spacing: 0.1em; text-transform: uppercase; }
 .rsm-sep { width: 1px; height: 28px; background: rgba(200,151,42,0.2); }
 
-/* Copy route button */
 #copy-route-btn {
   font-family: var(--mono);
   font-size: 0.65em;
@@ -306,9 +326,10 @@
 }
 #copy-route-btn:hover { background: rgba(200,151,42,0.1); border-color: var(--gold); }
 
-/* Results table */
+/* ── Results table ──────────────────────────────────────────────── */
 #spansh-table-wrap {
   flex: 1;
+  min-height: 0;
   overflow-y: auto;
 }
 #spansh-table-wrap::-webkit-scrollbar { width: 3px; }
@@ -342,14 +363,9 @@
   vertical-align: middle;
 }
 .results-table tr:hover td { background: rgba(255,255,255,0.025); }
-.results-table tr.alt-row { background: rgba(255,255,255,0.012); }
+.results-table tr.alt-row  { background: rgba(255,255,255,0.012); }
 
-.hop-num {
-  color: var(--text-mute);
-  font-size: 0.9em;
-  min-width: 28px;
-  display: inline-block;
-}
+.hop-num { color: var(--text-mute); font-size: 0.9em; min-width: 28px; display: inline-block; }
 .hop-sys { color: var(--text); }
 .hop-sys.neutron { color: var(--cyan2); }
 .hop-sys.dest    { color: var(--gold2); font-weight: 600; }
@@ -361,15 +377,14 @@
   margin-left: 5px;
   vertical-align: middle;
 }
-.hop-tag.neutron { background: rgba(46,207,207,0.1); color: var(--cyan); border: 1px solid rgba(46,207,207,0.25); }
-.hop-tag.dest    { background: rgba(200,151,42,0.12); color: var(--gold); border: 1px solid rgba(200,151,42,0.3); }
-.hop-tag.scoopable { background: rgba(61,189,122,0.1); color: var(--green); border: 1px solid rgba(61,189,122,0.25); }
-
+.hop-tag.neutron  { background: rgba(46,207,207,0.1);  color: var(--cyan);  border: 1px solid rgba(46,207,207,0.25); }
+.hop-tag.dest     { background: rgba(200,151,42,0.12);  color: var(--gold);  border: 1px solid rgba(200,151,42,0.3); }
+.hop-tag.scoopable{ background: rgba(61,189,122,0.1);   color: var(--green); border: 1px solid rgba(61,189,122,0.25); }
 .hop-dist { text-align: right; color: var(--cyan); }
 .hop-rem  { text-align: right; color: var(--text-mute); }
 .hop-val  { text-align: right; color: var(--gold2); }
 
-/* ── Empty / idle state ─────────────────────────────────────────── */
+/* ── Idle / empty state ─────────────────────────────────────────── */
 #spansh-idle {
   display: flex;
   flex-direction: column;
@@ -379,11 +394,11 @@
   gap: 12px;
   color: var(--text-mute);
 }
-.idle-icon { font-size: 2.8em; opacity: 0.2; }
+.idle-icon  { font-size: 2.8em; opacity: 0.2; }
 .idle-title { font-family: var(--display); font-size: 0.72em; letter-spacing: 0.2em; text-transform: uppercase; }
-.idle-sub { font-family: var(--mono); font-size: 0.7em; opacity: 0.6; text-align: center; max-width: 300px; line-height: 1.6; }
+.idle-sub   { font-family: var(--mono); font-size: 0.7em; opacity: 0.6; text-align: center; max-width: 300px; line-height: 1.6; }
 
-/* ── Spansh branding strip ──────────────────────────────────────── */
+/* ── Spansh credit strip ────────────────────────────────────────── */
 #spansh-credit {
   flex-shrink: 0;
   padding: 5px 16px;
@@ -396,13 +411,9 @@
   align-items: center;
   gap: 8px;
 }
-#spansh-credit a {
-  color: var(--gold);
-  text-decoration: none;
-  cursor: pointer;
-}
+#spansh-credit a { color: var(--gold); text-decoration: none; cursor: pointer; }
 
-/* ── Road to Riches scan value chips ────────────────────────────── */
+/* ── Road to Riches scan chips ──────────────────────────────────── */
 .scan-type-chip {
   display: inline-block;
   font-size: 0.7em;
@@ -414,15 +425,74 @@
   white-space: nowrap;
 }
 
-/* ── Form sub-panel visibility ──────────────────────────────────── */
+/* ── Form panel visibility ──────────────────────────────────────── */
 .form-panel { display: none; }
 .form-panel.active { display: block; }
 
+/* ── Carrier Mass: disabled outside Fleet Carrier tab ───────────── */
+.form-section.section-disabled {
+  opacity: 0.35;
+  pointer-events: none;
+  user-select: none;
+}
+.form-section.section-disabled .form-section-title::before {
+  content: '⊘ ';
+  color: var(--text-mute);
+}
+
+/* ── Per-row visited checkbox ───────────────────────────────────── */
+.row-visited-cb {
+  appearance: none;
+  -webkit-appearance: none;
+  width: 14px;
+  height: 14px;
+  border: 1px solid var(--border2);
+  background: var(--bg);
+  cursor: pointer;
+  position: relative;
+  flex-shrink: 0;
+  transition: border-color 0.15s, background 0.15s;
+  border-radius: 1px;
+}
+.row-visited-cb:checked { background: var(--green); border-color: var(--green); }
+.row-visited-cb:checked::after {
+  content: '';
+  position: absolute;
+  left: 2px; top: -1px;
+  width: 8px; height: 5px;
+  border-left: 2px solid var(--bg);
+  border-bottom: 2px solid var(--bg);
+  transform: rotate(-45deg);
+}
+.row-visited-cb:hover:not(:checked) { border-color: var(--cyan); }
+
+/* ── Visited row dimming ────────────────────────────────────────── */
+tr.row-done td { opacity: 0.4; }
+tr.row-done td:first-child { opacity: 1; }
+
+/* ── Per-row copy button ────────────────────────────────────────── */
+.row-copy-btn {
+  font-family: var(--mono);
+  font-size: 0.6em;
+  color: var(--text-mute);
+  background: transparent;
+  border: 1px solid transparent;
+  padding: 2px 5px;
+  cursor: pointer;
+  letter-spacing: 0.06em;
+  transition: all 0.12s;
+  white-space: nowrap;
+  border-radius: 1px;
+}
+.row-copy-btn:hover  { color: var(--cyan); border-color: rgba(46,207,207,0.3); background: var(--cyan-dim); }
+.row-copy-btn.copied { color: var(--green); border-color: rgba(61,189,122,0.3); }
+
 /* ── Responsive ─────────────────────────────────────────────────── */
 @media (max-width: 800px) {
-  #spansh-body { grid-template-columns: 1fr; }
-  #spansh-form-wrap { max-height: 360px; }
+  #spansh-body { grid-template-columns: 1fr; grid-template-rows: auto 1fr; }
+  #spansh-left { max-height: 360px; }
 }
+
 </style>
 </head>
 <body>
@@ -432,7 +502,8 @@
   <div class="tb-sep"></div>
   <span class="tb-cmdr" id="tb-cmdr">&#8212;</span>
   <div class="tb-sep"></div>
-  <span class="tb-sys" id="tb-sys">&#8212;</span><span id="tb-discovery-star" title="First Discovery!" style="display:none;color:var(--gold);margin-left:4px;font-size:0.85em;">&#9733;</span>
+  <span class="tb-sys" id="tb-sys">&#8212;</span>
+  <span id="tb-discovery-star" title="First Discovery!" style="display:none;color:var(--gold);margin-left:4px;font-size:0.85em;">&#9733;</span>
   <div class="tab-nav">
     <a class="tab-btn" href="index.html">Live</a>
     <a class="tab-btn" href="profile.html">Profile</a>
@@ -446,7 +517,7 @@
 <div id="app-wrapper" style="display:flex;flex-direction:column;height:calc(100vh - 44px);">
 <div id="view-spansh" class="active">
 
-  <!-- ── Sub-tab bar ────────────────────────────────────────────── -->
+  <!-- ── Sub-tab bar ──────────────────────────────────────────────── -->
   <div id="spansh-subtabs">
     <button class="sub-tab active" data-panel="neutron">&#9654; Neutron Router</button>
     <button class="sub-tab" data-panel="riches">&#9792; Road to Riches</button>
@@ -454,244 +525,308 @@
     <button class="sub-tab" data-panel="carrier">&#9698; Fleet Carrier</button>
   </div>
 
-  <!-- ── Main body: form + results ────────────────────────────── -->
+  <!-- ── Two-column body ──────────────────────────────────────────── -->
   <div id="spansh-body">
 
-    <!-- ═══ FORM SIDEBAR ═══════════════════════════════════════════ -->
-    <div id="spansh-form-wrap">
+    <!-- ═══ LEFT COLUMN: form panels + submit ═══════════════════════ -->
+    <div id="spansh-left">
 
-      <!-- NEUTRON ROUTER fields -->
-      <div class="form-panel active" id="form-neutron">
-        <div class="form-section">
-          <div class="form-section-title">Route</div>
-          <div class="field-row">
-            <label class="field-label">From System
-              <span class="field-label-hint" id="from-fill-btn" style="cursor:pointer;color:var(--cyan);display:none;" title="Fill from live data">&#8635; Use current</span>
-            </label>
-            <input class="field-input" id="n-from" type="text" placeholder="Sol" spellcheck="false" autocomplete="off">
-          </div>
-          <div class="field-row">
-            <label class="field-label">To System</label>
-            <input class="field-input" id="n-to" type="text" placeholder="Colonia" spellcheck="false" autocomplete="off">
-          </div>
-        </div>
-        <div class="form-section">
-          <div class="form-section-title">Ship</div>
-          <div class="field-row">
-            <label class="field-label">Jump Range (ly)
-              <span class="field-label-hint" id="n-range-val">8.00 ly</span>
-            </label>
-            <div class="field-range-wrap">
-              <input class="range-slider" type="range" id="n-range-sl" min="3" max="100" step="0.5" value="8">
-              <input class="field-input" id="n-range" type="number" value="8" min="3" max="100" step="0.5">
-            </div>
-          </div>
-          <div class="field-row">
-            <label class="field-label">Efficiency %
-              <span class="field-label-hint" id="n-eff-val">60%</span>
-            </label>
-            <div class="field-range-wrap">
-              <input class="range-slider gold" type="range" id="n-eff-sl" min="1" max="100" step="1" value="60">
-              <input class="field-input" id="n-eff" type="number" value="60" min="1" max="100" step="1">
-            </div>
-          </div>
-        </div>
-      </div>
+      <!-- Scrollable panels -->
+      <div id="spansh-panels-scroll">
 
-      <!-- ROAD TO RICHES fields -->
-      <div class="form-panel" id="form-riches">
-        <div class="form-section">
-          <div class="form-section-title">Search</div>
-          <div class="field-row">
-            <label class="field-label">From System
-              <span class="field-label-hint" id="rtr-fill-btn" style="cursor:pointer;color:var(--cyan);display:none;" title="Fill from live data">&#8635; Use current</span>
-            </label>
-            <input class="field-input" id="r-from" type="text" placeholder="Sol" spellcheck="false" autocomplete="off">
-          </div>
-          <div class="field-row">
-            <label class="field-label">Max Loop Distance (ly)
-              <span class="field-label-hint" id="r-maxdist-val">5000 ly</span>
-            </label>
-            <div class="field-range-wrap">
-              <input class="range-slider gold" type="range" id="r-maxdist-sl" min="500" max="50000" step="500" value="5000">
-              <input class="field-input" id="r-maxdist" type="number" value="5000" min="500" max="50000" step="500">
+        <!-- NEUTRON ROUTER -->
+        <div class="form-panel active" id="form-neutron">
+          <div class="form-section">
+            <div class="form-section-title">Route</div>
+            <div class="field-row">
+              <label class="field-label">From System
+                <span class="field-label-hint" id="from-fill-btn" style="cursor:pointer;color:var(--cyan);display:none;" title="Fill from live data">&#8635; Use current</span>
+              </label>
+              <input class="field-input" id="n-from" type="text" placeholder="Sol" spellcheck="false" autocomplete="off">
+            </div>
+            <div class="field-row">
+              <label class="field-label">To System</label>
+              <input class="field-input" id="n-to" type="text" placeholder="Colonia" spellcheck="false" autocomplete="off">
             </div>
           </div>
-          <div class="field-row">
-            <label class="field-label">Max Waypoints
-              <span class="field-label-hint" id="r-results-val">100</span>
-            </label>
-            <div class="field-range-wrap">
-              <input class="range-slider" type="range" id="r-results-sl" min="10" max="500" step="10" value="100">
-              <input class="field-input" id="r-results" type="number" value="100" min="10" max="500" step="10">
+          <div class="form-section">
+            <div class="form-section-title">Ship</div>
+            <div class="field-row">
+              <label class="field-label">Jump Range (ly)
+                <span class="field-label-hint" id="n-range-val">8.00 ly</span>
+              </label>
+              <div class="field-range-wrap">
+                <input class="range-slider" type="range" id="n-range-sl" min="3" max="100" step="0.5" value="8">
+                <input class="field-input" id="n-range" type="number" value="8" min="3" max="100" step="0.5">
+              </div>
             </div>
-          </div>
-        </div>
-        <div class="form-section">
-          <div class="form-section-title">Ship</div>
-          <div class="field-row">
-            <label class="field-label">Jump Range (ly)
-              <span class="field-label-hint" id="r-range-val">8.00 ly</span>
-            </label>
-            <div class="field-range-wrap">
-              <input class="range-slider" type="range" id="r-range-sl" min="3" max="100" step="0.5" value="8">
-              <input class="field-input" id="r-range" type="number" value="8" min="3" max="100" step="0.5">
+            <div class="field-row">
+              <label class="field-label">Efficiency %
+                <span class="field-label-hint" id="n-eff-val">60%</span>
+              </label>
+              <div class="field-range-wrap">
+                <input class="range-slider gold" type="range" id="n-eff-sl" min="1" max="100" step="1" value="60">
+                <input class="field-input" id="n-eff" type="number" value="60" min="1" max="100" step="1">
+              </div>
             </div>
           </div>
         </div>
-        <div class="form-section">
-          <div class="form-section-title">Filters</div>
-          <div class="field-row">
-            <label class="field-label">Min Body Value (cr)
-              <span class="field-label-hint" id="r-minval-val">500k cr</span>
-            </label>
-            <div class="field-range-wrap">
-              <input class="range-slider gold" type="range" id="r-minval-sl" min="0" max="2000000" step="50000" value="500000">
-              <input class="field-input" id="r-minval" type="number" value="500000" min="0" max="2000000" step="50000">
-            </div>
-          </div>
-          <div class="field-row">
-            <label class="field-label">Body Types</label>
-            <div class="toggle-group">
-              <button class="toggle-pill active" data-rtr-type="terraformable">Terraformable</button>
-              <button class="toggle-pill active" data-rtr-type="ammonia">Ammonia</button>
-              <button class="toggle-pill active" data-rtr-type="earthlike">Earth-like</button>
-              <button class="toggle-pill active" data-rtr-type="waterworld">Water World</button>
-            </div>
-          </div>
-        </div>
-      </div>
 
-      <!-- EXOBIOLOGY (Expressway to Exomastery) fields -->
-      <div class="form-panel" id="form-exobio">
-        <div class="form-section">
-          <div class="form-section-title">Search</div>
-          <div class="field-row">
-            <label class="field-label">From System
-              <span class="field-label-hint" id="exo-fill-btn" style="cursor:pointer;color:var(--cyan);display:none;" title="Fill from live data">&#8635; Use current</span>
-            </label>
-            <input class="field-input" id="exo-from" type="text" placeholder="Sol" spellcheck="false" autocomplete="off">
-          </div>
-          <div class="field-row">
-            <label class="field-label">Search Radius (ly)
-              <span class="field-label-hint" id="exo-radius-val">5000 ly</span>
-            </label>
-            <div class="field-range-wrap">
-              <input class="range-slider gold" type="range" id="exo-radius-sl" min="100" max="20000" step="100" value="5000">
-              <input class="field-input" id="exo-radius" type="number" value="5000" min="100" max="20000" step="100">
+        <!-- ROAD TO RICHES -->
+        <div class="form-panel" id="form-riches">
+          <div class="form-section">
+            <div class="form-section-title">Route</div>
+            <div class="field-row">
+              <label class="field-label">From System
+                <span class="field-label-hint" id="rtr-fill-btn" style="cursor:pointer;color:var(--cyan);display:none;" title="Fill from live data">&#8635; Use current</span>
+              </label>
+              <input class="field-input" id="r-from" type="text" placeholder="Sol" spellcheck="false" autocomplete="off">
+            </div>
+            <div class="field-row">
+              <label class="field-label">Destination System
+                <span class="field-label-hint" style="color:var(--text-mute);font-size:0.9em;letter-spacing:0;text-transform:none;">optional</span>
+              </label>
+              <input class="field-input" id="r-to" type="text" placeholder="Leave empty to end anywhere" spellcheck="false" autocomplete="off">
             </div>
           </div>
-          <div class="field-row">
-            <label class="field-label">Max Systems
-              <span class="field-label-hint" id="exo-results-val">50</span>
-            </label>
-            <div class="field-range-wrap">
-              <input class="range-slider" type="range" id="exo-results-sl" min="5" max="200" step="5" value="50">
-              <input class="field-input" id="exo-results" type="number" value="50" min="5" max="200" step="5">
+          <div class="form-section">
+            <div class="form-section-title">Ship</div>
+            <div class="field-row">
+              <label class="field-label">Ship Range (ly)
+                <span class="field-label-hint" id="r-range-val">8.00 ly</span>
+              </label>
+              <div class="field-range-wrap">
+                <input class="range-slider" type="range" id="r-range-sl" min="3" max="100" step="0.5" value="8">
+                <input class="field-input" id="r-range" type="number" value="8" min="3" max="100" step="0.5">
+              </div>
+            </div>
+          </div>
+          <div class="form-section">
+            <div class="form-section-title">Search</div>
+            <div class="field-row">
+              <label class="field-label">Radius (ly)
+                <span class="field-label-hint" id="r-maxdist-val">5,000 ly</span>
+              </label>
+              <div class="field-range-wrap">
+                <input class="range-slider gold" type="range" id="r-maxdist-sl" min="500" max="50000" step="500" value="5000">
+                <input class="field-input" id="r-maxdist" type="number" value="5000" min="500" max="50000" step="500">
+              </div>
+            </div>
+            <div class="field-row">
+              <label class="field-label">Maximum Systems
+                <span class="field-label-hint" id="r-results-val">100</span>
+              </label>
+              <div class="field-range-wrap">
+                <input class="range-slider" type="range" id="r-results-sl" min="10" max="500" step="10" value="100">
+                <input class="field-input" id="r-results" type="number" value="100" min="10" max="500" step="10">
+              </div>
+            </div>
+            <div class="field-row">
+              <label class="field-label">Max Distance To Arrival (ls)
+                <span class="field-label-hint" id="r-maxls-val">No limit</span>
+              </label>
+              <div class="field-range-wrap">
+                <input class="range-slider" type="range" id="r-maxls-sl" min="0" max="500000" step="5000" value="0">
+                <input class="field-input" id="r-maxls" type="number" value="0" min="0" max="500000" step="5000">
+              </div>
+            </div>
+          </div>
+          <div class="form-section">
+            <div class="form-section-title">Filters</div>
+            <div class="field-row">
+              <label class="field-label">Min Body Value (cr)
+                <span class="field-label-hint" id="r-minval-val">0 cr</span>
+              </label>
+              <div class="field-range-wrap">
+                <input class="range-slider gold" type="range" id="r-minval-sl" min="0" max="2000000" step="50000" value="0">
+                <input class="field-input" id="r-minval" type="number" value="0" min="0" max="2000000" step="50000">
+              </div>
+            </div>
+            <div class="field-row">
+              <label class="field-label">Options</label>
+              <div class="toggle-group" style="grid-template-columns:1fr 1fr 1fr;">
+                <button class="toggle-pill" id="rtr-mapping-val">Use Mapping Value</button>
+                <button class="toggle-pill" id="rtr-avoid-thargoids">Avoid Thargoids</button>
+                <button class="toggle-pill" id="rtr-loop">Loop</button>
+              </div>
             </div>
           </div>
         </div>
-        <div class="form-section">
-          <div class="form-section-title">Ship</div>
-          <div class="field-row">
-            <label class="field-label">Jump Range (ly)
-              <span class="field-label-hint" id="exo-range-val">8.00 ly</span>
-            </label>
-            <div class="field-range-wrap">
-              <input class="range-slider" type="range" id="exo-range-sl" min="3" max="100" step="0.5" value="8">
-              <input class="field-input" id="exo-range" type="number" value="8" min="3" max="100" step="0.5">
-            </div>
-          </div>
-        </div>
-        <div class="form-section">
-          <div class="form-section-title">Filters</div>
-          <div class="field-row">
-            <label class="field-label">Min Organism Value (cr)
-              <span class="field-label-hint" id="exo-minval-val">1 M cr</span>
-            </label>
-            <div class="field-range-wrap">
-              <input class="range-slider gold" type="range" id="exo-minval-sl" min="0" max="20000000" step="500000" value="1000000">
-              <input class="field-input" id="exo-minval" type="number" value="1000000" min="0" max="20000000" step="500000">
-            </div>
-          </div>
-          <div class="field-row">
-            <label class="field-label">Min Organisms per Body
-              <span class="field-label-hint" id="exo-minbio-val">1</span>
-            </label>
-            <div class="field-range-wrap">
-              <input class="range-slider" type="range" id="exo-minbio-sl" min="1" max="8" step="1" value="1">
-              <input class="field-input" id="exo-minbio" type="number" value="1" min="1" max="8" step="1">
-            </div>
-          </div>
-        </div>
-      </div>
 
-      <!-- FLEET CARRIER ROUTER fields -->
-      <div class="form-panel" id="form-carrier">
-        <div class="form-section">
-          <div class="form-section-title">Route</div>
-          <div class="field-row">
-            <label class="field-label">From System
-              <span class="field-label-hint" id="fc-fill-btn" style="cursor:pointer;color:var(--cyan);display:none;" title="Fill from live data">&#8635; Use current</span>
-            </label>
-            <input class="field-input" id="fc-from" type="text" placeholder="Sol" spellcheck="false" autocomplete="off">
-          </div>
-          <div class="field-row">
-            <label class="field-label">To System</label>
-            <input class="field-input" id="fc-to" type="text" placeholder="Colonia" spellcheck="false" autocomplete="off">
-          </div>
-        </div>
-        <div class="form-section">
-          <div class="form-section-title">Carrier Fuel</div>
-          <div class="field-row">
-            <label class="field-label">Tritium On Board (t)
-              <span class="field-label-hint" id="fc-fuel-val">500 t</span>
-            </label>
-            <div class="field-range-wrap">
-              <input class="range-slider gold" type="range" id="fc-fuel-sl" min="0" max="25000" step="50" value="500">
-              <input class="field-input" id="fc-fuel" type="number" value="500" min="0" max="25000" step="50">
+        <!-- EXOBIOLOGY -->
+        <div class="form-panel" id="form-exobio">
+          <div class="form-section">
+            <div class="form-section-title">Search</div>
+            <div class="field-row">
+              <label class="field-label">From System
+                <span class="field-label-hint" id="exo-fill-btn" style="cursor:pointer;color:var(--cyan);display:none;" title="Fill from live data">&#8635; Use current</span>
+              </label>
+              <input class="field-input" id="exo-from" type="text" placeholder="Sol" spellcheck="false" autocomplete="off">
+            </div>
+            <div class="field-row">
+              <label class="field-label">Destination System
+                <span class="field-label-hint" style="color:var(--text-mute)">Leave blank to not care where you finish</span>
+              </label>
+              <input class="field-input" id="exo-to" type="text" placeholder="Optional" spellcheck="false" autocomplete="off">
+            </div>
+            <div class="field-row">
+              <label class="field-label">Search Radius (ly)
+                <span class="field-label-hint" id="exo-radius-val">25 ly</span>
+              </label>
+              <div class="field-range-wrap">
+                <input class="range-slider gold" type="range" id="exo-radius-sl" min="1" max="200" step="1" value="25">
+                <input class="field-input" id="exo-radius" type="number" value="25" min="1" max="200" step="1">
+              </div>
+            </div>
+            <div class="field-row">
+              <label class="field-label">Max Systems
+                <span class="field-label-hint" id="exo-results-val">100</span>
+              </label>
+              <div class="field-range-wrap">
+                <input class="range-slider" type="range" id="exo-results-sl" min="5" max="500" step="5" value="100">
+                <input class="field-input" id="exo-results" type="number" value="100" min="5" max="500" step="5">
+              </div>
             </div>
           </div>
-          <div class="field-row">
-            <label class="field-hint" style="font-size:0.72em;color:var(--text-mute);line-height:1.5;">Fuel tank holds 1000 t. Additional tritium can be stored in cargo. The router models consumption per jump based on carrier mass.</div>
-          </div>
-        </div>
-        <div class="form-section">
-          <div class="form-section-title">Carrier Mass</div>
-          <div class="field-row">
-            <label class="field-label">Cargo / Services Used (t)
-              <span class="field-label-hint" id="fc-cargo-val">0 t</span>
-            </label>
-            <div class="field-range-wrap">
-              <input class="range-slider" type="range" id="fc-cargo-sl" min="0" max="25000" step="100" value="0">
-              <input class="field-input" id="fc-cargo" type="number" value="0" min="0" max="25000" step="100">
+          <div class="form-section">
+            <div class="form-section-title">Ship</div>
+            <div class="field-row">
+              <label class="field-label">Jump Range (ly)
+                <span class="field-label-hint" id="exo-range-val">8.00 ly</span>
+              </label>
+              <div class="field-range-wrap">
+                <input class="range-slider" type="range" id="exo-range-sl" min="3" max="100" step="0.5" value="8">
+                <input class="field-input" id="exo-range" type="number" value="8" min="3" max="100" step="0.5">
+              </div>
             </div>
           </div>
-          <div class="field-row">
-            <label class="field-label">Tank Size (t)
-              <span class="field-label-hint" id="fc-tank-val">1000 t</span>
-            </label>
-            <div class="field-range-wrap">
-              <input class="range-slider" type="range" id="fc-tank-sl" min="100" max="1000" step="50" value="1000">
-              <input class="field-input" id="fc-tank" type="number" value="1000" min="100" max="1000" step="50">
+          <div class="form-section">
+            <div class="form-section-title">Options</div>
+            <div class="field-row toggle-row">
+              <div class="toggle-group">
+                <button class="toggle-pill active" id="exo-avoid-thargoids">Avoid Thargoids</button>
+                <button class="toggle-pill active" id="exo-loop">Loop</button>
+              </div>
+            </div>
+          </div>
+          <div class="form-section">
+            <div class="form-section-title">Filters</div>
+            <div class="field-row">
+              <label class="field-label">Max Distance to Arrival (ls)
+                <span class="field-label-hint" id="exo-maxls-val">1,000,000 ls</span>
+              </label>
+              <div class="field-range-wrap">
+                <input class="range-slider gold" type="range" id="exo-maxls-sl" min="0" max="5000000" step="50000" value="1000000">
+                <input class="field-input" id="exo-maxls" type="number" value="1000000" min="0" max="5000000" step="50000">
+              </div>
+            </div>
+            <div class="field-row">
+              <label class="field-label">Min Organism Value (cr)
+                <span class="field-label-hint" id="exo-minval-val">10 M cr</span>
+              </label>
+              <div class="field-range-wrap">
+                <input class="range-slider gold" type="range" id="exo-minval-sl" min="0" max="20000000" step="500000" value="10000000">
+                <input class="field-input" id="exo-minval" type="number" value="10000000" min="0" max="20000000" step="500000">
+              </div>
+            </div>
+            <div class="field-row">
+              <label class="field-label">Min Organisms per Body
+                <span class="field-label-hint" id="exo-minbio-val">1</span>
+              </label>
+              <div class="field-range-wrap">
+                <input class="range-slider" type="range" id="exo-minbio-sl" min="1" max="8" step="1" value="1">
+                <input class="field-input" id="exo-minbio" type="number" value="1" min="1" max="8" step="1">
+              </div>
             </div>
           </div>
         </div>
-      </div>
 
-      <!-- Submit (shared) -->
+        <!-- FLEET CARRIER -->
+        <div class="form-panel" id="form-carrier">
+          <div class="form-section">
+            <div class="form-section-title">Route</div>
+            <div class="field-row">
+              <label class="field-label">From System
+                <span class="field-label-hint" id="fc-fill-btn" style="cursor:pointer;color:var(--cyan);display:none;" title="Fill from live data">&#8635; Use current</span>
+              </label>
+              <input class="field-input" id="fc-from" type="text" placeholder="Sol" spellcheck="false" autocomplete="off">
+            </div>
+            <div class="field-row">
+              <label class="field-label">Destination System</label>
+              <input class="field-input" id="fc-to" type="text" placeholder="Colonia" spellcheck="false" autocomplete="off">
+            </div>
+          </div>
+          <div class="form-section">
+            <div class="form-section-title">Carrier Type</div>
+            <div class="field-row toggle-row">
+              <div class="toggle-group" style="grid-template-columns:1fr 1fr;">
+                <button class="toggle-pill active" id="fc-type-player">Player Carrier</button>
+                <button class="toggle-pill" id="fc-type-squadron">Squadron Carrier</button>
+              </div>
+            </div>
+            <div class="field-row">
+              <label class="field-label">Used Capacity (t)
+                <span class="field-label-hint" id="fc-cargo-val">0 t</span>
+              </label>
+              <div class="field-range-wrap">
+                <input class="range-slider gold" type="range" id="fc-cargo-sl" min="0" max="25000" step="100" value="0">
+                <input class="field-input" id="fc-cargo" type="number" value="0" min="0" max="25000" step="100">
+              </div>
+            </div>
+            <div class="field-row">
+              <span class="field-hint" style="font-size:0.72em;color:var(--text-mute);line-height:1.5;">Services, stored ships/modules &amp; cargo on board. Affects fuel consumption per jump.</span>
+            </div>
+          </div>
+          <div class="form-section">
+            <div class="form-section-title">Tritium</div>
+            <div class="field-row">
+              <label class="field-label">Tritium in Tank (t)
+                <span class="field-label-hint" id="fc-fuel-val">1,000 t</span>
+              </label>
+              <div class="field-range-wrap">
+                <input class="range-slider gold" type="range" id="fc-fuel-sl" min="0" max="1000" step="10" value="1000">
+                <input class="field-input" id="fc-fuel" type="number" value="1000" min="0" max="1000" step="10">
+              </div>
+            </div>
+            <div class="field-row">
+              <label class="field-label">Tritium in Cargo (t)
+                <span class="field-label-hint" id="fc-market-val">0 t</span>
+              </label>
+              <div class="field-range-wrap">
+                <input class="range-slider" type="range" id="fc-market-sl" min="0" max="25000" step="100" value="0">
+                <input class="field-input" id="fc-market" type="number" value="0" min="0" max="25000" step="100">
+              </div>
+            </div>
+            <div class="field-row">
+              <span class="field-hint" style="font-size:0.72em;color:var(--text-mute);line-height:1.5;">The router will tell you if you need more tritium. Tank max is 1,000 t; extra can be stored in cargo.</span>
+            </div>
+          </div>
+          <div id="fc-tritium-result" style="display:none;margin:8px 0 4px;padding:10px 14px;border-radius:6px;background:rgba(200,151,42,0.08);border:1px solid rgba(200,151,42,0.25);">
+            <div style="font-size:0.75em;color:var(--text-mute);text-transform:uppercase;letter-spacing:0.06em;margin-bottom:4px;">Tritium Required</div>
+            <div id="fc-tritium-amount" style="font-size:1.4em;color:var(--gold);font-weight:600;">—</div>
+            <div id="fc-tritium-detail" style="font-size:0.78em;color:var(--text-mute);margin-top:3px;"></div>
+          </div>
+        </div>
+
+      </div><!-- /spansh-panels-scroll -->
+
+      <!-- Submit pinned to bottom of left column -->
       <div id="spansh-submit-wrap">
         <button class="submit-btn" id="spansh-submit">
           <span class="icon-static">&#9654;</span>
           <span class="spin">&#8635;</span>
           <span id="submit-label">Calculate Route</span>
         </button>
+        <button class="submit-btn" id="fc-tritium-btn" style="display:none;background:rgba(200,151,42,0.12);border-color:rgba(200,151,42,0.4);color:var(--gold);margin-top:8px;">
+          <span>&#9670;</span>
+          <span>Tritium Requirements</span>
+        </button>
         <div id="submit-error" style="font-family:var(--mono);font-size:0.68em;color:var(--red);margin-top:8px;display:none;"></div>
       </div>
 
-    </div><!-- /form-wrap -->
+    </div><!-- /spansh-left -->
 
-    <!-- ═══ RESULTS PANEL ══════════════════════════════════════════ -->
+    <!-- ═══ RIGHT COLUMN: results ════════════════════════════════════ -->
     <div id="spansh-results-wrap">
 
       <!-- Status bar -->
@@ -701,12 +836,12 @@
         <span class="status-meta" id="status-meta"></span>
       </div>
 
-      <!-- Progress bar (shows during poll) -->
+      <!-- Progress bar -->
       <div id="spansh-progress-bar-wrap">
         <div id="spansh-progress-bar-fill"></div>
       </div>
 
-      <!-- Route summary strip (shows after result) -->
+      <!-- Route summary strip -->
       <div id="route-summary">
         <div class="rsm-item">
           <div class="rsm-val" id="rsm-jumps">—</div>
@@ -733,22 +868,17 @@
       <!-- Scrollable table -->
       <div id="spansh-table-wrap">
 
-        <!-- Idle state -->
+        <!-- Idle -->
         <div id="spansh-idle">
           <div class="idle-icon">&#9652;</div>
           <div class="idle-title">Spansh Router</div>
-          <div class="idle-sub">
-            Calculate neutron routes, Road to Riches waypoints, Expressway to Exomastery biology routes, or Fleet Carrier hops using the Spansh API.
-          </div>
+          <div class="idle-sub">Calculate neutron routes, Road to Riches waypoints, Expressway to Exomastery biology routes, or Fleet Carrier hops using the Spansh API.</div>
         </div>
 
-        <!-- Results table (hidden until populated) -->
+        <!-- Results table -->
         <table class="results-table" id="spansh-table" style="display:none;">
-          <thead id="spansh-thead">
-            <!-- populated by JS per route type -->
-          </thead>
-          <tbody id="spansh-tbody">
-          </tbody>
+          <thead id="spansh-thead"></thead>
+          <tbody id="spansh-tbody"></tbody>
         </table>
 
       </div><!-- /table-wrap -->
@@ -760,7 +890,7 @@
         <span style="margin-left:auto">Data &copy; Spansh &amp; EDDB contributors</span>
       </div>
 
-    </div><!-- /results-wrap -->
+    </div><!-- /spansh-results-wrap -->
 
   </div><!-- /spansh-body -->
 

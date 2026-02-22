@@ -1,6 +1,6 @@
 {
   "name": "elite-explorer",
-  "version": "0.0.7",
+  "version": "0.0.8",
   "description": "Elite Dangerous exploration desktop engine",
   "main": "main.js",
   "scripts": {

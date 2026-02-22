@@ -29,8 +29,21 @@ var _lastRoute      = null;   // { type, systems: [] }
 var _liveSystem     = null;   // from IPC
 var _liveJumpRange  = null;   // from IPC (e.g. "24.55 ly")
 
-// Road to Riches body type toggles
-var _rtrTypes = { terraformable: true, ammonia: true, earthlike: true, waterworld: true };
+// Road to Riches option toggles
+var _rtrOptions = { mappingValue: false, avoidThargoids: false, loop: false };
+
+// Exomastery option toggles (defaults match Spansh website)
+var _exoOptions = { avoidThargoids: true, loop: true };
+
+// Fleet Carrier type: 'player' or 'squadron'
+var _fcType = 'player';
+// Player carrier: bare minimum services (~0 t used capacity preset)
+// Squadron carrier: fully loaded with services/cargo (~8000 t preset)
+// { used_capacity, tritium_fuel, tritium_market }
+var FC_PRESETS = {
+  player:   { cargo: 0,    fuel: 1000, market: 0 },
+  squadron: { cargo: 8000, fuel: 1000, market: 0 },
+};
 
 // ─── UTILITIES ────────────────────────────────────────────────────
 function set(id, v) {
@@ -49,6 +62,42 @@ function fmtCr(n) {
 function fmtLy(n) {
   if (n == null) return '\u2014';
   return Number(n).toFixed(2) + ' ly';
+}
+
+// ─── PER-ROW COPY HELPER ──────────────────────────────────────────
+function copyRowSystem(systemName, btn) {
+  navigator.clipboard.writeText(systemName).then(function() {
+    var orig = btn.textContent;
+    btn.textContent = '\u2713 Copied';
+    btn.classList.add('copied');
+    setTimeout(function() { btn.textContent = orig; btn.classList.remove('copied'); }, 1600);
+  }).catch(function() {
+    var ta = document.createElement('textarea');
+    ta.value = systemName;
+    document.body.appendChild(ta);
+    ta.select();
+    document.execCommand('copy');
+    document.body.removeChild(ta);
+  });
+}
+
+// ─── ROW BUILDER HELPERS ──────────────────────────────────────────
+function makeVisitedCb(tr) {
+  var cb = document.createElement('input');
+  cb.type = 'checkbox';
+  cb.className = 'row-visited-cb';
+  cb.title = 'Mark as visited';
+  cb.addEventListener('change', function() { tr.classList.toggle('row-done', cb.checked); });
+  return cb;
+}
+
+function makeCopyBtn(systemName) {
+  var btn = document.createElement('button');
+  btn.className = 'row-copy-btn';
+  btn.textContent = '\u2398 Copy';
+  btn.title = 'Copy system name';
+  btn.addEventListener('click', function() { copyRowSystem(systemName, btn); });
+  return btn;
 }
 
 function parseJumpRange(str) {
@@ -131,10 +180,13 @@ document.querySelectorAll('.sub-tab').forEach(function(btn) {
     document.querySelectorAll('.sub-tab').forEach(function(b) { b.classList.toggle('active', b === btn); });
     document.querySelectorAll('.form-panel').forEach(function(p) { p.classList.toggle('active', p.id === 'form-' + _currentPanel); });
     var labels = { neutron: 'Calculate Route', riches: 'Find Systems', exobio: 'Find Organisms', carrier: 'Plot FC Route' };
+    var tritBtn = document.getElementById('fc-tritium-btn');
+    if (tritBtn) tritBtn.style.display = btn.dataset.panel === 'carrier' ? 'flex' : 'none';
     set('submit-label', labels[_currentPanel] || 'Calculate');
     // Reset results area
     hideResults();
     showError('');
+    updateCarrierMassPanel();
   });
 });
 
@@ -149,14 +201,85 @@ function hideResults() {
   showProgress(100);
 }
 
-// ─── BODY TYPE TOGGLES (Road to Riches) ──────────────────────────
-document.querySelectorAll('[data-rtr-type]').forEach(function(btn) {
-  btn.addEventListener('click', function() {
-    var t = btn.dataset.rtrType;
-    _rtrTypes[t] = !_rtrTypes[t];
-    btn.classList.toggle('active', _rtrTypes[t]);
+// ─── ROAD TO RICHES OPTION TOGGLES ──────────────────────────────
+(function() {
+  var mappingBtn = document.getElementById('rtr-mapping-val');
+  var thargoidBtn = document.getElementById('rtr-avoid-thargoids');
+  var loopBtn = document.getElementById('rtr-loop');
+
+  function bindToggle(btn, key, optObj) {
+    if (!btn) return;
+    btn.classList.toggle('active', !!optObj[key]);
+    btn.addEventListener('click', function() {
+      optObj[key] = !optObj[key];
+      btn.classList.toggle('active', optObj[key]);
+    });
+  }
+  bindToggle(mappingBtn,  'mappingValue',   _rtrOptions);
+  bindToggle(thargoidBtn, 'avoidThargoids', _rtrOptions);
+  bindToggle(loopBtn,     'loop',           _rtrOptions);
+
+  // Exomastery toggles
+  bindToggle(document.getElementById('exo-avoid-thargoids'), 'avoidThargoids', _exoOptions);
+  bindToggle(document.getElementById('exo-loop'),            'loop',           _exoOptions);
+})();
+
+// Fleet Carrier type buttons (mutually exclusive)
+(function() {
+  var btnPlayer    = document.getElementById('fc-type-player');
+  var btnSquadron  = document.getElementById('fc-type-squadron');
+  var cargoSlider  = document.getElementById('fc-cargo-sl');
+  var cargoInput   = document.getElementById('fc-cargo');
+  var cargoVal     = document.getElementById('fc-cargo-val');
+
+  function setFcType(type) {
+    _fcType = type;
+    if (btnPlayer)   btnPlayer.classList.toggle('active',   type === 'player');
+    if (btnSquadron) btnSquadron.classList.toggle('active', type === 'squadron');
+    var preset = FC_PRESETS[type] || FC_PRESETS.player;
+
+    // Used capacity
+    if (cargoSlider) { cargoSlider.value = preset.cargo; sliderFill(cargoSlider); }
+    if (cargoInput)  cargoInput.value = preset.cargo;
+    if (cargoVal)    cargoVal.textContent = Number(preset.cargo).toLocaleString() + ' t';
+
+    // Tritium in tank
+    var fuelSl  = document.getElementById('fc-fuel-sl');
+    var fuelInp = document.getElementById('fc-fuel');
+    var fuelVal = document.getElementById('fc-fuel-val');
+    if (fuelSl)  { fuelSl.value = preset.fuel; sliderFill(fuelSl); }
+    if (fuelInp) fuelInp.value = preset.fuel;
+    if (fuelVal) fuelVal.textContent = Number(preset.fuel).toLocaleString() + ' t';
+
+    // Tritium in cargo
+    var mktSl  = document.getElementById('fc-market-sl');
+    var mktInp = document.getElementById('fc-market');
+    var mktVal = document.getElementById('fc-market-val');
+    if (mktSl)  { mktSl.value = preset.market; sliderFill(mktSl); }
+    if (mktInp) mktInp.value = preset.market;
+    if (mktVal) mktVal.textContent = Number(preset.market).toLocaleString() + ' t';
+  }
+
+  if (btnPlayer)   btnPlayer.addEventListener('click',   function() { setFcType('player'); });
+  if (btnSquadron) btnSquadron.addEventListener('click', function() { setFcType('squadron'); });
+})();
+
+// ─── CARRIER MASS PANEL: only active in Fleet Carrier tab ────────
+function updateCarrierMassPanel() {
+  var massSection = document.querySelector('#form-carrier .form-section-title');
+  // Find the Carrier Mass section by title text
+  var allSections = document.querySelectorAll('#form-carrier .form-section');
+  allSections.forEach(function(sec) {
+    var title = sec.querySelector('.form-section-title');
+    if (title && title.textContent.trim() === 'Carrier Mass') {
+      if (_currentPanel === 'carrier') {
+        sec.classList.remove('section-disabled');
+      } else {
+        sec.classList.add('section-disabled');
+      }
+    }
   });
-});
+}
 
 // ─── "USE CURRENT SYSTEM" quick-fill ─────────────────────────────
 ['from-fill-btn','rtr-fill-btn','exo-fill-btn','fc-fill-btn'].forEach(function(id, i) {
@@ -189,6 +312,17 @@ if (spanshLink) {
 }
 
 // ─── COPY SYSTEMS ─────────────────────────────────────────────────
+// Tritium requirements button
+var fcTritBtn = document.getElementById('fc-tritium-btn');
+if (fcTritBtn) {
+  fcTritBtn.addEventListener('click', function() {
+    if (_isRunning) return;
+    showError('');
+    stopPoll();
+    submitTritiumCalc();
+  });
+}
+
 var copyBtn = document.getElementById('copy-route-btn');
 if (copyBtn) {
   copyBtn.addEventListener('click', function() {
@@ -233,6 +367,12 @@ function pollJob(jobId, onDone, onError) {
         onDone(data);
       } else if (data.status === 'queued' || data.status === 'processing') {
         _pollTimer = setTimeout(function() { pollJob(jobId, onDone, onError); }, POLL_INTERVAL);
+      } else if (data.error) {
+        onError(data.error);
+      } else if (Array.isArray(data) || (typeof data === 'object' && data !== null &&
+                 !data.status && Object.keys(data).length > 0)) {
+        // Spansh may return results directly without a status wrapper
+        onDone(data);
       } else {
         onError('Spansh returned an unexpected status: ' + data.status);
       }
@@ -252,6 +392,9 @@ document.getElementById('spansh-submit').addEventListener('click', function() {
   else if (_currentPanel === 'riches')  submitRiches();
   else if (_currentPanel === 'exobio')  submitExobio();
   else if (_currentPanel === 'carrier') submitCarrier();
+  // Reset tritium result when re-routing
+  var tritRes = document.getElementById('fc-tritium-result');
+  if (tritRes && _currentPanel !== 'carrier') tritRes.style.display = 'none';
 });
 
 // ─── NEUTRON ROUTER ───────────────────────────────────────────────
@@ -306,9 +449,9 @@ function renderNeutron(data) {
   setStatus('Route calculated \u2014 ' + route.length + ' jumps', 'ok',
     systems[0] + ' \u2192 ' + systems[systems.length - 1]);
 
-  // Table header
+  // Table header — no Star Type column
   document.getElementById('spansh-thead').innerHTML =
-    '<tr><th></th><th>System</th><th>Star Type</th><th style="text-align:right">Jump</th><th style="text-align:right">Remaining</th></tr>';
+    '<tr><th style="width:28px"></th><th style="width:24px"></th><th>System</th><th style="text-align:right">Jump</th><th style="text-align:right">Remaining</th><th style="width:60px"></th></tr>';
 
   var totalJumps  = route.length;
   var totalRemain = totalDist;
@@ -329,12 +472,36 @@ function renderNeutron(data) {
     var tag = isDest ? '<span class="hop-tag dest">Destination</span>'
             : isNeutron ? '<span class="hop-tag neutron">&#9885; Neutron</span>' : '';
 
+    // visited checkbox
+    var cb = document.createElement('input');
+    cb.type = 'checkbox';
+    cb.className = 'row-visited-cb';
+    cb.title = 'Mark as visited';
+    cb.addEventListener('change', function() { tr.classList.toggle('row-done', cb.checked); });
+
+    // copy button
+    var cpBtn = document.createElement('button');
+    cpBtn.className = 'row-copy-btn';
+    cpBtn.textContent = '⎘ Copy';
+    cpBtn.title = 'Copy system name';
+    cpBtn.addEventListener('click', function() { copyRowSystem(sys, cpBtn); });
+
+    var cbTd = document.createElement('td');
+    cbTd.appendChild(cb);
+
+    var cpTd = document.createElement('td');
+    cpTd.appendChild(cpBtn);
+
     tr.innerHTML =
       '<td><span class="hop-num">' + (i + 1) + '</span></td>' +
+      '<td></td>' + // placeholder for cb
       '<td class="' + sysClass + '">' + sys + tag + '</td>' +
-      '<td style="font-size:0.8em;color:var(--text-dim)">' + (h.star_class || h.primary_star_type || '\u2014') + '</td>' +
       '<td class="hop-dist">' + (dist ? fmtLy(dist) : '\u2014') + '</td>' +
-      '<td class="hop-rem">'  + (totalRemain > 0 ? fmtLy(totalRemain) : '0.00 ly') + '</td>';
+      '<td class="hop-rem">'  + (totalRemain > 0 ? fmtLy(totalRemain) : '0.00 ly') + '</td>' +
+      '<td></td>'; // placeholder for copy
+
+    tr.cells[1].replaceWith(cbTd);
+    tr.cells[tr.cells.length - 1].replaceWith(cpTd);
     frag.appendChild(tr);
   });
 
@@ -348,42 +515,48 @@ function renderNeutron(data) {
 
 // ─── ROAD TO RICHES ───────────────────────────────────────────────
 function submitRiches() {
-  var from     = (document.getElementById('r-from')    || {}).value.trim();
-  var range    = parseFloat((document.getElementById('r-range')   || {}).value) || 0;
-  var maxDist  = parseFloat((document.getElementById('r-maxdist') || {}).value) || 5000;
-  var results  = parseInt((document.getElementById('r-results')   || {}).value) || 100;
-  var minVal   = parseInt((document.getElementById('r-minval')    || {}).value) || 0;
+  var from    = (document.getElementById('r-from')    || {}).value.trim();
+  var to      = (document.getElementById('r-to')      || {}).value.trim();
+  var range   = parseFloat((document.getElementById('r-range')   || {}).value) || 0;
+  var radius  = parseFloat((document.getElementById('r-maxdist') || {}).value) || 500;
+  var results = parseInt((document.getElementById('r-results')   || {}).value) || 100;
+  var minVal  = parseInt((document.getElementById('r-minval')    || {}).value) || 0;
+  var maxLs   = parseInt((document.getElementById('r-maxls')     || {}).value) || 0;
 
-  if (!from)   { showError('Please enter a starting system.'); return; }
+  if (!from)    { showError('Please enter a starting system.'); return; }
   if (range < 1){ showError('Jump range must be at least 1 ly.'); return; }
-
-  // Build body type string
-  var types = [];
-  if (_rtrTypes.terraformable) types.push('Terraformable');
-  if (_rtrTypes.ammonia)       types.push('Ammonia world');
-  if (_rtrTypes.earthlike)     types.push('Earthlike world');
-  if (_rtrTypes.waterworld)    types.push('Water world');
-  if (!types.length) { showError('Select at least one body type.'); return; }
 
   setRunning(true);
   setStatus('Submitting job to Spansh\u2026', 'busy');
   showProgress(5);
   _pollStart = Date.now();
 
-  var body = new URLSearchParams({
-    from:               from,
-    range:              range,
-    radius:             maxDist,
-    max_results:        results,
-    min_value:          minVal,
-    use_mapping_value:  1,
+  // Build params to exactly mirror what spansh.co.uk/riches sends
+  var bodyParams = new URLSearchParams({
+    from:        from,
+    range:       range,
+    radius:      radius,
+    max_results: results,
+    min_value:   minVal,
   });
-  // Spansh expects repeated 'bodytype[]' params
-  types.forEach(function(t) { body.append('bodytype[]', t); });
 
-  fetch(SPANSH_BASE + '/api/riches/route', { method: 'POST', body: body })
+  // Optional destination — omit entirely when blank (circular route)
+  if (to) bodyParams.set('to', to);
+
+  // Only send flag params when they are actually ON (matching Spansh's own form)
+  if (_rtrOptions.mappingValue)    bodyParams.set('use_mapping_value', 1);
+  if (_rtrOptions.avoidThargoids)  bodyParams.set('avoid_thargoids',   1);
+  if (_rtrOptions.loop)            bodyParams.set('loop',               1);
+
+  // Max distance to arrival in ls — omit when 0 (no limit)
+  if (maxLs > 0) bodyParams.set('max_distance', maxLs);
+
+  console.log('[RTR] POST params:', bodyParams.toString());
+
+  fetch(SPANSH_BASE + '/api/riches/route', { method: 'POST', body: bodyParams })
     .then(function(r) { return r.json(); })
     .then(function(data) {
+      console.log('[RTR] POST response:', JSON.stringify(data));
       if (!data.job) throw new Error(data.error || 'No job ID returned.');
       pollJob(data.job, renderRiches, handleApiError);
     })
@@ -392,8 +565,45 @@ function submitRiches() {
 
 function renderRiches(data) {
   showProgress(100);
-  var route = (data.result && data.result.bodies) ? data.result.bodies : [];
-  if (!route.length) { handleApiError('No bodies found matching your criteria. Try widening the search range or reducing the minimum value.'); return; }
+
+  // Extract body array from whatever structure Spansh returns.
+  // Spansh has changed this format multiple times; we try every known variant
+  // and pick the first non-empty result rather than an if/else chain that can
+  // short-circuit on an empty intermediate value.
+  function numericEntries(obj) {
+    if (!obj || typeof obj !== 'object') return [];
+    return Object.keys(obj)
+      .filter(function(k) { return k !== '' && !isNaN(Number(k)); })
+      .sort(function(a, b) { return Number(a) - Number(b); })
+      .map(function(k) { return obj[k]; })
+      .filter(function(v) { return v !== null && typeof v === 'object'; });
+  }
+
+  var r = data.result;
+  var candidates = [
+    Array.isArray(data)              ? data              : [],
+    Array.isArray(r)                 ? r                 : [],
+    r && Array.isArray(r.bodies)     ? r.bodies          : [],
+    r && Array.isArray(r.systems)    ? r.systems         : [],
+    r && Array.isArray(r.waypoints)  ? r.waypoints       : [],
+    r && typeof r === 'object'       ? numericEntries(r) : [],
+    numericEntries(data),
+  ];
+
+  var route = [];
+  for (var ci = 0; ci < candidates.length; ci++) {
+    if (candidates[ci].length > 0) { route = candidates[ci]; break; }
+  }
+
+  console.log('[RTR] candidates lengths:', candidates.map(function(c){return c.length;}).join(','),
+    '| picked:', route.length, '| data keys:', Object.keys(data).slice(0,10).join(','));
+  if (route.length > 0) console.log('[RTR] First item:', JSON.stringify(route[0]).slice(0,200));
+
+  if (!route.length) {
+    handleApiError('No bodies found. API response keys: ' + Object.keys(data).join(', ') +
+      ' | result type: ' + (r === undefined ? 'undefined' : Array.isArray(r) ? 'array['+r.length+']' : typeof r));
+    return;
+  }
 
   var systems  = route.map(function(b) { return b.system_name || b.systemName || b.system || '?'; });
   var uniqueSys = systems.filter(function(v, i, a) { return a.indexOf(v) === i; });
@@ -412,7 +622,7 @@ function renderRiches(data) {
 
   // Table header
   document.getElementById('spansh-thead').innerHTML =
-    '<tr><th></th><th>System</th><th>Body</th><th>Type</th><th style="text-align:right">Distance</th><th style="text-align:right">Map Value</th></tr>';
+    '<tr><th style="width:28px"></th><th style="width:24px"></th><th>System</th><th>Body</th><th>Type</th><th style="text-align:right">Distance</th><th style="text-align:right">Map Value</th><th style="width:60px"></th></tr>';
 
   var tbody = document.getElementById('spansh-tbody');
   var frag  = document.createDocumentFragment();
@@ -426,13 +636,24 @@ function renderRiches(data) {
 
     var tr   = document.createElement('tr');
     tr.className = i % 2 === 1 ? 'alt-row' : '';
+
+    var cbTd = document.createElement('td');
+    cbTd.appendChild(makeVisitedCb(tr));
+    var cpTd = document.createElement('td');
+    cpTd.appendChild(makeCopyBtn(sys));
+
     tr.innerHTML =
       '<td><span class="hop-num">' + (i + 1) + '</span></td>' +
+      '<td></td>' +
       '<td class="hop-sys">' + sys + '</td>' +
       '<td style="font-size:0.85em;color:var(--text-dim)">' + body + '</td>' +
       '<td><span class="scan-type-chip">' + type + '</span></td>' +
       '<td class="hop-dist">' + (dist != null ? Number(dist).toFixed(0) + ' ls' : '\u2014') + '</td>' +
-      '<td class="hop-val">'  + fmtCr(val) + '</td>';
+      '<td class="hop-val">'  + fmtCr(val) + '</td>' +
+      '<td></td>';
+
+    tr.cells[1].replaceWith(cbTd);
+    tr.cells[tr.cells.length - 1].replaceWith(cpTd);
     frag.appendChild(tr);
   });
 
@@ -447,11 +668,13 @@ function renderRiches(data) {
 // ─── EXPRESSWAY TO EXOMASTERY ─────────────────────────────────────
 function submitExobio() {
   var from    = (document.getElementById('exo-from')    || {}).value.trim();
+  var to      = (document.getElementById('exo-to')      || {}).value.trim();
   var range   = parseFloat((document.getElementById('exo-range')   || {}).value) || 0;
-  var radius  = parseFloat((document.getElementById('exo-radius')  || {}).value) || 5000;
-  var results = parseInt((document.getElementById('exo-results')   || {}).value) || 50;
+  var radius  = parseFloat((document.getElementById('exo-radius')  || {}).value) || 25;
+  var results = parseInt((document.getElementById('exo-results')   || {}).value) || 100;
   var minVal  = parseInt((document.getElementById('exo-minval')    || {}).value) || 0;
   var minBio  = parseInt((document.getElementById('exo-minbio')    || {}).value) || 1;
+  var maxLs   = parseInt((document.getElementById('exo-maxls')     || {}).value) || 0;
 
   if (!from)    { showError('Please enter a starting system.'); return; }
   if (range < 1){ showError('Jump range must be at least 1 ly.'); return; }
@@ -462,13 +685,20 @@ function submitExobio() {
   _pollStart = Date.now();
 
   var body = new URLSearchParams({
-    from:         from,
-    range:        range,
-    max_distance: radius,
-    max_results:  results,
-    min_value:    minVal,
-    min_bio:      minBio,
+    from:        from,
+    range:       range,
+    radius:      radius,
+    max_results: results,
+    min_value:   minVal,
+    min_bio:     minBio,
   });
+
+  if (to)                         body.set('to',               to);
+  if (maxLs > 0)                  body.set('max_distance',     maxLs);
+  if (_exoOptions.avoidThargoids) body.set('avoid_thargoids',  1);
+  if (_exoOptions.loop)           body.set('loop',              1);
+
+  console.log('[EXO] POST params:', body.toString());
 
   fetch(SPANSH_BASE + '/api/exobiology/route', { method: 'POST', body: body })
     .then(function(r) { return r.json(); })
@@ -481,11 +711,25 @@ function submitExobio() {
 
 function renderExobio(data) {
   showProgress(100);
+
+  // Spansh returns an array of SYSTEM objects, each with a nested bodies[] array.
+  // Flatten into individual body rows, stamping system name and jumps onto each.
+  var systemList = [];
+  if (data.result && Array.isArray(data.result))         systemList = data.result;
+  else if (data.result && Array.isArray(data.result.systems)) systemList = data.result.systems;
+  else if (data.result && Array.isArray(data.result.bodies))  systemList = data.result.bodies;
+
   var route = [];
-  // Spansh exobiology result structure: result.bodies[] or result.systems[]
-  if (data.result && data.result.bodies)  route = data.result.bodies;
-  else if (data.result && data.result.systems) route = data.result.systems;
-  else if (Array.isArray(data.result))    route = data.result;
+  systemList.forEach(function(sys) {
+    var sysName = sys.name || sys.system_name || '?';
+    var sysJumps = sys.jumps != null ? sys.jumps : '—';
+    var bodies = Array.isArray(sys.bodies) ? sys.bodies : [];
+    bodies.forEach(function(b) {
+      b._sysName = sysName;
+      b._sysJumps = sysJumps;
+      route.push(b);
+    });
+  });
 
   if (!route.length) {
     handleApiError('No organisms found matching your criteria. Try widening the search radius, reducing minimum value, or lowering jump range threshold.');
@@ -496,15 +740,15 @@ function renderExobio(data) {
   var systems = [];
   var seenSys = {};
   route.forEach(function(b) {
-    var s = b.system_name || b.systemName || b.system || '?';
+    var s = b._sysName;
     if (!seenSys[s]) { seenSys[s] = true; systems.push(s); }
   });
 
   var totalVal = route.reduce(function(acc, b) {
-    return acc + (b.value || b.estimated_value || 0);
+    return acc + (b.landmark_value != null ? b.landmark_value : (b.value || b.estimated_value || 0));
   }, 0);
   var totalOrg = route.reduce(function(acc, b) {
-    return acc + (b.count || b.signals || 1);
+    return acc + (typeof b.num_landmarks === 'number' ? b.num_landmarks : (b.count || b.signals || 1));
   }, 0);
 
   _lastRoute = { type: 'exobio', systems: systems };
@@ -520,43 +764,61 @@ function renderExobio(data) {
 
   document.getElementById('spansh-thead').innerHTML =
     '<tr>' +
-      '<th></th>' +
-      '<th>System</th>' +
-      '<th>Body</th>' +
-      '<th>Organisms</th>' +
-      '<th style="text-align:right">Distance</th>' +
-      '<th style="text-align:right">Value</th>' +
+      '<th style="width:24px"></th>' +
+      '<th>System Name</th>' +
+      '<th>Body Name</th>' +
+      '<th>Subtype</th>' +
+      '<th style="text-align:right">Distance (LS)</th>' +
+      '<th>Landmark Subtype</th>' +
+      '<th style="text-align:right">Count</th>' +
+      '<th style="text-align:right">Landmark Value</th>' +
+      '<th style="text-align:right">Jumps</th>' +
     '</tr>';
 
   var tbody = document.getElementById('spansh-tbody');
   var frag  = document.createDocumentFragment();
 
   route.slice(0, MAX_TABLE_ROWS).forEach(function(b, i) {
-    var sys   = b.system_name || b.systemName || b.system || '?';
-    var body  = b.body_name   || b.bodyName   || b.name   || '?';
-    // Strip system name prefix from body name if it's redundant
+    var sys     = b._sysName;
+    var jumps   = b._sysJumps;
+    var body    = b.name || '?';
     if (body.toLowerCase().startsWith(sys.toLowerCase() + ' ')) body = body.slice(sys.length + 1);
-    var dist  = b.distance    || b.distance_to_arrival || null;
-    var val   = b.value       || b.estimated_value     || 0;
-    var count = b.count       || b.signals             || '?';
-    // Organism species list if available
-    var species = [];
-    if (Array.isArray(b.species))   species = b.species.map(function(s) { return s.name || s; });
-    if (Array.isArray(b.organisms)) species = b.organisms.map(function(s) { return s.species || s.name || s; });
+    var subtype = b.subtype || '\u2014';
+    var dist    = b.distance_to_arrival != null ? b.distance_to_arrival : null;
+    var val     = b.landmark_value || 0;
 
-    var speciesHtml = species.length
-      ? species.map(function(s) { return '<span class="info-tag bio">' + s + '</span>'; }).join(' ')
-      : '<span style="color:var(--text-mute);font-size:0.85em;">' + count + ' signal' + (count !== 1 ? 's' : '') + '</span>';
+    // Count = sum of counts across all landmarks on this body
+    var count = 0;
+    var landmarkSubtype = '\u2014';
+    if (Array.isArray(b.landmarks) && b.landmarks.length) {
+      var seen = {}; var subtypes = [];
+      b.landmarks.forEach(function(lm) {
+        count += lm.count || 0;
+        var s = lm.subtype || '';
+        if (s && !seen[s]) { seen[s] = true; subtypes.push(s); }
+      });
+      if (subtypes.length) landmarkSubtype = subtypes.join(', ');
+    }
+    if (!count) count = '\u2014';
 
     var tr = document.createElement('tr');
     tr.className = i % 2 === 1 ? 'alt-row' : '';
+
+    var cbTd = document.createElement('td');
+    cbTd.appendChild(makeVisitedCb(tr));
+
     tr.innerHTML =
-      '<td><span class="hop-num">' + (i + 1) + '</span></td>' +
+      '<td></td>' +
       '<td class="hop-sys">' + sys + '</td>' +
       '<td style="font-size:0.85em;color:var(--text-dim)">' + body + '</td>' +
-      '<td style="font-size:0.8em;line-height:1.6">' + speciesHtml + '</td>' +
-      '<td class="hop-dist">' + (dist != null ? Number(dist).toFixed(0) + ' ls' : '\u2014') + '</td>' +
-      '<td class="hop-val">'  + fmtCr(val) + '</td>';
+      '<td style="font-size:0.85em;">' + subtype + '</td>' +
+      '<td class="hop-dist">' + (dist != null ? Number(dist).toFixed(0) : '\u2014') + '</td>' +
+      '<td style="font-size:0.8em;">' + landmarkSubtype + '</td>' +
+      '<td style="text-align:right;">' + count + '</td>' +
+      '<td class="hop-val">'  + fmtCr(val) + '</td>' +
+      '<td style="text-align:right;">' + jumps + '</td>';
+
+    tr.cells[0].replaceWith(cbTd);
     frag.appendChild(tr);
   });
 
@@ -569,36 +831,105 @@ function renderExobio(data) {
 }
 
 // ─── FLEET CARRIER ROUTER ────────────────────────────────────────
+function buildFcParams(from, to, cargo, fuel, market) {
+  // Spansh /api/fleetcarrier/route params:
+  //   source, destination, tank_size, starting_fuel, used_capacity
+  var p = new URLSearchParams({
+    source:        from,
+    destination:   to,
+    tank_size:     1000,
+    starting_fuel: fuel,
+    used_capacity: cargo,
+  });
+  return p;
+}
+
 function submitCarrier() {
-  var from    = (document.getElementById('fc-from')  || {}).value.trim();
-  var to      = (document.getElementById('fc-to')    || {}).value.trim();
-  var fuel    = parseFloat((document.getElementById('fc-fuel')  || {}).value) || 0;
-  var cargo   = parseFloat((document.getElementById('fc-cargo') || {}).value) || 0;
-  var tank    = parseFloat((document.getElementById('fc-tank')  || {}).value) || 1000;
+  var from   = (document.getElementById('fc-from')   || {}).value.trim();
+  var to     = (document.getElementById('fc-to')     || {}).value.trim();
+  var cargo  = parseFloat((document.getElementById('fc-cargo')  || {}).value) || 0;
+  var fuel   = parseFloat((document.getElementById('fc-fuel')   || {}).value) || 1000;
+  var market = parseFloat((document.getElementById('fc-market') || {}).value) || 0;
 
   if (!from) { showError('Please enter a source system.'); return; }
   if (!to)   { showError('Please enter a destination system.'); return; }
+
+  var tritRes = document.getElementById('fc-tritium-result');
+  if (tritRes) tritRes.style.display = 'none';
 
   setRunning(true);
   setStatus('Submitting FC route to Spansh\u2026', 'busy');
   showProgress(5);
   _pollStart = Date.now();
 
-  var body = new URLSearchParams({
-    source:        from,
-    destination:   to,
-    tank_size:     tank,
-    starting_fuel: fuel,
-    used_capacity: cargo,
-  });
+  var body = buildFcParams(from, to, cargo, fuel, market);
+  console.log('[FC] POST params:', body.toString());
 
-  fetch(SPANSH_BASE + '/api/fleetcarrier/search', { method: 'POST', body: body })
+  fetch(SPANSH_BASE + '/api/fleetcarrier/route', { method: 'POST', body: body })
     .then(function(r) { return r.json(); })
     .then(function(data) {
+      console.log('[FC] POST response:', JSON.stringify(data));
       if (!data.job) throw new Error(data.error || 'No job ID returned.');
       pollJob(data.job, renderCarrier, handleApiError);
     })
     .catch(handleApiError);
+}
+
+function submitTritiumCalc() {
+  var from   = (document.getElementById('fc-from')   || {}).value.trim();
+  var to     = (document.getElementById('fc-to')     || {}).value.trim();
+  var cargo  = parseFloat((document.getElementById('fc-cargo')  || {}).value) || 0;
+  var fuel   = parseFloat((document.getElementById('fc-fuel')   || {}).value) || 1000;
+  var market = parseFloat((document.getElementById('fc-market') || {}).value) || 0;
+
+  if (!from) { showError('Please enter a source system.'); return; }
+  if (!to)   { showError('Please enter a destination system.'); return; }
+
+  setRunning(true);
+  setStatus('Calculating tritium requirements\u2026', 'busy');
+  showProgress(5);
+  _pollStart = Date.now();
+
+  var body = buildFcParams(from, to, cargo, fuel, market);
+
+  fetch(SPANSH_BASE + '/api/fleetcarrier/route', { method: 'POST', body: body })
+    .then(function(r) { return r.json(); })
+    .then(function(data) {
+      if (!data.job) throw new Error(data.error || 'No job ID returned.');
+      pollJob(data.job, renderTritiumResult, handleApiError);
+    })
+    .catch(handleApiError);
+}
+
+
+function renderTritiumResult(data) {
+  showProgress(100);
+  var route = [];
+  if (data.result && Array.isArray(data.result.jumps))        route = data.result.jumps;
+  else if (data.result && Array.isArray(data.result.systems)) route = data.result.systems;
+  else if (Array.isArray(data.result))                        route = data.result;
+
+  if (!route.length) { handleApiError('Could not calculate route. Check system names.'); return; }
+
+  var totalFuel = 0;
+  var totalDist = 0;
+  route.forEach(function(h) {
+    totalFuel += h.fuel_used || h.tritium_used || 0;
+    totalDist += h.distance  || h.distance_jumped || 0;
+  });
+  totalFuel = Math.ceil(totalFuel);
+
+  var tritRes    = document.getElementById('fc-tritium-result');
+  var tritAmount = document.getElementById('fc-tritium-amount');
+  var tritDetail = document.getElementById('fc-tritium-detail');
+  if (tritAmount) tritAmount.textContent = Number(totalFuel).toLocaleString() + ' t tritium';
+  if (tritDetail) tritDetail.textContent =
+    route.length + ' jumps · ' + fmtLy(totalDist) +
+    ' · approx. ' + Math.ceil(totalFuel / 1000 * 100) / 100 + '× full tanks';
+  if (tritRes) tritRes.style.display = 'block';
+
+  setStatus('Tritium needed: ' + Number(totalFuel).toLocaleString() + ' t across ' + route.length + ' jumps', 'ok', fmtLy(totalDist));
+  setRunning(false);
 }
 
 function renderCarrier(data) {
@@ -634,22 +965,20 @@ function renderCarrier(data) {
 
   document.getElementById('spansh-thead').innerHTML =
     '<tr>' +
-      '<th></th>' +
+      '<th style="width:28px"></th>' +
+      '<th style="width:24px"></th>' +
       '<th>System</th>' +
       '<th style="text-align:center">Icy Ring</th>' +
       '<th style="text-align:center">Pristine</th>' +
       '<th style="text-align:right">Hop Dist</th>' +
       '<th style="text-align:right">Fuel Used</th>' +
       '<th style="text-align:right">Remaining</th>' +
+      '<th style="width:60px"></th>' +
     '</tr>';
 
   var tbody    = document.getElementById('spansh-tbody');
   var frag     = document.createDocumentFragment();
-  var fuelLeft = parseFloat((document.getElementById('fc-fuel') || {}).value) || 0;
-  // Add tank fuel if not already included
-  var tankSz   = parseFloat((document.getElementById('fc-tank') || {}).value) || 1000;
-  // Starting fuel = min(fuel on board, tank size) + cargo tritium
-  // The API tracks this for us, so just use the route data
+  var fuelLeft = parseFloat((document.getElementById('fc-fuel') || {}).value) || 1000;
 
   route.slice(0, MAX_TABLE_ROWS).forEach(function(h, i) {
     var sys       = h.system      || h.name    || '?';
@@ -659,10 +988,6 @@ function renderCarrier(data) {
     var pristine  = h.pristine    || h.is_pristine      || false;
     var restock   = h.restock_tritium || false;
     var isDest    = (i === route.length - 1);
-    var distRem   = (data.result && data.result.distance_remaining != null)
-                    ? data.result.distance_remaining
-                    : null;
-    // Per-hop remaining from API if available
     var remDisplay = h.distance_remaining != null
       ? fmtLy(h.distance_remaining)
       : (i === route.length - 1 ? '0.00 ly' : '\u2014');
@@ -670,20 +995,30 @@ function renderCarrier(data) {
     var sysClass = isDest ? 'hop-sys dest' : 'hop-sys';
     var destTag  = isDest ? '<span class="hop-tag dest">Destination</span>' : '';
     var restTag  = restock ? '<span class="hop-tag" style="background:rgba(200,151,42,0.1);color:var(--gold);border:1px solid rgba(200,151,42,0.25);">&#9670; Restock</span>' : '';
-
-    var ycMark  = icy      ? '<span style="color:var(--cyan)">&#10003;</span>'  : '<span style="color:var(--border2)">&#8212;</span>';
-    var prMark  = pristine ? '<span style="color:var(--green)">&#10003;</span>' : '<span style="color:var(--border2)">&#8212;</span>';
+    var icyMark  = icy      ? '<span style="color:var(--cyan)">&#10003;</span>'  : '<span style="color:var(--border2)">&#8212;</span>';
+    var prMark   = pristine ? '<span style="color:var(--green)">&#10003;</span>' : '<span style="color:var(--border2)">&#8212;</span>';
 
     var tr = document.createElement('tr');
     tr.className = i % 2 === 1 ? 'alt-row' : '';
+
+    var cbTd = document.createElement('td');
+    cbTd.appendChild(makeVisitedCb(tr));
+    var cpTd = document.createElement('td');
+    cpTd.appendChild(makeCopyBtn(sys));
+
     tr.innerHTML =
       '<td><span class="hop-num">' + (i + 1) + '</span></td>' +
+      '<td></td>' +
       '<td class="' + sysClass + '">' + sys + destTag + restTag + '</td>' +
-      '<td style="text-align:center">' + ycMark + '</td>' +
+      '<td style="text-align:center">' + icyMark + '</td>' +
       '<td style="text-align:center">' + prMark + '</td>' +
       '<td class="hop-dist">' + (dist ? fmtLy(dist) : '\u2014') + '</td>' +
       '<td style="text-align:right;color:var(--gold)">' + (fuelUsed != null ? Math.ceil(fuelUsed) + ' t' : '\u2014') + '</td>' +
-      '<td class="hop-rem">' + remDisplay + '</td>';
+      '<td class="hop-rem">' + remDisplay + '</td>' +
+      '<td></td>';
+
+    tr.cells[1].replaceWith(cbTd);
+    tr.cells[tr.cells.length - 1].replaceWith(cpTd);
     frag.appendChild(tr);
   });
 
@@ -786,9 +1121,13 @@ bindSliderPair('r-minval-sl',   'r-minval',   'r-minval-val',   function(v) {
   if (v >= 1e3) return (v / 1e3).toFixed(0) + 'K cr';
   return v + ' cr';
 });
+bindSliderPair('r-maxls-sl',    'r-maxls',    'r-maxls-val',    function(v) {
+  return v === 0 ? 'No limit' : Number(v).toLocaleString() + ' ls';
+});
 // Exobiology sliders
 bindSliderPair('exo-range-sl',  'exo-range',  'exo-range-val',  function(v) { return v.toFixed(2) + ' ly'; });
 bindSliderPair('exo-radius-sl', 'exo-radius', 'exo-radius-val', function(v) { return Number(v).toLocaleString() + ' ly'; });
+bindSliderPair('exo-maxls-sl',  'exo-maxls',  'exo-maxls-val',  function(v) { return v === 0 ? 'No limit' : Number(v).toLocaleString() + ' ls'; });
 bindSliderPair('exo-results-sl','exo-results','exo-results-val',function(v) { return v; });
 bindSliderPair('exo-minval-sl', 'exo-minval', 'exo-minval-val', function(v) {
   if (v >= 1e6) return (v / 1e6).toFixed(2) + ' M cr';
@@ -797,9 +1136,9 @@ bindSliderPair('exo-minval-sl', 'exo-minval', 'exo-minval-val', function(v) {
 });
 bindSliderPair('exo-minbio-sl', 'exo-minbio', 'exo-minbio-val', function(v) { return v; });
 // Fleet Carrier sliders
-bindSliderPair('fc-fuel-sl',  'fc-fuel',  'fc-fuel-val',  function(v) { return Number(v).toLocaleString() + ' t'; });
-bindSliderPair('fc-cargo-sl', 'fc-cargo', 'fc-cargo-val', function(v) { return Number(v).toLocaleString() + ' t'; });
-bindSliderPair('fc-tank-sl',  'fc-tank',  'fc-tank-val',  function(v) { return Number(v).toLocaleString() + ' t'; });
+bindSliderPair('fc-cargo-sl',  'fc-cargo',  'fc-cargo-val',  function(v) { return Number(v).toLocaleString() + ' t'; });
+bindSliderPair('fc-fuel-sl',   'fc-fuel',   'fc-fuel-val',   function(v) { return Number(v).toLocaleString() + ' t'; });
+bindSliderPair('fc-market-sl', 'fc-market', 'fc-market-val', function(v) { return Number(v).toLocaleString() + ' t'; });
 
 // ─── ALLOW PRESSING ENTER TO SUBMIT ──────────────────────────────
 document.querySelectorAll('.field-input').forEach(function(inp) {
@@ -981,3 +1320,6 @@ if (resetBtn) resetBtn.addEventListener('click', function() {
   localStorage.removeItem('ee-display');
 });
 loadDisplaySettings();
+
+// Initialise carrier mass panel state (disabled unless on Fleet Carrier tab)
+updateCarrierMassPanel();

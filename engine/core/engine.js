@@ -1,8 +1,10 @@
 const db = require('../db/database');
 const eventBus = require('./eventBus');
 const journalProvider = require('../providers/journalProvider');
+const logger = require('./logger');
 
 function start() {
+  logger.info('ENGINE', 'Engine core starting — wiring eventBus listeners');
   eventBus.on('journal.scan', (data) => {
     db.run(
       `INSERT INTO personal_scans (system_name, body_name, body_type, timestamp)

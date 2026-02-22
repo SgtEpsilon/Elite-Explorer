@@ -3,6 +3,7 @@ const fs = require('fs');
 const path = require('path');
 const { Worker } = require('worker_threads');
 const eventBus = require('../core/eventBus');
+const logger   = require('../core/logger');
 const config = require('../../config.json');
 
 const { app: electronApp } = (() => { try { return require('electron'); } catch { return {}; } })();
@@ -120,7 +121,7 @@ function runWorker(files, { mode = 'all', useLastProcessed = false, updateLastPr
           break;
 
         case 'error':
-          console.error('[worker error]', msg.file || '', msg.message);
+          logger.error('JOURNAL-WORKER', (msg.file || '') + ' ' + msg.message);
           break;
       }
     });
@@ -135,7 +136,7 @@ async function readLiveJournal(journalPath) {
   const files = getSortedJournalFiles(journalPath);
   if (!files.length) return;
   const latest = files[0];
-  console.log('[live] Reading:', latest.file);
+  logger.info('JOURNAL', 'Reading live journal: ' + latest.file);
   await runWorker([latest.fullPath], { mode: 'live' });
 }
 
@@ -170,7 +171,7 @@ async function readProfileData(journalPath) {
 async function scanAll() {
   let journalPath;
   try { journalPath = getJournalPath(); } catch (err) {
-    console.error('[scanAll] Cannot resolve journal path:', err.message);
+    logger.error('JOURNAL', 'scanAll: cannot resolve journal path', err);
     return;
   }
   if (!fs.existsSync(journalPath)) {
@@ -192,11 +193,11 @@ function getLatestJournalFile(journalPath) {
 function start() {
   let journalPath;
   try { journalPath = getJournalPath(); } catch (err) {
-    console.error('[start] Cannot resolve journal path:', err.message);
+    logger.error('JOURNAL', 'Cannot resolve journal path', err);
     return;
   }
   if (!fs.existsSync(journalPath)) {
-    console.error('[start] Journal directory not found:', journalPath);
+    logger.warn('JOURNAL', 'Journal directory not found: ' + journalPath);
     send('journal-path-missing', journalPath);
     return;
   }
