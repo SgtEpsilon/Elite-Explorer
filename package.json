@@ -27,7 +27,7 @@
   "build": {
     "appId": "com.cmdr-epsilon.elite-explorer",
     "productName": "Elite Explorer",
-    "copyright": "Copyright \u00a9 2025 CMDR Epsilon",
+    "copyright": "Copyright © 2025 CMDR Epsilon",
     "icon": "build/icon.png",
     "files": [
       "main.js",
@@ -85,22 +85,6 @@
       "output": "dist",
       "buildResources": "build"
     },
-    "publish": [
-      {
-        "provider": "github",
-        "owner": "SgtEpsilon",
-        "repo": "Elite-Explorer",
-        "channel": "latest",
-        "releaseType": "release"
-      },
-      {
-        "provider": "github",
-        "owner": "SgtEpsilon",
-        "repo": "Elite-Explorer",
-        "channel": "beta",
-        "releaseType": "prerelease"
-      }
-    ],
     "asar": true
   }
 }
