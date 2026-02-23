@@ -5,3 +5,4 @@ dist/
 package-lock.json
 Elite-Explorer-Publishing-Guide.md
 *.zip
+publish.bat
