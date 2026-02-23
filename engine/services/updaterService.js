@@ -14,7 +14,7 @@
  * How GitHub releasing works with two channels:
  *   - Stable builds: tagged on main, electron-builder publishes latest.yml to the release assets.
  *   - Beta builds:   tagged on development, electron-builder publishes beta.yml to the release assets.
- *                    Run: electron-builder --publish always -c.publish.channel=beta
+ *                    Run: npm run publish:beta  (uses electron-builder.beta.json override)
  *   autoUpdater.setFeedURL() switches which YAML manifest it fetches, so each
  *   channel only ever sees its own releases — stable users never get beta builds.
  *
