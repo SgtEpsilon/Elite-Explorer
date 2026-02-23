@@ -91,7 +91,7 @@ body::after { content: ''; position: fixed; inset: 0; background: repeating-line
 /* ─── MIDDLE PANEL ───────────────────────────────────────────────── */
 .bodies-table { width: 100%; border-collapse: collapse; }
 .bodies-table th { font-family: var(--mono); font-size:0.6667em; color: var(--text-mute); letter-spacing: 0.12em; text-transform: uppercase; text-align: left; padding: 4px 8px; border-bottom: 1px solid var(--border); white-space: nowrap; position: sticky; top: 0; background: var(--panel); z-index: 10; }
-.bodies-table td { font-family: var(--mono); font-size:0.8333em; color: var(--text); padding: 5px 8px; border-bottom: 1px solid rgba(19,32,48,0.5); vertical-align: top; line-height: 1.4; }
+.bodies-table td { font-family: var(--mono); font-size:1em; color: var(--text); padding: 5px 8px; border-bottom: 1px solid rgba(19,32,48,0.5); vertical-align: top; line-height: 1.4; }
 .bodies-table tr.body-main:hover td { background: rgba(46,207,207,0.04); }
 .bodies-table tr.body-moon td { background: rgba(0,0,0,0.15); }
 .bodies-table tr.body-moon:hover td { background: rgba(46,207,207,0.03); }

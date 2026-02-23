@@ -40,14 +40,30 @@ async function run() {
 
         if (entry.event === 'FSDJump') {
           jumps.push({
-            system:       entry.StarSystem   || null,
-            timestamp:    entry.timestamp    || null,
-            jumpDist:     entry.JumpDist     != null ? +entry.JumpDist.toFixed(2) : null,
-            pos:          entry.StarPos      ? entry.StarPos.map(n => +n.toFixed(2)) : null,
+            system:        entry.StarSystem   || null,
+            timestamp:     entry.timestamp    || null,
+            jumpDist:      entry.JumpDist     != null ? +entry.JumpDist.toFixed(2) : null,
+            pos:           entry.StarPos      ? entry.StarPos.map(n => +n.toFixed(2)) : null,
             wasDiscovered: entry.SystemAlreadyDiscovered !== false,
-            starClass:    entry.StarClass    || null,
-            bodyCount:    entry.Body_count   != null ? entry.Body_count : null,
+            starClass:     entry.StarClass    || null,
+            bodyCount:     entry.Body_count   != null ? entry.Body_count : null,
           });
+        }
+
+        // Fill in starClass from primary star Scan if FSDJump didn't have it
+        if (entry.event === 'Scan' && entry.StarType && entry.DistanceFromArrivalLS === 0) {
+          const last = jumps[jumps.length - 1];
+          if (last && last.starClass == null && last.system === entry.StarSystem) {
+            last.starClass = entry.StarType;
+          }
+        }
+
+        // Fill in bodyCount from FSSDiscoveryScan if FSDJump didn't have it
+        if (entry.event === 'FSSDiscoveryScan' && entry.BodyCount != null) {
+          const last = jumps[jumps.length - 1];
+          if (last && last.bodyCount == null && last.system === entry.SystemName) {
+            last.bodyCount = entry.BodyCount;
+          }
         }
       } catch {
         // skip malformed lines

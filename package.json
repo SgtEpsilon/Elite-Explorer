@@ -1,6 +1,6 @@
 {
   "name": "elite-explorer",
-  "version": "0.0.9",
+  "version": "0.1.0",
   "description": "Elite Dangerous exploration desktop engine",
   "main": "main.js",
   "scripts": {
@@ -27,7 +27,7 @@
   "build": {
     "appId": "com.cmdr-epsilon.elite-explorer",
     "productName": "Elite Explorer",
-    "copyright": "Copyright © 2025 CMDR Epsilon",
+    "copyright": "Copyright \u00a9 2025 CMDR Epsilon",
     "icon": "build/icon.png",
     "files": [
       "main.js",
@@ -85,6 +85,12 @@
       "output": "dist",
       "buildResources": "build"
     },
-    "asar": true
+    "asar": true,
+    "publish": {
+      "provider": "github",
+      "owner": "SgtEpsilon",
+      "repo": "Elite-Explorer",
+      "releaseType": "prerelease"
+    }
   }
 }

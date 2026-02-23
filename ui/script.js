@@ -462,7 +462,7 @@ if (window.electronAPI) {
         { cls:'combat',  label:'Combat',      r:rk.combat,     p:pr.combat,     max:8  },
         { cls:'trade',   label:'Trade',       r:rk.trade,      p:pr.trade,      max:8  },
         { cls:'explore', label:'Exploration', r:rk.explore,    p:pr.explore,    max:8  },
-        { cls:'exobio',  label:'Exobiology',  r:rk.exobiology, p:null,          max:8  },
+        { cls:'exobio',  label:'Exobiology',  r:rk.exobiology, p:pr.exobiology != null ? pr.exobiology : null, max:8  },
         { cls:'empire',  label:'Empire',      r:rk.empire,     p:pr.empire,     max:14 },
         { cls:'fed',     label:'Federation',  r:rk.federation, p:pr.federation, max:14 },
         { cls:'cqc',     label:'CQC',         r:rk.cqc,        p:pr.cqc,        max:8  },

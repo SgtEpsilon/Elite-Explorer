@@ -326,16 +326,15 @@ async function run() {
           }
 
           if (ev === 'Rank') {
+            const exobioLevel = entry.Exobiologist != null ? entry.Exobiologist : (entry.Soldier != null ? entry.Soldier : null);
             profileRanks = {
-              combat:     { level: entry.Combat,     name: COMBAT_RANKS[entry.Combat]     || '?' },
-              trade:      { level: entry.Trade,      name: TRADE_RANKS[entry.Trade]       || '?' },
-              explore:    { level: entry.Explore,    name: EXPLORE_RANKS[entry.Explore]   || '?' },
-              cqc:        { level: entry.CQC,        name: CQC_RANKS[entry.CQC]           || '?' },
-              empire:     { level: entry.Empire,     name: EMPIRE_RANKS[entry.Empire]     || '?' },
-              federation: { level: entry.Federation, name: FEDERATION_RANKS[entry.Federation] || '?' },
-              exobiology: entry.Exobiologist != null
-                ? { level: entry.Exobiologist, name: EXOBIO_RANKS[entry.Exobiologist] || '?' }
-                : null,
+              combat:     { level: entry.Combat     != null ? entry.Combat     : 0, name: COMBAT_RANKS[entry.Combat     != null ? entry.Combat     : 0] || COMBAT_RANKS[0] },
+              trade:      { level: entry.Trade      != null ? entry.Trade      : 0, name: TRADE_RANKS[entry.Trade       != null ? entry.Trade      : 0] || TRADE_RANKS[0]  },
+              explore:    { level: entry.Explore    != null ? entry.Explore    : 0, name: EXPLORE_RANKS[entry.Explore   != null ? entry.Explore    : 0] || EXPLORE_RANKS[0]},
+              cqc:        { level: entry.CQC        != null ? entry.CQC        : 0, name: CQC_RANKS[entry.CQC           != null ? entry.CQC        : 0] || CQC_RANKS[0]    },
+              empire:     { level: entry.Empire     != null ? entry.Empire     : 0, name: EMPIRE_RANKS[entry.Empire     != null ? entry.Empire     : 0] || EMPIRE_RANKS[0] },
+              federation: { level: entry.Federation != null ? entry.Federation : 0, name: FEDERATION_RANKS[entry.Federation != null ? entry.Federation : 0] || FEDERATION_RANKS[0] },
+              exobiology: { level: exobioLevel != null ? exobioLevel : 0, name: exobioLevel != null ? (EXOBIO_RANKS[exobioLevel] || EXOBIO_RANKS[0]) : EXOBIO_RANKS[0] },
             };
           }
 
@@ -347,6 +346,7 @@ async function run() {
               cqc:        entry.CQC,
               empire:     entry.Empire,
               federation: entry.Federation,
+              exobiology: entry.Exobiologist != null ? entry.Exobiologist : null,
             };
           }
 

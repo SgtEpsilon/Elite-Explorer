@@ -392,6 +392,37 @@ ipcMain.handle('check-edsm-discovery-bulk', async (_e, systemNames) => {
   return results;
 });
 
+// ── EDSM history enrichment — fetch missing star class + body count ───────────
+// Takes [{system, index}] for rows that are missing starClass or bodyCount.
+// Uses EDSM /api-system-v1/bodies which returns primary star + body list in one
+// call. Rate-limited to 250ms between requests to respect EDSM's policy.
+ipcMain.handle('enrich-history-bulk', async (_e, systems) => {
+  const results = [];
+  for (const { system, index } of systems) {
+    try {
+      const url = `https://www.edsm.net/api-system-v1/bodies?systemName=${encodeURIComponent(system)}`;
+      const res = await fetch(url, { signal: AbortSignal.timeout(8000) });
+      if (res.ok) {
+        const data = await res.json();
+        const bodies = Array.isArray(data.bodies) ? data.bodies : [];
+        // Primary star: body closest to arrival (DistanceToArrival === 0) with a star type
+        const primaryStar = bodies.find(b => b.type === 'Star' && b.distanceToArrival === 0)
+                         || bodies.find(b => b.type === 'Star');
+        const starClass  = primaryStar ? (primaryStar.subType || primaryStar.spectralClass || null) : null;
+        // bodyCount from API meta field, or count the bodies array
+        const bodyCount  = data.bodyCount != null ? data.bodyCount : (bodies.length > 0 ? bodies.length : null);
+        results.push({ system, index, starClass, bodyCount, ok: true });
+      } else {
+        results.push({ system, index, starClass: null, bodyCount: null, ok: false });
+      }
+    } catch {
+      results.push({ system, index, starClass: null, bodyCount: null, ok: false });
+    }
+    await new Promise(r => setTimeout(r, 250)); // respect EDSM rate limit
+  }
+  return results;
+});
+
 // ── EDSM flight log sync ──────────────────────────────────────────────────────
 ipcMain.handle('edsm-sync-logs', (_e, localJumps) => edsmSyncService.syncFromEdsm(localJumps));
 

@@ -50,6 +50,7 @@ contextBridge.exposeInMainWorld('electronAPI', {
 
   // EDSM
   checkEdsmDiscoveryBulk: (names) => ipcRenderer.invoke('check-edsm-discovery-bulk', names),
+  enrichHistoryBulk:   (systems)  => ipcRenderer.invoke('enrich-history-bulk',        systems),
   edsmSyncLogs:      (jumps)     => ipcRenderer.invoke('edsm-sync-logs',         jumps),
   importStarsFile:   (jumps)     => ipcRenderer.invoke('import-stars-file',      jumps),
 

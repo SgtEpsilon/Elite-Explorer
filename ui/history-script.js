@@ -31,6 +31,10 @@ var _isScanning = false;
 // We store this so navigating away and back doesn't re-check everything.
 var edsmResultsCache = {};
 
+// Cache for star class / body count enrichment from EDSM.
+// Key = system name (lowercase), value = { starClass: string|null, bodyCount: number|null }
+var enrichmentCache = {};
+
 // ─── RENDER ───────────────────────────────────────────────────────────────────
 function renderHistory(jumps) {
   var tbody    = document.getElementById('hist-tbody');
@@ -70,10 +74,23 @@ function renderHistory(jumps) {
 
     // Store the system name on the row so EDSM check can find it later
     if (j.system) tr.dataset.systemName = j.system;
+    tr.dataset.idx = idx;
 
     var ts        = j.timestamp ? j.timestamp.replace('T', ' ').slice(0, 19) : '\u2014';
     var dist      = j.jumpDist  != null ? j.jumpDist.toFixed(2) + ' ly' : '\u2014';
     var bodyCount = j.bodyCount != null ? j.bodyCount : '\u2014';
+
+    // Pre-fill star class and body count from enrichment cache if journal data is missing
+    var starClass = j.starClass || null;
+    var cacheKeyE = (j.system || '').toLowerCase();
+    if (enrichmentCache[cacheKeyE]) {
+      if (!starClass && enrichmentCache[cacheKeyE].starClass) starClass = enrichmentCache[cacheKeyE].starClass;
+      if (bodyCount === '\u2014' && enrichmentCache[cacheKeyE].bodyCount != null) bodyCount = enrichmentCache[cacheKeyE].bodyCount;
+    }
+
+    // Mark rows that still need enrichment so the enrichment pass can find them
+    if (!starClass)         tr.dataset.needsStar   = '1';
+    if (bodyCount === '\u2014') tr.dataset.needsBodies = '1';
 
     // Journal first-discovery star (from game servers at jump time)
     var disco = !j.wasDiscovered
@@ -103,7 +120,7 @@ function renderHistory(jumps) {
       '<td class="hist-col-sys">'    + (j.system || '\u2014') + importBadge + '</td>' +
       '<td class="hist-col-ts">'     + ts + '</td>' +
       '<td class="hist-col-dist">'   + dist + '</td>' +
-      '<td class="hist-col-star">'   + (j.starClass || '\u2014') + '</td>' +
+      '<td class="hist-col-star">'   + (starClass || '\u2014') + '</td>' +
       '<td class="hist-col-bodies">' + bodyCount + '</td>' +
       '<td class="hist-col-edsm">'   + edsmCell + '</td>';
 
@@ -131,6 +148,116 @@ function applyFilters() {
     return true;
   });
   renderHistory(filtered);
+}
+
+// ─── EDSM STAR CLASS + BODY COUNT ENRICHMENT ─────────────────────────────────
+//
+// After history renders, any rows where the journal didn't record StarClass or
+// Body_count are queued for enrichment from EDSM's bodies API.
+// Results are cached so back-navigation and re-filters don't re-fetch.
+// Runs AFTER the discovery check so the two don't compete for rate limit budget.
+
+var _enrichInProgress  = false;
+var _enrichQueue       = [];   // pending after discovery check finishes
+
+function updateEnrichStatus(done, total, finished) {
+  var el = document.getElementById('edsm-check-status');
+  if (!el) return;
+  if (finished && total === 0) {
+    el.textContent = 'EDSM: all systems enriched';
+  } else if (finished) {
+    el.textContent = 'EDSM: enriched ' + done + ' / ' + total + ' systems';
+  } else {
+    el.textContent = 'EDSM: enriching ' + done + ' / ' + total + ' \u2026';
+  }
+  var bar = document.getElementById('edsm-progress-bar-inner');
+  if (bar && total > 0) bar.style.width = Math.round((done / total) * 100) + '%';
+  if (bar && finished)  bar.style.width = '100%';
+}
+
+function runEnrichment() {
+  if (!window.electronAPI || !window.electronAPI.enrichHistoryBulk) return;
+  if (_enrichInProgress) return;
+
+  // Collect rows that still need star class or body count
+  var rows = document.querySelectorAll('#hist-tbody tr[data-system-name]');
+  var seen    = new Set();
+  var toEnrich = [];
+
+  rows.forEach(function(row) {
+    var name = row.dataset.systemName;
+    if (!name || seen.has(name.toLowerCase())) return;
+    var needsStar   = row.dataset.needsStar   === '1';
+    var needsBodies = row.dataset.needsBodies === '1';
+    // Skip if already enriched from cache
+    var cached = enrichmentCache[name.toLowerCase()];
+    if (cached) {
+      if (needsStar && cached.starClass)       needsStar   = false;
+      if (needsBodies && cached.bodyCount != null) needsBodies = false;
+    }
+    if (!needsStar && !needsBodies) return;
+    seen.add(name.toLowerCase());
+    toEnrich.push({ system: name, index: parseInt(row.dataset.idx || '0', 10) });
+  });
+
+  if (!toEnrich.length) return;
+
+  console.log('[Enrich] Fetching EDSM data for', toEnrich.length, 'systems missing star class / body count');
+  _enrichInProgress = true;
+  showEdsmProgressBar(true);
+  var barReset = document.getElementById('edsm-progress-bar-inner');
+  if (barReset) barReset.style.width = '0%';
+  updateEnrichStatus(0, toEnrich.length, false);
+
+  var BATCH = 10;
+  var done  = 0;
+  var batchIdx = 0;
+  var batches = [];
+  for (var i = 0; i < toEnrich.length; i += BATCH) batches.push(toEnrich.slice(i, i + BATCH));
+
+  function nextBatch() {
+    if (batchIdx >= batches.length) {
+      _enrichInProgress = false;
+      updateEnrichStatus(done, toEnrich.length, true);
+      setTimeout(function() { showEdsmProgressBar(false); }, 2500);
+      return;
+    }
+    var batch = batches[batchIdx++];
+    window.electronAPI.enrichHistoryBulk(batch).then(function(results) {
+      results.forEach(function(r) {
+        // Store in cache
+        var key = r.system.toLowerCase();
+        if (!enrichmentCache[key]) enrichmentCache[key] = {};
+        if (r.starClass)       enrichmentCache[key].starClass  = r.starClass;
+        if (r.bodyCount != null) enrichmentCache[key].bodyCount = r.bodyCount;
+
+        // Update every row for this system in the DOM
+        var allRows = document.querySelectorAll('#hist-tbody tr[data-system-name]');
+        allRows.forEach(function(row) {
+          if (row.dataset.systemName !== r.system) return;
+          var starCell   = row.querySelector('.hist-col-star');
+          var bodyCell   = row.querySelector('.hist-col-bodies');
+          if (starCell && row.dataset.needsStar === '1' && r.starClass) {
+            starCell.textContent = r.starClass;
+            delete row.dataset.needsStar;
+          }
+          if (bodyCell && row.dataset.needsBodies === '1' && r.bodyCount != null) {
+            bodyCell.textContent = r.bodyCount;
+            delete row.dataset.needsBodies;
+          }
+        });
+      });
+      done += results.length;
+      updateEnrichStatus(done, toEnrich.length, false);
+      setTimeout(nextBatch, 80);
+    }).catch(function(err) {
+      console.warn('[Enrich] Batch error:', err);
+      done += batch.length;
+      setTimeout(nextBatch, 80);
+    });
+  }
+
+  nextBatch();
 }
 
 // ─── NEW: EDSM DISCOVERY CHECK ────────────────────────────────────────────────
@@ -175,6 +302,8 @@ function runEdsmDiscoveryCheck() {
     // Everything already cached — just apply cached results to table
     applyEdsmResults([]);
     updateEdsmProgress(0, 0, true);
+    // Still run enrichment for missing star class / body count
+    setTimeout(runEnrichment, 300);
     return;
   }
 
@@ -195,10 +324,15 @@ function runEdsmDiscoveryCheck() {
 
   function processBatch() {
     if (batchIndex >= batches.length) {
-      // All done
+      // All done — kick off star class / body count enrichment for any rows
+      // still missing that data. Runs after discovery check so both don't
+      // hammer EDSM simultaneously.
       _edsmCheckInProgress = false;
       updateEdsmProgress(totalChecked, toCheck.length, true);
-      setTimeout(function() { showEdsmProgressBar(false); }, 2000);
+      setTimeout(function() {
+        runEnrichment();
+        if (!_enrichInProgress) showEdsmProgressBar(false);
+      }, 500);
       return;
     }
 
@@ -272,6 +406,9 @@ function updateEdsmProgress(done, total, finished) {
   } else if (total > 0) {
     statusEl.textContent = 'EDSM: checking ' + done + ' / ' + total + '\u2026';
   }
+  var bar = document.getElementById('edsm-progress-bar-inner');
+  if (bar && total > 0) bar.style.width = Math.round((done / total) * 100) + '%';
+  if (bar && finished)  bar.style.width = '100%';
 }
 
 function showEdsmProgressBar(visible) {

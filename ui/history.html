@@ -134,9 +134,17 @@
       <button id="hist-rescan-btn" title="Re-scan all journals">&#8635; Rescan</button>
     </div>
 
-    <!-- Progress bar -->
+    <!-- Progress bar (journal scan) -->
     <div id="hist-progress-wrap">
       <div id="hist-progress-track"><div id="hist-progress-bar"></div></div>
+    </div>
+
+    <!-- EDSM progress bar (discovery check + star/body enrichment) -->
+    <div id="edsm-progress-wrap" style="display:none;align-items:center;gap:10px;padding:3px 12px;background:rgba(0,0,0,0.2);border-bottom:1px solid var(--border);">
+      <span id="edsm-check-status" style="font-family:var(--mono);font-size:0.68em;color:var(--text-mute);letter-spacing:0.05em;white-space:nowrap;"></span>
+      <div style="flex:1;height:2px;background:var(--border2);border-radius:1px;">
+        <div id="edsm-progress-bar-inner" style="height:100%;width:0%;background:var(--cyan);border-radius:1px;transition:width 0.4s;"></div>
+      </div>
     </div>
 
     <!-- Scrollable content -->

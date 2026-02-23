@@ -90,7 +90,11 @@ function applyChannel(channel) {
 // ── Configuration ─────────────────────────────────────────────────────────────
 autoUpdater.autoDownload         = false; // we control all downloads manually
 autoUpdater.autoInstallOnAppQuit = false; // we set this per-choice
-applyChannel(getChannel());               // honour saved preference on startup
+autoUpdater.logger               = null;  // suppress internal logs (we handle errors ourselves)
+
+// Defer feed URL setup until app is ready — calling setFeedURL() before
+// app.whenReady() can fail silently on some electron-updater versions.
+app.whenReady().then(() => applyChannel(getChannel()));
 
 // ── Skipped-version persistence ───────────────────────────────────────────────
 // Stored in userData so it survives app updates/reinstalls correctly.
@@ -173,7 +177,7 @@ autoUpdater.on('update-downloaded', (info) => {
 autoUpdater.on('error', (err) => {
   const msg = err ? (err.message || String(err)) : 'Unknown updater error';
   console.error('[updater]', msg);
-  send({ status: 'error', message: msg });
+  send({ status: 'error', message: msg, channel: getChannel() });
 });
 
 // ── IPC handlers ──────────────────────────────────────────────────────────────
