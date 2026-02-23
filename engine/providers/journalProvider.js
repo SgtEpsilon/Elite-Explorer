@@ -162,7 +162,7 @@ async function readProfileData(journalPath) {
     if (found.size === REQUIRED.size) break;
   }
 
-  console.log('[profile] Scanning ' + batch.length + ' file(s), found: ' + [...found].join(', '));
+  logger.debug('JOURNAL', `Profile scan: checking ${batch.length} file(s)`, { found: [...found].join(', ') || 'none' });
   await runWorker(batch, { mode: 'profile' });
 }
 
@@ -209,7 +209,7 @@ function start() {
   // Live watcher — only fires live-data updates
   let latestFile  = getLatestJournalFile(journalPath);
   let watchedPath = latestFile ? latestFile.fullPath : null;
-  if (watchedPath) console.log('[watcher] Tracking:', latestFile.file);
+  if (watchedPath) logger.info('JOURNAL', 'Watcher tracking journal file', { file: latestFile.file });
 
   const watcher = chokidar.watch(journalPath + path.sep + 'Journal.*.log', {
     persistent: true,
@@ -219,7 +219,7 @@ function start() {
   const handleFileEvent = (filePath) => {
     const nowLatest = getLatestJournalFile(journalPath);
     if (nowLatest && nowLatest.fullPath !== watchedPath) {
-      console.log('[watcher] New session:', nowLatest.file);
+      logger.info('JOURNAL', 'New game session detected — switching to new journal file', { file: nowLatest.file });
       watchedPath = nowLatest.fullPath;
     }
     if (filePath === watchedPath) {
@@ -239,4 +239,6 @@ async function refreshProfile() {
   await readProfileData(journalPath);
 }
 
-module.exports = { start, scanAll, refreshProfile, setMainWindow, getJournalPath, replayToPage };
+function getCache() { return { ..._cache }; }
+
+module.exports = { start, scanAll, refreshProfile, setMainWindow, getJournalPath, replayToPage, getCache };

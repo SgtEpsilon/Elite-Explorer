@@ -191,6 +191,24 @@
       </button>
     </div>
     <div class="opt-section">
+      <div class="opt-section-title">Network UI Server</div>
+      <label class="opt-toggle" style="margin-bottom:8px;">
+        <input type="checkbox" id="opt-network-enabled">
+        <span class="tog-track"><span class="tog-thumb"></span></span>
+        <span class="tog-lbl">Enable network UI server</span>
+      </label>
+      <div class="opt-hint">Serves the Elite Explorer UI over HTTP so any device on your local network can access it in a browser. Restart the app after changing this setting.</div>
+      <div style="margin-top:8px;">
+        <label style="font-size:0.72em;color:var(--text-dim);display:block;margin-bottom:3px;">Port <span style="opacity:0.5">(default: 3722)</span></label>
+        <input class="opt-input" id="opt-network-port" type="number" min="1024" max="65535" placeholder="3722" spellcheck="false" style="width:120px;"/>
+      </div>
+      <div id="opt-network-urls" style="margin-top:8px;font-size:0.72em;color:var(--text-dim);display:none;"></div>
+      <button class="opt-action-btn" id="opt-network-save-btn" style="margin-top:10px;">
+        <span class="opt-btn-icon">&#10003;</span>
+        <div><div class="opt-btn-label">Save Network Settings</div><div class="opt-btn-sub" id="opt-network-hint">Restart required to apply changes</div></div>
+      </button>
+    </div>
+    <div class="opt-section">
       <div class="opt-section-title">EDDN — Data Network</div>
       <label class="opt-toggle" style="margin-bottom:8px;">
         <input type="checkbox" id="opt-eddn-enabled">

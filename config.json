@@ -7,5 +7,7 @@
   "eddnEnabled": false,
   "edsmEnabled": false,
   "commanderName": "",
-  "updateChannel": "stable"
+  "updateChannel": "stable",
+  "networkServerEnabled": false,
+  "networkServerPort": 3722
 }

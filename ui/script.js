@@ -835,6 +835,37 @@ function openOptions() {
     el = document.getElementById('opt-edsm-cmdr');    if (el) el.value  = cfg.edsmCommanderName || '';
     el = document.getElementById('opt-edsm-key');     if (el) el.value  = cfg.edsmApiKey        || '';
     el = document.getElementById('capi-client-id');   if (el) el.value  = cfg.capiClientId      || '';
+    // Network server settings
+    el = document.getElementById('opt-network-enabled'); if (el) el.checked = !!cfg.networkServerEnabled;
+    el = document.getElementById('opt-network-port');    if (el) el.value  = cfg.networkServerPort || 3722;
+    // Fetch live network info and render clickable URLs
+    if (window.electronAPI.getNetworkInfo) {
+      window.electronAPI.getNetworkInfo().then(function(info) {
+        var urlsDiv = document.getElementById('opt-network-urls');
+        if (!urlsDiv) return;
+        if (info && info.enabled && info.ips && info.ips.length) {
+          var port = info.port || 3722;
+          var links = info.ips.map(function(ip) {
+            var url = 'http://' + ip + ':' + port;
+            return '<a href="' + url + '" style="color:var(--green);text-decoration:none;font-family:monospace;font-size:1.05em;" ' +
+              'onclick="if(window.electronAPI&&window.electronAPI.openExternal){event.preventDefault();window.electronAPI.openExternal(\'' + url + '\');}">' +
+              url + '</a>';
+          }).join('<br>');
+          urlsDiv.style.display = 'block';
+          urlsDiv.innerHTML =
+            '<div style="margin-bottom:4px;color:var(--text-mute);">Network UI is active — open on any device:</div>' +
+            links;
+        } else if (info && info.enabled && (!info.ips || !info.ips.length)) {
+          urlsDiv.style.display = 'block';
+          urlsDiv.innerHTML = '<span style="color:var(--text-dim);">No network interfaces found. Check your network connection.</span>';
+        } else {
+          urlsDiv.style.display = 'none';
+        }
+      }).catch(function() {
+        var urlsDiv = document.getElementById('opt-network-urls');
+        if (urlsDiv) urlsDiv.style.display = 'none';
+      });
+    }
     // Reflect enabled state in dots
     var eddnDot = document.getElementById('eddn-dot');
     if (eddnDot) { eddnDot.style.background = cfg.eddnEnabled ? 'var(--text-mute)' : 'var(--border2)'; eddnDot.title = cfg.eddnEnabled ? 'EDDN: enabled' : 'EDDN: disabled'; }
@@ -911,6 +942,45 @@ if (saveApiBtn) saveApiBtn.addEventListener('click', async function() {
     if (edsmDot) { edsmDot.style.background = edsmEnabled ? 'var(--text-mute)' : 'var(--border2)'; edsmDot.title = edsmEnabled ? 'EDSM: enabled' : 'EDSM: disabled'; }
     log('API settings saved', 'good');
   } catch { log('Failed to save API settings', 'error'); }
+});
+
+// ─── NETWORK UI SERVER BUTTON ─────────────────────────────────────
+var networkSaveBtn = document.getElementById('opt-network-save-btn');
+if (networkSaveBtn) networkSaveBtn.addEventListener('click', async function() {
+  if (!window.electronAPI) return;
+  var networkServerEnabled = (document.getElementById('opt-network-enabled') || {}).checked || false;
+  var portVal = parseInt(((document.getElementById('opt-network-port') || {}).value || '3722'), 10);
+  var networkServerPort = (portVal >= 1024 && portVal <= 65535) ? portVal : 3722;
+  try {
+    await window.electronAPI.saveConfig({ networkServerEnabled, networkServerPort });
+    var hint = document.getElementById('opt-network-hint');
+    if (hint) { hint.textContent = 'Saved \u2714 — restart the app to apply'; hint.style.color = 'var(--green)'; setTimeout(function() { hint.textContent = 'Restart required to apply changes'; hint.style.color = ''; }, 3000); }
+    // Show live URLs if the server is already running (e.g. was enabled before)
+    if (window.electronAPI.getNetworkInfo) {
+      window.electronAPI.getNetworkInfo().then(function(info) {
+        var urlsDiv = document.getElementById('opt-network-urls');
+        if (!urlsDiv) return;
+        if (info && info.enabled && info.ips && info.ips.length) {
+          var port = networkServerPort;
+          var links = info.ips.map(function(ip) {
+            var url = 'http://' + ip + ':' + port;
+            return '<a href="' + url + '" style="color:var(--green);text-decoration:none;font-family:monospace;font-size:1.05em;" ' +
+              'onclick="if(window.electronAPI&&window.electronAPI.openExternal){event.preventDefault();window.electronAPI.openExternal(\'' + url + '\');}">' +
+              url + '</a>';
+          }).join('<br>');
+          urlsDiv.style.display = 'block';
+          urlsDiv.innerHTML =
+            '<div style="margin-bottom:4px;color:var(--text-mute);">Will be available after restart:</div>' + links;
+        } else if (networkServerEnabled) {
+          urlsDiv.style.display = 'block';
+          urlsDiv.innerHTML = '<span style="color:var(--text-dim);">Will start on port <strong>' + networkServerPort + '</strong> after restart.</span>';
+        } else {
+          urlsDiv.style.display = 'none';
+        }
+      }).catch(function() {});
+    }
+    log('Network settings saved — restart to apply', 'good');
+  } catch { log('Failed to save network settings', 'error'); }
 });
 
 // ─── FRONTIER cAPI BUTTONS ────────────────────────────────────────

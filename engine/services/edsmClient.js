@@ -17,6 +17,7 @@
  */
 
 const eventBus    = require('../core/eventBus');
+const logger      = require('../core/logger');
 const CONFIG_PATH = require('path').join(__dirname, '../../config.json');
 const fs          = require('fs');
 
@@ -103,6 +104,7 @@ async function lookupSystem(systemName, timestamp) {
         };
         _cachedSystem = payload;
         send('edsm-system', payload);
+        logger.debug('EDSM', `System info fetched for ${systemName}`, { allegiance: info.allegiance, security: info.security });
       } else {
         const errMsg = infoRaw.reason?.message || 'lookup failed';
         const payload = {
@@ -112,6 +114,7 @@ async function lookupSystem(systemName, timestamp) {
         };
         _cachedSystem = payload;
         send('edsm-system', payload);
+        logger.warn('EDSM', `System info lookup failed for ${systemName}`, errMsg);
       }
     }
 
@@ -120,13 +123,13 @@ async function lookupSystem(systemName, timestamp) {
       const payload = { system: systemName, bodies: bodiesRaw.value.bodies };
       _cachedBodies = payload;
       send('edsm-bodies', payload);
+      logger.debug('EDSM', `Bodies fetched for ${systemName}`, { count: bodiesRaw.value.bodies.length });
     } else {
-      console.warn('[edsmClient] bodies fetch failed for', systemName,
-        bodiesRaw.reason?.message || 'empty response');
+      logger.warn('EDSM', `Bodies fetch failed for ${systemName}`, bodiesRaw.reason?.message || 'empty response');
     }
 
   } catch (err) {
-    console.warn('[edsmClient] lookup error for', systemName, err.message);
+    logger.error('EDSM', `Lookup error for ${systemName}`, err);
   }
 }
 
@@ -140,11 +143,28 @@ function replayToPage() {
 // ── Start: subscribe to location events ──────────────────────────────────────
 
 function start() {
-  // journal.location fires on FSDJump and Location events.
-  // Deduplication inside lookupSystem() handles the case where both events
-  // fire for the same jump — only one HTTP request goes out.
+  const cfg    = readConfig();
+  const edsmOn = !!cfg.edsmEnabled;
+
+  if (edsmOn) {
+    if (!cfg.edsmCommanderName && !cfg.edsmApiKey) {
+      logger.warn('EDSM', 'EDSM integration is enabled but no Commander Name or API Key is set — system info lookups will fail. Set them in Options > EDSM.');
+    } else if (!cfg.edsmCommanderName) {
+      logger.warn('EDSM', 'EDSM enabled but Commander Name is not set — flight log sync will not work');
+    } else if (!cfg.edsmApiKey) {
+      logger.warn('EDSM', 'EDSM enabled but API Key is not set — flight log sync will not work. Anonymous system lookups will still function.');
+    } else {
+      logger.info('EDSM', 'EDSM integration active', { commander: cfg.edsmCommanderName });
+    }
+  } else {
+    logger.info('EDSM', 'EDSM integration is disabled — system info will not be fetched (bodies still fetched regardless)');
+  }
+
   eventBus.on('journal.location', (data) => {
-    if (data && data.system) lookupSystem(data.system, data.timestamp);
+    if (data && data.system) {
+      logger.debug('EDSM', `Location event received — looking up ${data.system}`);
+      lookupSystem(data.system, data.timestamp);
+    }
   });
 }
 
@@ -165,4 +185,5 @@ module.exports = {
   getSystemBodies,
   getSystemInfo,
   lookupSystem,
+  getCache: () => ({ system: _cachedSystem, bodies: _cachedBodies }),
 };

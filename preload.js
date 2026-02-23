@@ -40,6 +40,7 @@ contextBridge.exposeInMainWorld('electronAPI', {
 
   getConfig:         ()          => ipcRenderer.invoke('get-config'),
   saveConfig:        (patch)     => ipcRenderer.invoke('save-config',            patch),
+  getNetworkInfo:    ()          => ipcRenderer.invoke('get-network-info'),
 
   triggerScanAll:    ()          => ipcRenderer.invoke('trigger-scan-all'),
   triggerHistoryScan:()          => ipcRenderer.invoke('trigger-history-scan'),
@@ -77,5 +78,6 @@ contextBridge.exposeInMainWorld('electronAPI', {
 
   // Debug log
   getDebugLog:         ()        => ipcRenderer.invoke('debug-get-log'),
+  getDebugEntries:     ()        => ipcRenderer.invoke('debug-get-entries'),
   saveDebugLog:        ()        => ipcRenderer.invoke('debug-save-log'),
 });

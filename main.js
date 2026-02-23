@@ -15,6 +15,7 @@ const capiService      = require('./engine/services/capiService');
 const updaterService   = require('./engine/services/updaterService');
 const engine           = require('./engine/core/engine');
 const api              = require('./engine/api/server');
+const networkServer    = require('./engine/api/network-server');
 
 // ── Config path ───────────────────────────────────────────────────────────────────
 // Live config lives in userData so it is always writable, even when the app
@@ -157,6 +158,27 @@ app.whenReady().then(async () => {
   api.start();         // REST API on :3721
   logger.info('API', 'REST API started on :3721');
 
+  // ── Network UI server (optional) ─────────────────────────────────────────
+  // Enabled via config.json networkServerEnabled=true (or --network CLI flag).
+  // Allows any device on the LAN to open the UI in a browser.
+  const cfg = readConfig();
+  if (cfg.networkServerEnabled || process.argv.includes('--network')) {
+    const netPort = cfg.networkServerPort || 3722;
+    networkServer.start({
+      mainWindow,
+      journalProvider,
+      historyProvider,
+      edsmSyncService,
+      edsmClient,
+      capiService,
+      readConfig,
+      writeConfig,
+      logger,
+      port: netPort,
+    });
+    logger.info('NETWORK', `Network UI server enabled on port ${netPort}`);
+  }
+
   edsmClient.start();  // listens on eventBus for location events
   eddnRelay.start();   // listens on eventBus for raw journal events
 
@@ -174,6 +196,88 @@ app.whenReady().then(async () => {
 
   // Start auto-updater (checks after 5s, then every 4 hours)
   updaterService.start();
+
+  // ── Post-init diagnostics ─────────────────────────────────────────────────
+  // Runs after all services have started. Checks config completeness and logs
+  // a clear summary so the debug log is immediately useful for troubleshooting.
+  (function runStartupDiagnostics() {
+    const os  = require('os');
+    const cfg = readConfig();
+
+    logger.info('STARTUP', '═══ Elite Explorer startup diagnostics ═══');
+    logger.info('STARTUP', 'System info', {
+      platform: process.platform,
+      arch:     process.arch,
+      hostname: os.hostname(),
+      cpus:     os.cpus().length,
+      memGb:    (os.totalmem() / 1073741824).toFixed(1) + ' GB',
+    });
+
+    // ── Journal path ────────────────────────────────────────────────────────
+    const journalPath = journalProvider.getJournalPath();
+    if (!journalPath) {
+      logger.error('STARTUP', 'Journal path is not configured — live tracking will not work. Set it in Options > Journal Folder.');
+    } else {
+      const { existsSync } = require('fs');
+      if (!existsSync(journalPath)) {
+        logger.error('STARTUP', 'Journal path is configured but does not exist on disk', { path: journalPath });
+      } else {
+        logger.info('STARTUP', 'Journal path OK', { path: journalPath });
+      }
+    }
+
+    // ── EDDN ────────────────────────────────────────────────────────────────
+    if (cfg.eddnEnabled) {
+      if (!cfg.commanderName) {
+        logger.warn('STARTUP', 'EDDN is enabled but Commander Name is blank — submissions will use "Unknown" as uploader ID');
+      } else {
+        logger.info('STARTUP', 'EDDN enabled and ready', { uploader: cfg.commanderName });
+      }
+    } else {
+      logger.info('STARTUP', 'EDDN is disabled');
+    }
+
+    // ── EDSM ────────────────────────────────────────────────────────────────
+    if (cfg.edsmEnabled) {
+      const missing = [];
+      if (!cfg.edsmCommanderName) missing.push('Commander Name');
+      if (!cfg.edsmApiKey)        missing.push('API Key');
+      if (missing.length) {
+        logger.warn('STARTUP', `EDSM is enabled but missing: ${missing.join(', ')} — flight log sync will fail. Set them in Options > EDSM.`);
+      } else {
+        logger.info('STARTUP', 'EDSM enabled and configured', { commander: cfg.edsmCommanderName });
+      }
+    } else {
+      logger.info('STARTUP', 'EDSM integration is disabled (bodies still fetched from EDSM regardless)');
+    }
+
+    // ── Frontier cAPI ────────────────────────────────────────────────────────
+    if (!cfg.capiClientId) {
+      logger.warn('STARTUP', 'Frontier cAPI Client ID is not set — cAPI features unavailable. Register at https://user.frontierstore.net/developer/docs');
+    } else if (!cfg.capiAccessToken) {
+      logger.info('STARTUP', 'Frontier cAPI Client ID set but not logged in');
+    } else {
+      const now = Date.now();
+      const tokenOk   = cfg.capiTokenExpiry   && now < cfg.capiTokenExpiry   - 60000;
+      const refreshOk = cfg.capiRefreshExpiry  && now < cfg.capiRefreshExpiry;
+      if (tokenOk) {
+        logger.info('STARTUP', 'Frontier cAPI logged in — access token valid', { expires: new Date(cfg.capiTokenExpiry).toISOString() });
+      } else if (refreshOk) {
+        logger.warn('STARTUP', 'Frontier cAPI access token expired — will refresh automatically', { refreshExpiry: new Date(cfg.capiRefreshExpiry).toISOString() });
+      } else {
+        logger.error('STARTUP', 'Frontier cAPI tokens fully expired — user must log in again');
+      }
+    }
+
+    // ── Network server ───────────────────────────────────────────────────────
+    if (cfg.networkServerEnabled || process.argv.includes('--network')) {
+      logger.info('STARTUP', 'Network UI server is enabled', { port: cfg.networkServerPort || 3722 });
+    } else {
+      logger.info('STARTUP', 'Network UI server is disabled');
+    }
+
+    logger.info('STARTUP', '═══ Diagnostics complete ═══');
+  })();
 });
 
 // ── macOS / Linux: custom URI scheme for cAPI OAuth callback ──────────────────
@@ -236,6 +340,24 @@ ipcMain.handle('open-journal-folder', async (_e, folderPath) => {
 // ── Config ────────────────────────────────────────────────────────────────────
 ipcMain.handle('get-config', () => readConfig());
 ipcMain.handle('save-config', (_e, patch) => { writeConfig(patch); return true; });
+
+// ── Network info — returns local IPs and active network server port ───────────
+ipcMain.handle('get-network-info', () => {
+  const os  = require('os');
+  const cfg = readConfig();
+  const ifaces = os.networkInterfaces();
+  const ips = [];
+  for (const iface of Object.values(ifaces)) {
+    for (const addr of iface) {
+      if (addr.family === 'IPv4' && !addr.internal) ips.push(addr.address);
+    }
+  }
+  return {
+    enabled: !!cfg.networkServerEnabled,
+    port: cfg.networkServerPort || 3722,
+    ips,
+  };
+});
 
 // ── Scan triggers ─────────────────────────────────────────────────────────────
 ipcMain.handle('trigger-scan-all', () => { journalProvider.scanAll(); return true; });
@@ -380,6 +502,10 @@ ipcMain.handle('debug-get-log', () => {
     'Electron': process.versions.electron,
     'Node':     process.versions.node,
   });
+});
+
+ipcMain.handle('debug-get-entries', () => {
+  return logger.getEntries();
 });
 
 ipcMain.handle('debug-save-log', async () => {

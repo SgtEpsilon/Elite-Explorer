@@ -27,6 +27,7 @@
 
 const fs   = require('fs');
 const path = require('path');
+const logger = require('../core/logger');
 
 const CONFIG_PATH = path.join(__dirname, '../../config.json');
 const GET_LOGS_URL = 'https://www.edsm.net/api-logs-v1/get-logs';
@@ -124,8 +125,16 @@ function buildFirstDiscoverSet(allEdsmLogs) {
 async function syncFromEdsm(journalJumps, onProgress) {
   const cfg = readConfig();
 
-  if (!cfg.edsmCommanderName) throw new Error('No EDSM Commander Name set in Options');
-  if (!cfg.edsmApiKey)        throw new Error('No EDSM API Key set in Options');
+  if (!cfg.edsmCommanderName) {
+    logger.error('EDSM-SYNC', 'Sync aborted — no EDSM Commander Name set in Options');
+    throw new Error('No EDSM Commander Name set in Options');
+  }
+  if (!cfg.edsmApiKey) {
+    logger.error('EDSM-SYNC', 'Sync aborted — no EDSM API Key set in Options');
+    throw new Error('No EDSM API Key set in Options');
+  }
+
+  logger.info('EDSM-SYNC', 'Starting EDSM flight log sync', { commander: cfg.edsmCommanderName, localJumps: journalJumps.length });
 
   // Build a lookup of existing journal jumps by (system, truncated-minute)
   // so we can de-duplicate without requiring exact timestamp matches.
@@ -209,13 +218,22 @@ async function syncFromEdsm(journalJumps, onProgress) {
     return b.timestamp.localeCompare(a.timestamp);
   });
 
-  return {
+  const result = {
     jumps:            merged,
     totalEdsm:        totalFetched,
     newFromEdsm:      newJumps,
     firstDiscoFromEdsm: backFilledCount,
     totalMerged:      merged.length,
   };
+
+  logger.info('EDSM-SYNC', 'Sync complete', {
+    totalFetched,
+    newFromEdsm:      newJumps,
+    backFilled:       backFilledCount,
+    totalMerged:      merged.length,
+  });
+
+  return result;
 }
 
 module.exports = { setMainWindow, syncFromEdsm };
