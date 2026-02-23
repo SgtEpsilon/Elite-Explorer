@@ -35,6 +35,12 @@ async function run() {
   // Live data accumulator (ship, fuel, location, docking)
   let liveData = null;
 
+  // Live bodies accumulator — cleared on each FSDJump, built up as Scan events arrive.
+  // Keyed by body name so duplicate scans just overwrite.
+  let liveBodies     = {};   // bodyName → scan entry
+  let liveBodySystem = null; // system name these bodies belong to
+  let liveSignals    = {};   // bodyName → array of signal strings (bio, geo, stations etc)
+
   // Profile data accumulator (identity, ranks, rep, stats)
   let profileIdentity   = null;
   let profileRanks      = null;
@@ -86,8 +92,10 @@ async function run() {
           });
         }
 
-        // ── Raw event forwarding for EDDN (live watcher only) ─────────
-        if (doLive && (ev === 'FSDJump' || ev === 'Docked')) {
+        // ── Raw event forwarding for EDDN relay (live watcher only) ──
+        // Location and CarrierJump are needed so eddnRelay can track
+        // StarPos from the moment the session starts (not just on jumps).
+        if (doLive && (ev === 'FSDJump' || ev === 'Docked' || ev === 'Location' || ev === 'CarrierJump')) {
           parentPort.postMessage({ type: 'raw', event: ev, entry });
         }
 
@@ -97,6 +105,21 @@ async function run() {
             if (!liveData) liveData = {};
             liveData.currentSystem = entry.StarSystem;
             liveData.pos = entry.StarPos ? entry.StarPos.map(n => n.toFixed(2)).join(', ') : null;
+            // Track current system for bodies so scans logged before this point
+            // (e.g. from a previous session in the same file) are attributed correctly.
+            // Only update liveBodySystem — do NOT clear liveBodies here; scans
+            // already accumulated in this file's pass belong to this system.
+            if (!liveBodySystem) {
+              liveBodySystem = entry.StarSystem;
+              // Emit whatever bodies have been collected so far in this file
+              // so the panel populates on app boot when the game is already running.
+              parentPort.postMessage({
+                type: 'bodies-data',
+                system:  liveBodySystem,
+                bodies:  Object.values(liveBodies),
+                signals: liveSignals,
+              });
+            }
           }
 
           if (ev === 'FSDJump') {
@@ -105,6 +128,118 @@ async function run() {
             liveData.pos           = entry.StarPos ? entry.StarPos.map(n => n.toFixed(2)).join(', ') : null;
             liveData.jumpRange     = entry.JumpDist ? entry.JumpDist.toFixed(2) + ' ly' : null;
             liveData.lastJumpWasFirstDiscovery = (entry.SystemAlreadyDiscovered === false);
+            // Clear bodies when entering a new system
+            liveBodies     = {};
+            liveSignals    = {};
+            liveBodySystem = entry.StarSystem;
+            parentPort.postMessage({ type: 'bodies-data', system: liveBodySystem, bodies: [], signals: {} });
+          }
+
+          // ── Scan event → add/update body in the live bodies map ───────────
+          if (ev === 'Scan') {
+            liveBodySystem = entry.StarSystem || liveBodySystem;
+            const name = entry.BodyName || '';
+            liveBodies[name] = {
+              name,
+              bodyId:       entry.BodyID,
+              parentId:     Array.isArray(entry.Parents) ? (entry.Parents[0] ? Object.values(entry.Parents[0])[0] : null) : null,
+              type:         entry.StarType        ? 'Star'   :
+                            entry.PlanetClass     ? 'Planet' : 'Belt',
+              starType:     entry.StarType        || null,
+              subclass:     entry.Subclass        != null ? entry.Subclass : null,
+              luminosity:   entry.Luminosity      || null,
+              planetClass:  entry.PlanetClass     || null,
+              terraformable:entry.TerraformState === 'Terraformable',
+              atmosphere:   entry.Atmosphere      || null,
+              atmosphereType: entry.AtmosphereType|| null,
+              volcanism:    entry.Volcanism        || null,
+              landable:     entry.Landable         === true,
+              distanceFromArrival: entry.DistanceFromArrivalLS || null,
+              radius:       entry.Radius           != null ? Math.round(entry.Radius / 1000) : null, // km
+              gravity:      entry.SurfaceGravity   != null ? (entry.SurfaceGravity / 9.8).toFixed(2) : null,
+              surfaceTemp:  entry.SurfaceTemperature != null ? Math.round(entry.SurfaceTemperature) : null,
+              massEM:       entry.MassEM           != null ? entry.MassEM.toFixed(3) : null,
+              solarMasses:  entry.StellarMass      != null ? entry.StellarMass.toFixed(3) : null,
+              solarRadius:  entry.Radius && entry.StarType ? (entry.Radius / 696340000).toFixed(3) : null,
+              absoluteMag:  entry.AbsoluteMagnitude != null ? entry.AbsoluteMagnitude.toFixed(2) : null,
+              orbitalPeriod: entry.OrbitalPeriod   != null ? (entry.OrbitalPeriod / 86400).toFixed(2) : null, // days
+              rotationPeriod: entry.RotationPeriod != null ? (entry.RotationPeriod / 86400).toFixed(2) : null,
+              axialTilt:    entry.AxialTilt        != null ? (entry.AxialTilt * 180 / Math.PI).toFixed(1) : null,
+              rings:        Array.isArray(entry.Rings) && entry.Rings.length > 0,
+              ringTypes:    Array.isArray(entry.Rings) ? entry.Rings.map(r => r.RingClass?.replace('eRingClass_', '') || '?') : [],
+              materials:    entry.Materials        || null,
+              composition:  entry.Composition      || null,
+              wasDiscovered: entry.WasDiscovered   !== false,
+              wasMapped:    entry.WasMapped        !== false,
+              mappedValue:  entry.MappedValue      || null,
+              estimatedValue: entry.EstimatedValue || null,
+              isScoopable:  entry.StarType ? 'KGBFOAM'.includes(entry.StarType[0]) : false,
+              timestamp:    entry.timestamp,
+            };
+            parentPort.postMessage({
+              type: 'bodies-data',
+              system:  liveBodySystem,
+              bodies:  Object.values(liveBodies),
+              signals: liveSignals,
+            });
+          }
+
+          // ── FSSDiscoveryScan (Discovery Scanner fired) ───────────────────────
+          // Flush current bodies immediately and signal edsmClient to re-fetch,
+          // so the System Bodies panel gets the freshest data right away.
+          if (ev === 'FSSDiscoveryScan') {
+            liveBodySystem = entry.SystemName || liveBodySystem;
+            parentPort.postMessage({
+              type:    'bodies-data',
+              system:  liveBodySystem,
+              bodies:  Object.values(liveBodies),
+              signals: liveSignals,
+            });
+            parentPort.postMessage({
+              type:  'event',
+              event: 'journal.fss-scan',
+              data:  { system: entry.SystemName || liveBodySystem, timestamp: entry.timestamp },
+            });
+          }
+
+          // ── SAASignalsFound → biological / geological signals per body ─────
+          if (ev === 'SAASignalsFound') {
+            const bodyName = entry.BodyName || '';
+            const sigs = (entry.Signals || []).map(s => {
+              const t = s.Type_Localised || s.Type || '';
+              const c = s.Count != null ? ' \u00D7' + s.Count : '';
+              return t + c;
+            });
+            if (sigs.length) {
+              liveSignals[bodyName] = sigs;
+              parentPort.postMessage({
+                type: 'bodies-data',
+                system:  liveBodySystem,
+                bodies:  Object.values(liveBodies),
+                signals: liveSignals,
+              });
+            }
+          }
+
+          // ── FSSBodySignals → signals before SA scan ───────────────────────
+          if (ev === 'FSSBodySignals') {
+            const bodyName = entry.BodyName || '';
+            const sigs = (entry.Signals || []).map(s => {
+              const t = s.Type_Localised || s.Type || '';
+              const c = s.Count != null ? ' \u00D7' + s.Count : '';
+              return t + c;
+            });
+            if (sigs.length) {
+              liveSignals[bodyName] = (liveSignals[bodyName] || []).concat(
+                sigs.filter(s => !(liveSignals[bodyName] || []).includes(s))
+              );
+              parentPort.postMessage({
+                type: 'bodies-data',
+                system:  liveBodySystem,
+                bodies:  Object.values(liveBodies),
+                signals: liveSignals,
+              });
+            }
           }
 
           if (ev === 'Loadout') {
@@ -120,6 +255,27 @@ async function run() {
                 : entry.FuelCapacity;
             }
             liveData.rebuy = entry.Rebuy ?? null;
+            // Hull resets to 100% on a fresh Loadout (subsequent HullHealth events update it)
+            liveData.hull = 100;
+            // Emit immediately so ship switches (SRV, fighter, stored ship) update the UI in real time.
+            // partial:true tells journalProvider NOT to cache this — only the final complete
+            // emit at end-of-file should be cached, so replayToPage always sends full data.
+            parentPort.postMessage({ type: 'live-data', partial: true, data: { ...liveData } });
+          }
+
+          // Hull health — fires after combat damage, repairs, and on resurrection
+          if (ev === 'HullHealth') {
+            if (!liveData) liveData = {};
+            // Health field is 0.0–1.0; display as integer percentage
+            if (entry.Health != null) liveData.hull = Math.round(entry.Health * 100);
+            parentPort.postMessage({ type: 'live-data', partial: true, data: { ...liveData } });
+          }
+
+          // Resurrect — player rebought their ship; hull is restored to 100%
+          if (ev === 'Resurrect') {
+            if (!liveData) liveData = {};
+            liveData.hull = 100;
+            parentPort.postMessage({ type: 'live-data', partial: true, data: { ...liveData } });
           }
 
           if (ev === 'LoadGame') {
@@ -154,9 +310,6 @@ async function run() {
             liveData.dockedFaction     = null;
           }
 
-          if (ev === 'ShipTargeted' && entry.ScanStage === 3) {
-            // hull health updates from targeting (not critical for live, skip)
-          }
         }
 
         // ── PROFILE DATA ──────────────────────────────────────────────
@@ -173,16 +326,15 @@ async function run() {
           }
 
           if (ev === 'Rank') {
+            const exobioLevel = entry.Exobiologist != null ? entry.Exobiologist : (entry.Soldier != null ? entry.Soldier : null);
             profileRanks = {
-              combat:     { level: entry.Combat,     name: COMBAT_RANKS[entry.Combat]     || '?' },
-              trade:      { level: entry.Trade,      name: TRADE_RANKS[entry.Trade]       || '?' },
-              explore:    { level: entry.Explore,    name: EXPLORE_RANKS[entry.Explore]   || '?' },
-              cqc:        { level: entry.CQC,        name: CQC_RANKS[entry.CQC]           || '?' },
-              empire:     { level: entry.Empire,     name: EMPIRE_RANKS[entry.Empire]     || '?' },
-              federation: { level: entry.Federation, name: FEDERATION_RANKS[entry.Federation] || '?' },
-              exobiology: entry.Exobiologist != null
-                ? { level: entry.Exobiologist, name: EXOBIO_RANKS[entry.Exobiologist] || '?' }
-                : null,
+              combat:     { level: entry.Combat     != null ? entry.Combat     : 0, name: COMBAT_RANKS[entry.Combat     != null ? entry.Combat     : 0] || COMBAT_RANKS[0] },
+              trade:      { level: entry.Trade      != null ? entry.Trade      : 0, name: TRADE_RANKS[entry.Trade       != null ? entry.Trade      : 0] || TRADE_RANKS[0]  },
+              explore:    { level: entry.Explore    != null ? entry.Explore    : 0, name: EXPLORE_RANKS[entry.Explore   != null ? entry.Explore    : 0] || EXPLORE_RANKS[0]},
+              cqc:        { level: entry.CQC        != null ? entry.CQC        : 0, name: CQC_RANKS[entry.CQC           != null ? entry.CQC        : 0] || CQC_RANKS[0]    },
+              empire:     { level: entry.Empire     != null ? entry.Empire     : 0, name: EMPIRE_RANKS[entry.Empire     != null ? entry.Empire     : 0] || EMPIRE_RANKS[0] },
+              federation: { level: entry.Federation != null ? entry.Federation : 0, name: FEDERATION_RANKS[entry.Federation != null ? entry.Federation : 0] || FEDERATION_RANKS[0] },
+              exobiology: { level: exobioLevel != null ? exobioLevel : 0, name: exobioLevel != null ? (EXOBIO_RANKS[exobioLevel] || EXOBIO_RANKS[0]) : EXOBIO_RANKS[0] },
             };
           }
 
@@ -194,6 +346,7 @@ async function run() {
               cqc:        entry.CQC,
               empire:     entry.Empire,
               federation: entry.Federation,
+              exobiology: entry.Exobiologist != null ? entry.Exobiologist : null,
             };
           }
 

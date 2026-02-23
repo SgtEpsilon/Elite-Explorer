@@ -66,6 +66,18 @@
     animation: discoveryPulse 2.4s ease-in-out infinite;
   }
 
+  /* ImportStars.txt badge — shown next to the system name */
+  .import-star-badge {
+    display: inline-block;
+    margin-left: 5px;
+    font-size: 0.8em;
+    color: var(--cyan);
+    opacity: 0.75;
+    cursor: default;
+    vertical-align: middle;
+    line-height: 1;
+  }
+
   /* Stats bar */
   #hist-stats-bar {
     flex-shrink: 0;
@@ -98,6 +110,7 @@
     <a class="tab-btn" href="index.html">Live</a>
     <a class="tab-btn" href="profile.html">Profile</a>
     <a class="tab-btn active" href="history.html">History</a>
+    <a class="tab-btn" href="spansh.html">Spansh</a>
   </div>
   <span class="tb-credits" id="tb-credits"></span>
   <button id="options-btn" title="Options">&#9881;</button>
@@ -121,9 +134,17 @@
       <button id="hist-rescan-btn" title="Re-scan all journals">&#8635; Rescan</button>
     </div>
 
-    <!-- Progress bar -->
+    <!-- Progress bar (journal scan) -->
     <div id="hist-progress-wrap">
       <div id="hist-progress-track"><div id="hist-progress-bar"></div></div>
+    </div>
+
+    <!-- EDSM progress bar (discovery check + star/body enrichment) -->
+    <div id="edsm-progress-wrap" style="display:none;align-items:center;gap:10px;padding:3px 12px;background:rgba(0,0,0,0.2);border-bottom:1px solid var(--border);">
+      <span id="edsm-check-status" style="font-family:var(--mono);font-size:0.68em;color:var(--text-mute);letter-spacing:0.05em;white-space:nowrap;"></span>
+      <div style="flex:1;height:2px;background:var(--border2);border-radius:1px;">
+        <div id="edsm-progress-bar-inner" style="height:100%;width:0%;background:var(--cyan);border-radius:1px;transition:width 0.4s;"></div>
+      </div>
     </div>
 
     <!-- Scrollable content -->
@@ -179,6 +200,25 @@
   </div>
   <div id="options-body">
     <div class="opt-section">
+      <div class="opt-section-title">EDSM — Flight Log</div>
+      <div style="margin-top:4px;">
+        <label style="font-size:0.72em;color:var(--text-dim);display:block;margin-bottom:3px;">EDSM Commander Name</label>
+        <input class="opt-input" id="opt-edsm-cmdr" type="text" placeholder="Your EDSM commander name" spellcheck="false"/>
+      </div>
+      <div style="margin-top:6px;">
+        <label style="font-size:0.72em;color:var(--text-dim);display:block;margin-bottom:3px;">EDSM API Key <span style="opacity:0.5">(from edsm.net/en/settings/api)</span></label>
+        <input class="opt-input" id="opt-edsm-key" type="password" placeholder="••••••••••••••••" spellcheck="false"/>
+      </div>
+      <button class="opt-action-btn" id="opt-edsm-sync-btn" style="margin-top:10px;">
+        <span class="opt-btn-icon">&#11015;</span>
+        <div><div class="opt-btn-label">Pull Data from EDSM</div><div class="opt-btn-sub" id="opt-edsm-sync-hint">Pull your EDSM history &amp; merge with local journals</div></div>
+      </button>
+      <button class="opt-action-btn" id="opt-import-stars-btn" style="margin-top:6px;">
+        <span class="opt-btn-icon">&#9733;</span>
+        <div><div class="opt-btn-label">Import First Discoveries (ImportStars.txt)</div><div class="opt-btn-sub" id="opt-import-stars-hint">Import your EDSM first-discovery list</div></div>
+      </button>
+    </div>
+    <div class="opt-section">
       <div class="opt-section-title">Journal Folder</div>
       <div class="opt-path-row">
         <input class="opt-input" id="opt-journal-path" type="text" placeholder="Auto-detected" spellcheck="false"/>
@@ -217,5 +257,7 @@
 </div>
 
 <script src="history-script.js"></script>
+<script src="update-modal.js"></script>
+<script src="prefs-modal.js"></script>
 </body>
 </html>

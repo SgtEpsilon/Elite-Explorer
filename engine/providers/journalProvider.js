@@ -3,6 +3,7 @@ const fs = require('fs');
 const path = require('path');
 const { Worker } = require('worker_threads');
 const eventBus = require('../core/eventBus');
+const logger   = require('../core/logger');
 const config = require('../../config.json');
 
 const { app: electronApp } = (() => { try { return require('electron'); } catch { return {}; } })();
@@ -19,6 +20,20 @@ async function saveLastProcessed() {
 
 let mainWindow = null;
 function setMainWindow(win) { mainWindow = win; }
+
+// ── Replay cache — keeps the last payload of each type so any page that loads
+// after the initial scan still gets populated data immediately. ──────────────
+const _cache = {
+  liveData:    null,   // last live-data payload
+  profileData: null,   // last profile-data payload
+  bodiesData:  null,   // last bodies-data payload
+};
+
+function replayToPage() {
+  if (_cache.liveData)    send('live-data',    _cache.liveData);
+  if (_cache.profileData) send('profile-data', _cache.profileData);
+  if (_cache.bodiesData)  send('bodies-data',  _cache.bodiesData);
+}
 
 function send(channel, data) {
   if (mainWindow && !mainWindow.isDestroyed()) {
@@ -66,6 +81,8 @@ function runWorker(files, { mode = 'all', useLastProcessed = false, updateLastPr
             eventBus.emit('journal.location', msg.data);
             send('location-data', msg.data);
           }
+          if (msg.event === 'journal.fss-scan')
+            eventBus.emit('journal.fss-scan', msg.data);
           break;
 
         case 'raw':
@@ -73,12 +90,24 @@ function runWorker(files, { mode = 'all', useLastProcessed = false, updateLastPr
           eventBus.emit('journal.raw.' + msg.event, msg.entry);
           break;
 
+        case 'bodies-data':
+          _cache.bodiesData = { system: msg.system, bodies: msg.bodies, signals: msg.signals };
+          send('bodies-data', { system: msg.system, bodies: msg.bodies, signals: msg.signals });
+          eventBus.emit('journal.bodies', { system: msg.system, bodies: msg.bodies, signals: msg.signals });
+          break;
+
         case 'live-data':
+          // partial:true means this is a mid-file real-time update (Loadout, HullHealth,
+          // Resurrect). Send it to the renderer immediately but do NOT overwrite the cache —
+          // the cache must always hold the complete end-of-file payload so replayToPage
+          // gives new pages a full data set rather than a sparse mid-session snapshot.
+          if (!msg.partial) _cache.liveData = msg.data;
           send('live-data', msg.data);
           eventBus.emit('journal.live', msg.data);
           break;
 
         case 'profile-data':
+          _cache.profileData = msg.data;
           send('profile-data', msg.data);
           eventBus.emit('journal.profile', msg.data);
           break;
@@ -92,7 +121,7 @@ function runWorker(files, { mode = 'all', useLastProcessed = false, updateLastPr
           break;
 
         case 'error':
-          console.error('[worker error]', msg.file || '', msg.message);
+          logger.error('JOURNAL-WORKER', (msg.file || '') + ' ' + msg.message);
           break;
       }
     });
@@ -107,7 +136,7 @@ async function readLiveJournal(journalPath) {
   const files = getSortedJournalFiles(journalPath);
   if (!files.length) return;
   const latest = files[0];
-  console.log('[live] Reading:', latest.file);
+  logger.info('JOURNAL', 'Reading live journal: ' + latest.file);
   await runWorker([latest.fullPath], { mode: 'live' });
 }
 
@@ -133,7 +162,7 @@ async function readProfileData(journalPath) {
     if (found.size === REQUIRED.size) break;
   }
 
-  console.log('[profile] Scanning ' + batch.length + ' file(s), found: ' + [...found].join(', '));
+  logger.debug('JOURNAL', `Profile scan: checking ${batch.length} file(s)`, { found: [...found].join(', ') || 'none' });
   await runWorker(batch, { mode: 'profile' });
 }
 
@@ -142,7 +171,7 @@ async function readProfileData(journalPath) {
 async function scanAll() {
   let journalPath;
   try { journalPath = getJournalPath(); } catch (err) {
-    console.error('[scanAll] Cannot resolve journal path:', err.message);
+    logger.error('JOURNAL', 'scanAll: cannot resolve journal path', err);
     return;
   }
   if (!fs.existsSync(journalPath)) {
@@ -164,11 +193,11 @@ function getLatestJournalFile(journalPath) {
 function start() {
   let journalPath;
   try { journalPath = getJournalPath(); } catch (err) {
-    console.error('[start] Cannot resolve journal path:', err.message);
+    logger.error('JOURNAL', 'Cannot resolve journal path', err);
     return;
   }
   if (!fs.existsSync(journalPath)) {
-    console.error('[start] Journal directory not found:', journalPath);
+    logger.warn('JOURNAL', 'Journal directory not found: ' + journalPath);
     send('journal-path-missing', journalPath);
     return;
   }
@@ -180,7 +209,7 @@ function start() {
   // Live watcher — only fires live-data updates
   let latestFile  = getLatestJournalFile(journalPath);
   let watchedPath = latestFile ? latestFile.fullPath : null;
-  if (watchedPath) console.log('[watcher] Tracking:', latestFile.file);
+  if (watchedPath) logger.info('JOURNAL', 'Watcher tracking journal file', { file: latestFile.file });
 
   const watcher = chokidar.watch(journalPath + path.sep + 'Journal.*.log', {
     persistent: true,
@@ -190,7 +219,7 @@ function start() {
   const handleFileEvent = (filePath) => {
     const nowLatest = getLatestJournalFile(journalPath);
     if (nowLatest && nowLatest.fullPath !== watchedPath) {
-      console.log('[watcher] New session:', nowLatest.file);
+      logger.info('JOURNAL', 'New game session detected — switching to new journal file', { file: nowLatest.file });
       watchedPath = nowLatest.fullPath;
     }
     if (filePath === watchedPath) {
@@ -202,4 +231,14 @@ function start() {
   watcher.on('change', handleFileEvent);
 }
 
-module.exports = { start, scanAll, setMainWindow, getJournalPath };
+// ── refreshProfile: re-scan profile data on demand (used by 2-min poll) ──────
+async function refreshProfile() {
+  let journalPath;
+  try { journalPath = getJournalPath(); } catch { return; }
+  if (!fs.existsSync(journalPath)) return;
+  await readProfileData(journalPath);
+}
+
+function getCache() { return { ..._cache }; }
+
+module.exports = { start, scanAll, refreshProfile, setMainWindow, getJournalPath, replayToPage, getCache };

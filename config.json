@@ -1,9 +1,13 @@
 {
-  "journalPath": "",
-  "apiPort": 3721,
-  "commanderName": "",
+  "journalDir": "C:\\Users\\YourName\\Saved Games\\Frontier Developments\\Elite Dangerous",
+  "enableEdsmFetch": true,
+  "edsmCacheSize": 50,
+  "edsmCommanderName": "",
+  "edsmApiKey": "",
   "eddnEnabled": false,
   "edsmEnabled": false,
-  "edsmCommanderName": "",
-  "edsmApiKey": ""
+  "commanderName": "",
+  "updateChannel": "stable",
+  "networkServerEnabled": false,
+  "networkServerPort": 3722
 }

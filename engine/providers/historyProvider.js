@@ -142,4 +142,6 @@ function scan() {
   });
 }
 
-module.exports = { scan, replayToPage, setMainWindow };
+function getCache() { return { jumps: cachedJumps }; }
+
+module.exports = { scan, replayToPage, setMainWindow, getCache };

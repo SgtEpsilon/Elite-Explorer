@@ -1,175 +1,189 @@
 /**
- * edsmClient.js
- * Fetches system data from the Elite Dangerous Star Map API.
- * https://www.edsm.net/en/api-v1
+ * engine/services/edsmClient.js
  *
- * On each FSDJump / Location event, fetches:
- *   - System info  (id, coords, allegiance, government, security, population, state)
- *   - System bodies (star/planet list)
+ * Listens on the eventBus for journal.location events (fired on every
+ * FSDJump and Location event) and fetches system info + bodies from EDSM,
+ * then pushes the results to the renderer via edsm-system and edsm-bodies.
  *
- * Sends results to the renderer via `edsm-system` and `edsm-bodies` IPC channels.
- * Also exposes `getEdsmUrl(systemName)` for building the EDSM link in the UI.
+ * Bodies are ALWAYS fetched regardless of edsmEnabled — they populate the
+ * System Bodies panel immediately on system entry without waiting for the
+ * Discovery Scanner (FSSDiscoveryScan) to fire.
  *
- * Requires config.json:
- *   "edsmEnabled": true
- *   "edsmCommanderName": "YourCmdrName"   (optional, for log submissions)
- *   "edsmApiKey": "..."                   (optional, for log submissions)
+ * System info (security, allegiance, economy, population) only fetches when
+ * edsmEnabled is true in config.
+ *
+ * Deduplication is by system+timestamp key so rapid duplicate events for the
+ * same jump are collapsed, but re-entering the same system always re-fetches.
  */
 
-const fs       = require('fs');
-const path     = require('path');
-const eventBus = require('../core/eventBus');
+const eventBus    = require('../core/eventBus');
+const logger      = require('../core/logger');
+const CONFIG_PATH = require('path').join(__dirname, '../../config.json');
+const fs          = require('fs');
 
-const CONFIG_PATH    = path.join(__dirname, '../../config.json');
-const BASE_URL       = 'https://www.edsm.net';
-const SYSTEM_URL     = BASE_URL + '/api-v1/system';
-const BODIES_URL     = BASE_URL + '/api-system-v1/bodies';
-const SETLOG_URL     = BASE_URL + '/api-logs-v1/set-log';
+const BASE_URL = 'https://www.edsm.net';
 
-let mainWindow    = null;
-let _lastSystem   = null;   // debounce — don't re-fetch the same system twice
-let _inflight     = false;  // one request at a time
+let mainWindow     = null;
+let _lastLookupKey = null;   // "systemName|timestamp" — unique per system entry
+let _cachedSystem  = null;   // last edsm-system payload
+let _cachedBodies  = null;   // last edsm-bodies payload
 
 function setMainWindow(win) { mainWindow = win; }
 
 function send(channel, data) {
-  if (mainWindow && !mainWindow.isDestroyed()) mainWindow.webContents.send(channel, data);
+  if (mainWindow && !mainWindow.isDestroyed()) {
+    mainWindow.webContents.send(channel, data);
+  }
 }
 
 function readConfig() {
   try { return JSON.parse(fs.readFileSync(CONFIG_PATH, 'utf8')); } catch { return {}; }
 }
 
-function isEnabled() { return readConfig().edsmEnabled === true; }
+// ── EDSM API helpers ──────────────────────────────────────────────────────────
 
-// ── URL builders ──────────────────────────────────────────────────────────────
-function getEdsmUrl(systemName) {
-  return BASE_URL + '/en/system/id/-/name/' + encodeURIComponent(systemName || '');
-}
-
-// ── Fetch system info + bodies ────────────────────────────────────────────────
-async function fetchSystem(systemName) {
-  if (_inflight || systemName === _lastSystem) return;
-  _inflight = true;
-  _lastSystem = systemName;
-
-  try {
-    const infoUrl = SYSTEM_URL + '?systemName=' + encodeURIComponent(systemName) +
-      '&showId=1&showCoordinates=1&showPermit=1&showInformation=1&showPrimaryStar=1';
-
-    const [infoRes, bodiesRes] = await Promise.all([
-      fetch(infoUrl,                                                  { signal: AbortSignal.timeout(8000) }),
-      fetch(BODIES_URL + '?systemName=' + encodeURIComponent(systemName), { signal: AbortSignal.timeout(8000) }),
-    ]);
-
-    if (infoRes.ok) {
-      const info = await infoRes.json();
-      console.log('[EDSM] System info:', systemName, '→', info.id ? 'found' : 'unknown');
-      const payload = {
-        name:         info.name         || systemName,
-        id:           info.id           || null,
-        id64:         info.id64         || null,
-        coords:       info.coords       || null,
-        permit:       info.requirePermit || false,
-        allegiance:   info.information?.allegiance   || null,
-        government:   info.information?.government   || null,
-        faction:      info.information?.faction      || null,
-        security:     info.information?.security     || null,
-        population:   info.information?.population   || null,
-        state:        info.information?.state        || null,
-        economy:      info.information?.economy      || null,
-        primaryStar:  info.primaryStar?.type         || null,
-        edsmUrl:      getEdsmUrl(systemName),
-      };
-      send('edsm-system', payload);
-      eventBus.emit('edsm.system', payload);
-    }
-
-    if (bodiesRes.ok) {
-      const bodiesData = await bodiesRes.json();
-      const bodies = (bodiesData.bodies || []).map(b => ({
-        id:          b.id,
-        name:        b.name,
-        type:        b.type,
-        subType:     b.subType,
-        distanceToArrival: b.distanceToArrival,
-        isLandable:  b.isLandable,
-        gravity:     b.gravity,
-        earthMasses: b.earthMasses,
-        radius:      b.radius,
-        surfaceTemp: b.surfaceTemperature,
-        volcanism:   b.volcanismType,
-        materials:   b.materials,
-        rings:       b.rings?.length > 0,
-        isScoopable: b.isScoopable,
-        spectralClass: b.spectralClass,
-        luminosity:  b.luminosity,
-        absoluteMagnitude: b.absoluteMagnitude,
-        solarMasses: b.solarMasses,
-        solarRadius: b.solarRadius,
-        reserveLevel: b.reserveLevel,
-      }));
-      console.log('[EDSM] Bodies for', systemName + ':', bodies.length);
-      send('edsm-bodies', { system: systemName, bodies });
-    }
-
-  } catch (err) {
-    console.warn('[EDSM] Fetch error for', systemName + ':', err.message);
-    send('edsm-system', { name: systemName, edsmUrl: getEdsmUrl(systemName), error: err.message });
-  } finally {
-    _inflight = false;
-  }
-}
-
-// ── Optional: submit commander flight log to EDSM ─────────────────────────────
-async function submitFlightLog(systemName, timestamp, coords) {
-  const cfg = readConfig();
-  if (!cfg.edsmEnabled || !cfg.edsmApiKey || !cfg.edsmCommanderName) return;
-
-  const body = new URLSearchParams({
-    commanderName: cfg.edsmCommanderName,
-    apiKey:        cfg.edsmApiKey,
+async function fetchSystemInfo(systemName) {
+  const params = new URLSearchParams({
     systemName,
-    dateVisited:   timestamp || new Date().toISOString().replace('T', ' ').slice(0, 19),
-    fromSoftware:  'EliteExplorer',
-    fromSoftwareVersion: '1.0.0',
+    showInformation: 1,
+    showPermit: 1,
+    showPrimaryStar: 1,
   });
-  if (coords) {
-    body.append('x', coords[0]);
-    body.append('y', coords[1]);
-    body.append('z', coords[2]);
-  }
+  const res = await fetch(`${BASE_URL}/api-v1/system?${params}`, { signal: AbortSignal.timeout(10000) });
+  if (!res.ok) throw new Error('HTTP ' + res.status);
+  return await res.json();
+}
+
+async function fetchSystemBodies(systemName) {
+  const res = await fetch(
+    `${BASE_URL}/api-system-v1/bodies?systemName=${encodeURIComponent(systemName)}`,
+    { signal: AbortSignal.timeout(10000) }
+  );
+  if (!res.ok) throw new Error('HTTP ' + res.status);
+  return await res.json();
+}
+
+// ── Main lookup — triggered on every system entry ─────────────────────────────
+
+async function lookupSystem(systemName, timestamp) {
+  if (!systemName) return;
+
+  // Deduplicate by system+timestamp — collapses duplicate events from the same
+  // jump (both FSDJump and Location fire journal.location), but allows a fresh
+  // fetch every time the player genuinely enters a system.
+  const key = systemName + '|' + (timestamp || '');
+  if (key === _lastLookupKey) return;
+  _lastLookupKey = key;
+
+  const cfg    = readConfig();
+  const edsmOn = !!cfg.edsmEnabled;
 
   try {
-    const res = await fetch(SETLOG_URL, { method: 'POST', body, signal: AbortSignal.timeout(8000) });
-    if (res.ok) {
-      const json = await res.json().catch(() => ({}));
-      console.log('[EDSM] Flight log submitted:', systemName, json.msgnum || '');
-    } else {
-      console.warn('[EDSM] Flight log failed:', res.status);
+    // Bodies always fetch. System info only when EDSM integration is on.
+    const tasks = [fetchSystemBodies(systemName)];
+    if (edsmOn) tasks.push(fetchSystemInfo(systemName));
+
+    const results  = await Promise.allSettled(tasks);
+    const bodiesRaw = results[0];
+    const infoRaw   = edsmOn ? results[1] : null;
+
+    // ── System info → edsm-system ──────────────────────────────────────────
+    if (edsmOn) {
+      if (infoRaw.status === 'fulfilled' && infoRaw.value) {
+        const d    = infoRaw.value;
+        const info = d.information || {};
+        const payload = {
+          name:       d.name      || systemName,
+          edsmUrl:    d.url       || `https://www.edsm.net/en/system/id/-/name/${encodeURIComponent(systemName)}`,
+          allegiance: info.allegiance || null,
+          government: info.government || null,
+          security:   info.security   || null,
+          economy:    info.economy    || null,
+          population: info.population ?? null,
+          error:      null,
+        };
+        _cachedSystem = payload;
+        send('edsm-system', payload);
+        logger.debug('EDSM', `System info fetched for ${systemName}`, { allegiance: info.allegiance, security: info.security });
+      } else {
+        const errMsg = infoRaw.reason?.message || 'lookup failed';
+        const payload = {
+          name:    systemName,
+          edsmUrl: `https://www.edsm.net/en/system/id/-/name/${encodeURIComponent(systemName)}`,
+          error:   errMsg,
+        };
+        _cachedSystem = payload;
+        send('edsm-system', payload);
+        logger.warn('EDSM', `System info lookup failed for ${systemName}`, errMsg);
+      }
     }
+
+    // ── Bodies → edsm-bodies ───────────────────────────────────────────────
+    if (bodiesRaw.status === 'fulfilled' && bodiesRaw.value && Array.isArray(bodiesRaw.value.bodies)) {
+      const payload = { system: systemName, bodies: bodiesRaw.value.bodies };
+      _cachedBodies = payload;
+      send('edsm-bodies', payload);
+      logger.debug('EDSM', `Bodies fetched for ${systemName}`, { count: bodiesRaw.value.bodies.length });
+    } else {
+      logger.warn('EDSM', `Bodies fetch failed for ${systemName}`, bodiesRaw.reason?.message || 'empty response');
+    }
+
   } catch (err) {
-    console.warn('[EDSM] Flight log error:', err.message);
+    logger.error('EDSM', `Lookup error for ${systemName}`, err);
   }
 }
 
-// ── Listen to location changes ────────────────────────────────────────────────
-eventBus.on('journal.location', (data) => {
-  if (!isEnabled() || !data.system) return;
-  fetchSystem(data.system);
-  submitFlightLog(data.system, data.timestamp, data.coords);
-});
+// ── Replay cached data to any page that loads after the initial lookup ─────────
 
-// Reset debounce on new session so first system after launch always fetches
-eventBus.on('journal.live', (data) => {
-  if (data.currentSystem && data.currentSystem !== _lastSystem) {
-    _lastSystem = null; // allow re-fetch
-    if (isEnabled()) fetchSystem(data.currentSystem);
-  }
-});
+function replayToPage() {
+  if (_cachedSystem) send('edsm-system', _cachedSystem);
+  if (_cachedBodies) send('edsm-bodies', _cachedBodies);
+}
+
+// ── Start: subscribe to location events ──────────────────────────────────────
 
 function start() {
-  console.log('[EDSM] Client initialised, enabled:', isEnabled());
+  const cfg    = readConfig();
+  const edsmOn = !!cfg.edsmEnabled;
+
+  if (edsmOn) {
+    if (!cfg.edsmCommanderName && !cfg.edsmApiKey) {
+      logger.warn('EDSM', 'EDSM integration is enabled but no Commander Name or API Key is set — system info lookups will fail. Set them in Options > EDSM.');
+    } else if (!cfg.edsmCommanderName) {
+      logger.warn('EDSM', 'EDSM enabled but Commander Name is not set — flight log sync will not work');
+    } else if (!cfg.edsmApiKey) {
+      logger.warn('EDSM', 'EDSM enabled but API Key is not set — flight log sync will not work. Anonymous system lookups will still function.');
+    } else {
+      logger.info('EDSM', 'EDSM integration active', { commander: cfg.edsmCommanderName });
+    }
+  } else {
+    logger.info('EDSM', 'EDSM integration is disabled — system info will not be fetched (bodies still fetched regardless)');
+  }
+
+  eventBus.on('journal.location', (data) => {
+    if (data && data.system) {
+      logger.debug('EDSM', `Location event received — looking up ${data.system}`);
+      lookupSystem(data.system, data.timestamp);
+    }
+  });
 }
 
-module.exports = { start, setMainWindow, getEdsmUrl };
+// ── Exported helpers ──────────────────────────────────────────────────────────
+
+async function getSystemBodies(systemName) {
+  try { return await fetchSystemBodies(systemName); } catch { return null; }
+}
+
+async function getSystemInfo(systemName) {
+  try { return await fetchSystemInfo(systemName); } catch { return null; }
+}
+
+module.exports = {
+  setMainWindow,
+  start,
+  replayToPage,
+  getSystemBodies,
+  getSystemInfo,
+  lookupSystem,
+  getCache: () => ({ system: _cachedSystem, bodies: _cachedBodies }),
+};
