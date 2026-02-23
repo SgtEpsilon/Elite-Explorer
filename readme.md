@@ -1,5 +1,4 @@
 ![Open Bugs](https://img.shields.io/github/issues-search/SgtEpsilon/Elite-Explorer?query=is%3Aissue+is%3Aopen+label%3Abug&label=open%20bugs&color=red) ![Open Enhancements](https://img.shields.io/github/issues-search/SgtEpsilon/Elite-Explorer?query=is%3Aissue+is%3Aopen+label%3Aenhancement&label=open%20enhancements&color=blue&style=flat)
-
 # Elite-Explorer
 
 Elite-Explorer is a desktop application built with Electron that processes and visualizes journal data from Elite: Dangerous. It gives commanders a local-first tool to monitor their current session in real time, track exploration history, sync with third-party services, and plan future routes -- all without relying on any external cloud backend. Your data is stored locally and stays on your machine.
