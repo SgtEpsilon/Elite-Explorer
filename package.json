@@ -9,9 +9,7 @@
     "build": "electron-builder",
     "build:win": "electron-builder --win",
     "build:mac": "electron-builder --mac",
-    "build:linux": "electron-builder --linux",
-    "publish:stable": "electron-builder --win --publish always -c.publish.provider=github -c.publish.owner=SgtEpsilon -c.publish.repo=Elite-Explorer -c.publish.releaseType=release",
-    "publish:beta": "electron-builder --win --publish always -c.publish.provider=github -c.publish.owner=SgtEpsilon -c.publish.repo=Elite-Explorer -c.publish.channel=beta -c.publish.releaseType=prerelease"
+    "build:linux": "electron-builder --linux"
   },
   "author": "CMDR Epsilon",
   "license": "MIT",

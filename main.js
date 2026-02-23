@@ -15,6 +15,7 @@ const capiService      = require('./engine/services/capiService');
 const updaterService   = require('./engine/services/updaterService');
 const engine           = require('./engine/core/engine');
 const api              = require('./engine/api/server');
+const networkServer    = require('./engine/api/network-server');
 
 // ── Config path ───────────────────────────────────────────────────────────────────
 // Live config lives in userData so it is always writable, even when the app
@@ -157,6 +158,27 @@ app.whenReady().then(async () => {
   api.start();         // REST API on :3721
   logger.info('API', 'REST API started on :3721');
 
+  // ── Network UI server (optional) ─────────────────────────────────────────
+  // Enabled via config.json networkServerEnabled=true (or --network CLI flag).
+  // Allows any device on the LAN to open the UI in a browser.
+  const cfg = readConfig();
+  if (cfg.networkServerEnabled || process.argv.includes('--network')) {
+    const netPort = cfg.networkServerPort || 3722;
+    networkServer.start({
+      mainWindow,
+      journalProvider,
+      historyProvider,
+      edsmSyncService,
+      edsmClient,
+      capiService,
+      readConfig,
+      writeConfig,
+      logger,
+      port: netPort,
+    });
+    logger.info('NETWORK', `Network UI server enabled on port ${netPort}`);
+  }
+
   edsmClient.start();  // listens on eventBus for location events
   eddnRelay.start();   // listens on eventBus for raw journal events
 
@@ -236,6 +258,24 @@ ipcMain.handle('open-journal-folder', async (_e, folderPath) => {
 // ── Config ────────────────────────────────────────────────────────────────────
 ipcMain.handle('get-config', () => readConfig());
 ipcMain.handle('save-config', (_e, patch) => { writeConfig(patch); return true; });
+
+// ── Network info — returns local IPs and active network server port ───────────
+ipcMain.handle('get-network-info', () => {
+  const os  = require('os');
+  const cfg = readConfig();
+  const ifaces = os.networkInterfaces();
+  const ips = [];
+  for (const iface of Object.values(ifaces)) {
+    for (const addr of iface) {
+      if (addr.family === 'IPv4' && !addr.internal) ips.push(addr.address);
+    }
+  }
+  return {
+    enabled: !!cfg.networkServerEnabled,
+    port: cfg.networkServerPort || 3722,
+    ips,
+  };
+});
 
 // ── Scan triggers ─────────────────────────────────────────────────────────────
 ipcMain.handle('trigger-scan-all', () => { journalProvider.scanAll(); return true; });

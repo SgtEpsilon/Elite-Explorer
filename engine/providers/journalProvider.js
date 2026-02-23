@@ -239,4 +239,6 @@ async function refreshProfile() {
   await readProfileData(journalPath);
 }
 
-module.exports = { start, scanAll, refreshProfile, setMainWindow, getJournalPath, replayToPage };
+function getCache() { return { ..._cache }; }
+
+module.exports = { start, scanAll, refreshProfile, setMainWindow, getJournalPath, replayToPage, getCache };

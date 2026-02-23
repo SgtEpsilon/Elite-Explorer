@@ -165,4 +165,5 @@ module.exports = {
   getSystemBodies,
   getSystemInfo,
   lookupSystem,
+  getCache: () => ({ system: _cachedSystem, bodies: _cachedBodies }),
 };
