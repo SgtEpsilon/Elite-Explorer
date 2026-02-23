@@ -68,14 +68,31 @@
 
       // Section: Debug Log
       '<div style="margin-bottom:20px;">',
-        '<div style="font-size:0.78em;font-weight:600;text-transform:uppercase;letter-spacing:.08em;color:#4a6a8a;margin-bottom:12px;padding-bottom:6px;border-bottom:1px solid #0e2040;">Debug &amp; Bug Reports</div>',
-        '<div style="color:#5a7a9a;font-size:0.88em;margin-bottom:12px;line-height:1.5;">Save a debug log and attach it when filing a bug report on GitHub. It includes recent application events but <strong style="color:#a0b8d0;">no personal game data</strong>.</div>',
-        '<div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap;">',
-          '<button id="prefs-save-log" style="padding:7px 16px;border-radius:6px;cursor:pointer;font-size:0.88em;font-weight:600;background:#0d1f35;color:#7eb8f7;border:1px solid #1e3a5f;">\ud83d\udcc4 Save Debug Log\u2026</button>',
-          '<button id="prefs-view-log" style="padding:7px 16px;border-radius:6px;cursor:pointer;font-size:0.88em;font-weight:600;background:#0d1f35;color:#5a9abf;border:1px solid #1a3050;">\ud83d\udd0d Preview Log</button>',
+        '<div style="font-size:0.78em;font-weight:600;text-transform:uppercase;letter-spacing:.08em;color:#4a6a8a;margin-bottom:12px;padding-bottom:6px;border-bottom:1px solid #0e2040;">Debug &amp; Diagnostics</div>',
+
+        // Filter bar
+        '<div style="display:flex;align-items:center;gap:6px;flex-wrap:wrap;margin-bottom:8px;">',
+          '<span style="font-size:0.78em;color:#4a6a8a;margin-right:2px;">Filter:</span>',
+          '<button class="prefs-lvl-btn" data-level="ALL"  style="padding:2px 8px;border-radius:4px;cursor:pointer;font-size:0.75em;font-weight:600;border:1px solid #1e3f6a;background:#0d1f35;color:#7eb8f7;">ALL</button>',
+          '<button class="prefs-lvl-btn" data-level="ERROR" style="padding:2px 8px;border-radius:4px;cursor:pointer;font-size:0.75em;font-weight:600;border:1px solid #1e3f6a;background:#0d1f35;color:#f05050;">ERROR</button>',
+          '<button class="prefs-lvl-btn" data-level="WARN"  style="padding:2px 8px;border-radius:4px;cursor:pointer;font-size:0.75em;font-weight:600;border:1px solid #1e3f6a;background:#0d1f35;color:#f0a030;">WARN</button>',
+          '<button class="prefs-lvl-btn" data-level="INFO"  style="padding:2px 8px;border-radius:4px;cursor:pointer;font-size:0.75em;font-weight:600;border:1px solid #1e3f6a;background:#0d1f35;color:#4caf82;">INFO</button>',
+          '<button class="prefs-lvl-btn" data-level="DEBUG" style="padding:2px 8px;border-radius:4px;cursor:pointer;font-size:0.75em;font-weight:600;border:1px solid #1e3f6a;background:#0d1f35;color:#5a9abf;">DEBUG</button>',
+          '<span id="prefs-log-count" style="margin-left:auto;font-size:0.75em;color:#3a5a7a;"></span>',
         '</div>',
-        '<div id="prefs-log-status" style="font-size:0.82em;color:#4a6a8a;min-height:1.4em;margin-top:8px;"></div>',
-        '<div id="prefs-log-preview" style="display:none;margin-top:10px;max-height:180px;overflow-y:auto;background:#040b14;border:1px solid #0e2040;border-radius:6px;padding:8px 10px;font-family:\'Share Tech Mono\',monospace;font-size:0.75em;color:#5a8aaa;white-space:pre;line-height:1.5;"></div>',
+
+        // Action buttons
+        '<div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin-bottom:8px;">',
+          '<button id="prefs-view-log" style="padding:6px 14px;border-radius:6px;cursor:pointer;font-size:0.85em;font-weight:600;background:#0d1f35;color:#7eb8f7;border:1px solid #1e3a5f;">&#128269; View Log</button>',
+          '<button id="prefs-refresh-log" style="padding:6px 14px;border-radius:6px;cursor:pointer;font-size:0.85em;font-weight:600;background:#0d1f35;color:#5a9abf;border:1px solid #1a3050;display:none;">&#8635; Refresh</button>',
+          '<button id="prefs-save-log" style="padding:6px 14px;border-radius:6px;cursor:pointer;font-size:0.85em;font-weight:600;background:#0d1f35;color:#4caf82;border:1px solid #1a3a2a;">&#128196; Save Log\u2026</button>',
+        '</div>',
+
+        '<div id="prefs-log-status" style="font-size:0.82em;color:#4a6a8a;min-height:1.2em;margin-bottom:4px;"></div>',
+
+        // Log viewer
+        '<div id="prefs-log-viewer" style="display:none;max-height:260px;overflow-y:auto;background:#030a14;border:1px solid #0d1e36;border-radius:8px;font-family:\'Share Tech Mono\',monospace;font-size:0.72em;line-height:1.6;">',
+        '</div>',
       '</div>',
 
       // Footer
@@ -104,12 +121,76 @@
   var lblStable   = document.getElementById('pref-ch-stable-label');
   var lblBeta     = document.getElementById('pref-ch-beta-label');
   var status      = document.getElementById('pref-channel-status');
-  var btnSaveLog  = document.getElementById('prefs-save-log');
-  var btnViewLog  = document.getElementById('prefs-view-log');
-  var logStatus   = document.getElementById('prefs-log-status');
-  var logPreview  = document.getElementById('prefs-log-preview');
+  var btnSaveLog    = document.getElementById('prefs-save-log');
+  var btnViewLog    = document.getElementById('prefs-view-log');
+  var btnRefreshLog = document.getElementById('prefs-refresh-log');
+  var logStatus     = document.getElementById('prefs-log-status');
+  var logViewer     = document.getElementById('prefs-log-viewer');
+  var logCount      = document.getElementById('prefs-log-count');
+  var lvlBtns       = document.querySelectorAll('.prefs-lvl-btn');
 
-  var logVisible = false;
+  var logVisible    = false;
+  var activeLevel   = 'ALL';
+  var _allEntries   = [];
+  var _autoRefresh  = null;
+
+  // ── Level colours ──────────────────────────────────────────────────────────
+  var LEVEL_COLOR = { ERROR: '#f05050', WARN: '#f0a030', INFO: '#4caf82', DEBUG: '#5a9abf' };
+  var LEVEL_BG    = { ERROR: 'rgba(240,80,80,0.06)', WARN: 'rgba(240,160,48,0.05)', INFO: '', DEBUG: '' };
+
+  function renderEntries(entries) {
+    var filtered = activeLevel === 'ALL' ? entries : entries.filter(function(e) { return e.level === activeLevel; });
+    if (logCount) logCount.textContent = filtered.length + ' / ' + entries.length + ' entries';
+
+    if (!filtered.length) {
+      logViewer.innerHTML = '<div style="padding:12px 14px;color:#3a5a7a;font-style:italic;">No entries match the current filter.</div>';
+      return;
+    }
+
+    var rows = filtered.map(function(e) {
+      var color  = LEVEL_COLOR[e.level] || '#7eb8f7';
+      var bg     = LEVEL_BG[e.level]    || '';
+      var time   = e.ts ? e.ts.replace('T', ' ').slice(0, 19) : '';
+      var detail = e.detail ? '<div style="color:#3a5a7a;padding:1px 0 3px 0;white-space:pre-wrap;word-break:break-all;">' + escHtml(e.detail) + '</div>' : '';
+      return '<div style="padding:3px 10px;border-bottom:1px solid #070f1c;' + (bg ? 'background:' + bg + ';' : '') + '">' +
+        '<span style="color:#2a4a6a;">' + escHtml(time) + '</span> ' +
+        '<span style="color:' + color + ';font-weight:700;min-width:38px;display:inline-block;">' + escHtml(e.level) + '</span> ' +
+        '<span style="color:#4a7aaa;">[' + escHtml(e.tag || '') + ']</span> ' +
+        '<span style="color:#a0c0e0;">' + escHtml(e.message || '') + '</span>' +
+        detail +
+        '</div>';
+    });
+
+    logViewer.innerHTML = rows.join('');
+    logViewer.scrollTop = logViewer.scrollHeight;
+  }
+
+  function escHtml(s) {
+    return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+  }
+
+  function fetchAndRender() {
+    if (!window.electronAPI || !window.electronAPI.getDebugEntries) return;
+    window.electronAPI.getDebugEntries().then(function(entries) {
+      _allEntries = entries || [];
+      renderEntries(_allEntries);
+    }).catch(function(e) {
+      logViewer.innerHTML = '<div style="padding:10px;color:#f05050;">Error loading log: ' + escHtml(e.message) + '</div>';
+    });
+  }
+
+  // ── Level filter buttons ───────────────────────────────────────────────────
+  lvlBtns.forEach(function(btn) {
+    btn.addEventListener('click', function() {
+      activeLevel = btn.dataset.level;
+      lvlBtns.forEach(function(b) { b.style.outline = ''; });
+      btn.style.outline = '2px solid currentColor';
+      renderEntries(_allEntries);
+    });
+  });
+  // Highlight ALL by default
+  var allBtn = document.querySelector('.prefs-lvl-btn[data-level="ALL"]');
+  if (allBtn) allBtn.style.outline = '2px solid #7eb8f7';
 
   function highlightChannel() {
     lblStable.style.borderColor = radioBeta.checked ? '#1e3f6a' : '#7eb8f7';
@@ -132,9 +213,11 @@
   function closePreferences() {
     overlay.style.display    = 'none';
     modal.style.display      = 'none';
-    logPreview.style.display = 'none';
-    btnViewLog.textContent   = '\ud83d\udd0d Preview Log';
+    logViewer.style.display  = 'none';
+    btnRefreshLog.style.display = 'none';
+    btnViewLog.textContent   = '\ud83d\udd0d View Log';
     logVisible               = false;
+    if (_autoRefresh) { clearInterval(_autoRefresh); _autoRefresh = null; }
     logStatus.textContent    = '';
     logStatus.style.color    = '';
     status.textContent       = '';
@@ -181,6 +264,9 @@
         logStatus.textContent = '\u2713 Saved to ' + result.filePath;
       } else if (result && result.canceled) {
         logStatus.textContent = '';
+      } else if (result && result.__networkUnsupported) {
+        logStatus.style.color = '#f0a030';
+        logStatus.textContent = result.message;
       } else {
         logStatus.style.color = '#f05050';
         logStatus.textContent = 'Error: ' + ((result && result.error) || 'Unknown');
@@ -195,22 +281,26 @@
   btnViewLog.addEventListener('click', function () {
     if (!window.electronAPI) return;
     if (logVisible) {
-      logPreview.style.display = 'none';
-      btnViewLog.textContent   = '\ud83d\udd0d Preview Log';
+      logViewer.style.display  = 'none';
+      btnRefreshLog.style.display = 'none';
+      btnViewLog.textContent   = '\ud83d\udd0d View Log';
       logVisible               = false;
+      clearInterval(_autoRefresh);
+      _autoRefresh = null;
       return;
     }
-    window.electronAPI.getDebugLog().then(function (content) {
-      logPreview.textContent   = content;
-      logPreview.style.display = 'block';
-      logPreview.scrollTop     = logPreview.scrollHeight;
-      btnViewLog.textContent   = '\ud83d\ude48 Hide Preview';
-      logVisible               = true;
-    }).catch(function (e) {
-      logStatus.style.color = '#f05050';
-      logStatus.textContent = 'Error: ' + e.message;
-    });
+    logViewer.style.display     = 'block';
+    btnRefreshLog.style.display = '';
+    btnViewLog.textContent      = '\u2715 Close Log';
+    logVisible                  = true;
+    fetchAndRender();
+    // Auto-refresh every 5 s while open
+    _autoRefresh = setInterval(fetchAndRender, 5000);
   });
+
+  if (btnRefreshLog) {
+    btnRefreshLog.addEventListener('click', fetchAndRender);
+  }
 
   // ── 3. Listen for the IPC push from main.js ─────────────────────────────────
   if (window.electronAPI && window.electronAPI.onOpenPreferences) {

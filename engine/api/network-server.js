@@ -267,6 +267,11 @@ function buildApp() {
     } catch (e) { res.status(500).json({ error: e.message }); }
   });
 
+  app.get('/api/debug-get-entries', (_req, res) => {
+    try { res.json(_logger ? _logger.getEntries() : []); }
+    catch (e) { res.status(500).json({ error: e.message }); }
+  });
+
   // debug-save-log — not supported remotely (no save dialog)
   app.post('/api/debug-save-log', (_req, res) => {
     res.json({ __networkUnsupported: true, success: false, message: 'Saving log files is only available in the desktop app.' });

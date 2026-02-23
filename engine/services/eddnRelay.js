@@ -16,6 +16,7 @@
 const fs       = require('fs');
 const path     = require('path');
 const eventBus = require('../core/eventBus');
+const logger   = require('../core/logger');
 
 const EDDN_ENDPOINT    = 'https://eddn.edcd.io:4430/upload/';
 const SOFTWARE_NAME    = 'EliteExplorer';
@@ -135,15 +136,15 @@ async function submit(envelope) {
     });
     const schema = envelope['$schemaRef'].split('/').slice(-2).join('/');
     if (res.ok) {
-      console.log('[EDDN] Submitted:', schema);
+      logger.debug('EDDN', `Submitted ${schema}`, { uploader: envelope.header.uploaderID });
       send('eddn-status', { ok: true, schema });
     } else {
       const body = await res.text().catch(() => '');
-      console.warn('[EDDN] Upload failed', res.status, body.slice(0, 120));
+      logger.warn('EDDN', `Upload failed HTTP ${res.status}`, body.slice(0, 200));
       send('eddn-status', { ok: false, status: res.status, message: body.slice(0, 120) });
     }
   } catch (err) {
-    console.warn('[EDDN] Network error:', err.message);
+    logger.error('EDDN', 'Network error submitting to EDDN', err);
     send('eddn-status', { ok: false, message: err.message });
   }
 }
@@ -168,11 +169,11 @@ eventBus.on('journal.raw.Scan', (entry) => {
   const msg = sanitise(entry, stripSet);
 
   if (!_lastLocation) {
-    console.warn('[EDDN] Scan dropped — no location context for', msg.BodyName || '?');
+    logger.warn('EDDN', `Scan dropped — no location context yet for body: ${msg.BodyName || '?'}`);
     return;
   }
   if (msg.SystemAddress && msg.SystemAddress !== _lastLocation.SystemAddress) {
-    console.warn('[EDDN] Scan dropped — SystemAddress mismatch (stale scan?):', msg.BodyName);
+    logger.warn('EDDN', `Scan dropped — SystemAddress mismatch (stale scan?)`, { body: msg.BodyName, expected: _lastLocation.SystemAddress, got: msg.SystemAddress });
     return;
   }
 
@@ -200,7 +201,7 @@ eventBus.on('journal.raw.Docked', (entry) => {
   const msg = sanitise(entry);
 
   if (!_lastLocation) {
-    console.warn('[EDDN] Docked dropped — no location context yet');
+    logger.warn('EDDN', 'Docked event dropped — no location context yet (journal may not have loaded)');
     return;
   }
 
@@ -217,7 +218,18 @@ eventBus.on('journal.raw.Docked', (entry) => {
 });
 
 function start() {
-  console.log('[EDDN] Relay initialised, enabled:', isEnabled());
+  const cfg     = readConfig();
+  const enabled = isEnabled();
+
+  if (enabled) {
+    if (!cfg.commanderName) {
+      logger.warn('EDDN', 'EDDN is enabled but no Commander Name is set — uploader ID will be "Unknown". Set it in Options > EDDN.');
+    } else {
+      logger.info('EDDN', 'EDDN relay active', { uploader: cfg.commanderName, endpoint: EDDN_ENDPOINT });
+    }
+  } else {
+    logger.info('EDDN', 'EDDN relay is disabled — no events will be submitted to the network');
+  }
 }
 
 module.exports = { start, setMainWindow };

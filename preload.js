@@ -78,5 +78,6 @@ contextBridge.exposeInMainWorld('electronAPI', {
 
   // Debug log
   getDebugLog:         ()        => ipcRenderer.invoke('debug-get-log'),
+  getDebugEntries:     ()        => ipcRenderer.invoke('debug-get-entries'),
   saveDebugLog:        ()        => ipcRenderer.invoke('debug-save-log'),
 });

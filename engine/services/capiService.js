@@ -41,6 +41,7 @@ const path   = require('path');
 const https  = require('https');
 const crypto = require('crypto');
 const { app, shell } = require('electron');
+const logger = require('../core/logger');
 
 const CONFIG_PATH = path.join(__dirname, '../../config.json');
 
@@ -208,7 +209,7 @@ async function refreshToken() {
     throw new Error('Refresh token expired (25-day limit) — please log in again.');
   }
 
-  console.log('[cAPI] Refreshing access token...');
+  logger.debug('CAPI', 'Refreshing access token...');
   const { status, body } = await httpsPost('auth.frontierstore.net', '/token', {
     grant_type:    'refresh_token',
     client_id:     cfg.capiClientId,
@@ -218,7 +219,7 @@ async function refreshToken() {
   if (body.access_token) {
     const expiresAt = Date.now() + (body.expires_in || 7200) * 1000;
     saveTokens(body.access_token, body.refresh_token || cfg.capiRefreshToken, expiresAt);
-    console.log('[cAPI] Token refreshed, expires:', new Date(expiresAt).toISOString());
+    logger.info('CAPI', 'Access token refreshed', { expires: new Date(expiresAt).toISOString() });
     return body.access_token;
   }
   throw new Error('Token refresh failed (HTTP ' + status + '): ' + JSON.stringify(body));
@@ -280,7 +281,7 @@ function startOAuthLogin() {
       code_challenge_method: 'S256',
     }).toString();
 
-    console.log('[cAPI] Opening Frontier login in browser...');
+    logger.info('CAPI', 'Opening Frontier login in browser', { redirectUri: REDIRECT_URI });
     shell.openExternal(loginUrl);
   });
 }
@@ -307,10 +308,10 @@ function startOAuthLogin() {
 // The gotTheLock / requestSingleInstanceLock() pattern in main.js is also
 // required on Windows to ensure only one instance runs at a time.
 async function handleCallback(callbackUrl) {
-  console.log('[cAPI] Callback URI received:', callbackUrl);
+  logger.debug('CAPI', 'OAuth callback URI received', { url: callbackUrl });
 
   if (!_loginResolve) {
-    console.warn('[cAPI] Callback received but no login in progress — ignoring.');
+    logger.warn('CAPI', 'OAuth callback received but no login was in progress — ignoring');
     return;
   }
 
@@ -353,7 +354,7 @@ async function handleCallback(callbackUrl) {
     if (body.access_token) {
       const expiresAt = Date.now() + (body.expires_in || 7200) * 1000;
       saveTokens(body.access_token, body.refresh_token, expiresAt);
-      console.log('[cAPI] Login successful, expires:', new Date(expiresAt).toISOString());
+      logger.info('CAPI', 'Login successful — access token saved', { expires: new Date(expiresAt).toISOString() });
 
       // Push profile to renderer right away
       try {
@@ -373,7 +374,7 @@ async function handleCallback(callbackUrl) {
 // ── Logout ────────────────────────────────────────────────────────────────────
 function logout() {
   clearTokens();
-  console.log('[cAPI] Logged out, tokens cleared');
+  logger.info('CAPI', 'Logged out — tokens cleared');
   return { success: true };
 }
 
@@ -455,8 +456,6 @@ async function getShipyard() {
 
 // ── Startup ───────────────────────────────────────────────────────────────────
 function start() {
-  // Register eliteexplorer:// as a custom URI scheme so the OS hands
-  // Frontier's redirect back to this Electron app instead of the browser.
   if (app.isReady()) {
     app.setAsDefaultProtocolClient(PROTOCOL);
   } else {
@@ -464,20 +463,39 @@ function start() {
   }
 
   const cfg = readConfig();
+
+  // ── Startup diagnostics ──────────────────────────────────────────────────
+  if (!cfg.capiClientId) {
+    logger.warn('CAPI', 'No Frontier Client ID configured — cAPI features will be unavailable. Set one in Options > Frontier cAPI.');
+  } else {
+    logger.info('CAPI', 'Frontier Client ID is set');
+  }
+
   if (!cfg.capiAccessToken) {
-    console.log('[cAPI] Not logged in, skipping auto-refresh');
+    logger.info('CAPI', 'Not logged in to Frontier cAPI — skipping auto-refresh');
     return;
   }
 
-  console.log('[cAPI] Service started, token valid:', hasValidToken());
+  const tokenValid   = hasValidToken();
+  const refreshValid = hasValidRefreshToken();
+  const expiry       = cfg.capiTokenExpiry ? new Date(cfg.capiTokenExpiry).toISOString() : 'unknown';
+  const refreshExp   = cfg.capiRefreshExpiry ? new Date(cfg.capiRefreshExpiry).toISOString() : 'unknown';
+
+  if (tokenValid) {
+    logger.info('CAPI', 'Logged in — access token valid', { expires: expiry });
+  } else if (refreshValid) {
+    logger.warn('CAPI', 'Access token expired but refresh token is valid — will auto-refresh', { accessExpiry: expiry, refreshExpiry: refreshExp });
+  } else {
+    logger.error('CAPI', 'Both access and refresh tokens are expired — user must log in again', { accessExpiry: expiry, refreshExpiry: refreshExp });
+  }
 
   setInterval(async () => {
     const c = readConfig();
     if (!c.capiAccessToken) return;
     if ((c.capiTokenExpiry || 0) - Date.now() < REFRESH_BUFFER_MS) {
-      console.log('[cAPI] Token expiring soon, auto-refreshing...');
+      logger.debug('CAPI', 'Access token expiring soon — auto-refreshing');
       try { await refreshToken(); }
-      catch (err) { console.warn('[cAPI] Auto-refresh failed:', err.message); }
+      catch (err) { logger.error('CAPI', 'Auto-refresh failed', err); }
     }
   }, 60 * 1000);
 }

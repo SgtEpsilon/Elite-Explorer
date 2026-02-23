@@ -153,6 +153,7 @@
     setUpdateChannel:     ch  => api('/api/updater-set-channel',        { channel: ch }),
 
     getDebugLog:  () => fetch('/api/debug-get-log').then(r => r.text()),
+    getDebugEntries: () => api('/api/debug-get-entries'),
     saveDebugLog: () => api('/api/debug-save-log', {}).then(r => {
       if (r.__networkUnsupported) { alert(r.message); return { success: false, canceled: true }; }
       return r;
