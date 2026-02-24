@@ -17,6 +17,7 @@ function ts() { return new Date().toTimeString().slice(0,8); }
 function set(id, v) { const el = document.getElementById(id); if (el) el.textContent = (v != null ? v : '\u2014'); }
 
 // ─── LOGGING (live page only) ──────────────────────────────────────
+const LOG_MAX_ENTRIES = 200;
 let logCount = 0;
 function log(msg, type = 'info') {
   const countEl   = document.getElementById('log-count');
@@ -28,6 +29,10 @@ function log(msg, type = 'info') {
   e.className = 'log-entry';
   e.innerHTML = '<span class="log-ts">' + ts() + '</span><span class="log-msg ' + type + '">' + msg + '</span>';
   entriesEl.insertBefore(e, entriesEl.firstChild);
+  // FIX: cap DOM entries to prevent unbounded growth and layout thrashing
+  while (entriesEl.children.length > LOG_MAX_ENTRIES) {
+    entriesEl.removeChild(entriesEl.lastChild);
+  }
 }
 
 // ─── BODY RENDERING ───────────────────────────────────────────────
@@ -1280,12 +1285,13 @@ log('Journal watcher active', 'info');
 log('API connected on :3721', 'info');
 setInterval(refreshStats, 30000);
 
-// ── Profile refresh poll (every 2 minutes) ─────────────────────────
+// ── Profile refresh poll (every 10 minutes) ─────────────────────────
 // Keeps profile.html accurate without requiring a manual rescan.
-// The main process re-reads journals and pushes fresh profile-data,
-// which onProfileData above applies immediately.
+// FIX: interval raised from 2m → 10m: rank/stats change infrequently
+// and each refresh scans journal files + spawns a Worker thread, so
+// running it too often wastes CPU for no visible benefit.
 if (window.electronAPI && window.electronAPI.triggerProfileRefresh) {
   setInterval(function() {
     window.electronAPI.triggerProfileRefresh();
-  }, 2 * 60 * 1000);
+  }, 10 * 60 * 1000);
 }
