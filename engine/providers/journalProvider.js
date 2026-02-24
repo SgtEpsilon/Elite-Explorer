@@ -211,6 +211,28 @@ function start() {
   let watchedPath = latestFile ? latestFile.fullPath : null;
   if (watchedPath) logger.info('JOURNAL', 'Watcher tracking journal file', { file: latestFile.file });
 
+  // FIX: guard against worker thread pileup — only one live worker runs at a
+  // time. If a change fires while one is already running, we set a flag and
+  // re-run exactly once after the current worker finishes, rather than
+  // spawning an unbounded number of concurrent workers.
+  let _liveWorkerBusy = false;
+  let _pendingLiveRun = false;
+
+  function runLiveWorker(filePath) {
+    if (_liveWorkerBusy) {
+      _pendingLiveRun = true;
+      return;
+    }
+    _liveWorkerBusy = true;
+    runWorker([filePath], { mode: 'live' }).finally(() => {
+      _liveWorkerBusy = false;
+      if (_pendingLiveRun) {
+        _pendingLiveRun = false;
+        runLiveWorker(filePath);
+      }
+    });
+  }
+
   const watcher = chokidar.watch(journalPath + path.sep + 'Journal.*.log', {
     persistent: true,
     ignoreInitial: true,
@@ -223,7 +245,7 @@ function start() {
       watchedPath = nowLatest.fullPath;
     }
     if (filePath === watchedPath) {
-      runWorker([filePath], { mode: 'live' });
+      runLiveWorker(filePath);
     }
   };
 
