@@ -12,6 +12,7 @@ const edsmClient       = require('./engine/services/edsmClient');
 const eddnRelay        = require('./engine/services/eddnRelay');
 const edsmSyncService  = require('./engine/services/edsmSyncService');
 const capiService      = require('./engine/services/capiService');
+const inaraService     = require('./engine/services/inaraService');
 const updaterService   = require('./engine/services/updaterService');
 const engine           = require('./engine/core/engine');
 const api              = require('./engine/api/server');
@@ -523,6 +524,9 @@ ipcMain.handle('capi-logout',      ()       => capiService.logout());
 ipcMain.handle('capi-get-status',  ()       => capiService.getStatus());
 ipcMain.handle('capi-get-profile', ()       => capiService.getProfile());
 ipcMain.handle('capi-get-market',  (_e, id) => capiService.getMarket(id));
+
+// ── Inara.cz ──────────────────────────────────────────────────────────────────
+ipcMain.handle('inara-get-profile', (_e, name) => inaraService.getCommanderProfile(name));
 
 // ── Debug Log ─────────────────────────────────────────────────────────────────
 ipcMain.handle('debug-get-log', () => {
