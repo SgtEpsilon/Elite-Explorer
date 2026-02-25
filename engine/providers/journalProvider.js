@@ -251,6 +251,69 @@ function start() {
 
   watcher.on('add', handleFileEvent);
   watcher.on('change', handleFileEvent);
+
+  // ── Status.json watcher — keeps the fuel panel live ──────────────────────
+  // Status.json is rewritten by Elite every ~1 s while in-game and contains
+  // Fuel.FuelMain (main tank) and Fuel.FuelReservoir (reserve). We read it
+  // on every change and push a partial live-data update so the fuel bar and
+  // display update in real time — independent of FSDJump/FuelScoop journal
+  // events which only fire at discrete moments.
+  const statusPath = path.join(journalPath, 'Status.json');
+
+  function readStatusFuel() {
+    try {
+      const raw    = fs.readFileSync(statusPath, 'utf8');
+      const status = JSON.parse(raw);
+      const fuel   = status.Fuel;
+      if (!fuel) return;
+
+      const fuelMain      = fuel.FuelMain      ?? null;
+      const fuelReservoir = fuel.FuelReservoir ?? null;
+      if (fuelMain === null) return;
+
+      // Capacity comes from Loadout events stored in the live-data cache.
+      // Fall back to fuelMain itself (100%) if we haven't seen a Loadout yet.
+      const fuelCapacity = (_cache.liveData && _cache.liveData.fuelCapacity)
+        ? _cache.liveData.fuelCapacity
+        : null;
+
+      const fuelTotal   = fuelMain;
+      const fuelPct     = fuelCapacity
+        ? Math.min(100, Math.round((fuelTotal / fuelCapacity) * 100))
+        : null;
+      const fuelDisplay = fuelCapacity
+        ? fuelMain.toFixed(1) + ' / ' + fuelCapacity
+        : fuelMain.toFixed(1) + ' t';
+
+      // Build a minimal live-data patch — only overwrite the fuel fields.
+      // The receiver merges using the existing `if (d.field)` guards so
+      // non-fuel fields are untouched.
+      const patch = {
+        fuelMain,
+        fuelReservoir,
+        fuelTotal,
+        fuelPct,
+        fuelDisplay,
+      };
+
+      // Update the cache so replayToPage sends current fuel to new page loads.
+      if (_cache.liveData) {
+        _cache.liveData = { ..._cache.liveData, ...patch };
+      }
+
+      send('live-data', patch);
+    } catch {
+      // Status.json may be transiently locked during an Elite write — skip quietly.
+    }
+  }
+
+  const statusWatcher = chokidar.watch(statusPath, {
+    persistent:       true,
+    ignoreInitial:    false,   // read once on start so the bar is correct immediately
+    awaitWriteFinish: false,   // react as soon as the file is touched
+  });
+  statusWatcher.on('add',    readStatusFuel);
+  statusWatcher.on('change', readStatusFuel);
 }
 
 // ── refreshProfile: re-scan profile data on demand (used by 2-min poll) ──────

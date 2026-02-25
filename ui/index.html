@@ -64,6 +64,7 @@
             <div class="stat-row"><span class="stat-key">Cargo Cap</span><span class="stat-val" id="ship-cargo">&#8212;</span></div>
             <div class="stat-row"><span class="stat-key">Fuel</span><span class="stat-val" id="ship-fuel">&#8212;</span></div>
             <div class="fuel-bar-wrap"><div class="fuel-bar-fill" id="fuel-bar" style="width:0%"></div></div>
+            <div class="stat-row" style="margin-top:2px;"><span class="stat-key" style="color:var(--text-mute);font-size:0.85em">Reserve</span><span class="stat-val" id="ship-fuel-reserve" style="font-size:0.85em;color:var(--text-mute)">&#8212;</span></div>
             <div class="stat-row" style="margin-top:4px;"><span class="stat-key">Hull</span><span class="stat-val green" id="ship-hull">&#8212;</span></div>
             <div class="stat-row"><span class="stat-key">Rebuy</span><span class="stat-val red" id="ship-rebuy">&#8212;</span></div>
           </div>
@@ -244,11 +245,7 @@
     </div>
     <div class="opt-section">
       <div class="opt-section-title">Inara &#8212; Commander Profile</div>
-      <div style="font-size:0.78em;color:var(--text-mute);margin-bottom:8px;line-height:1.5;">Syncs your CMDR profile from Inara every 5 minutes. Find your API key at <a id="inara-api-link" href="#" style="color:var(--cyan);text-decoration:none;">inara.cz &#8594; Settings &#8594; API</a>.</div>
-      <div style="margin-top:6px;">
-        <label style="font-size:0.72em;color:var(--text-dim);display:block;margin-bottom:3px;">Inara API Key</label>
-        <input class="opt-input" id="opt-inara-api-key" type="password" placeholder="&#8226;&#8226;&#8226;&#8226;&#8226;&#8226;&#8226;&#8226;&#8226;&#8226;&#8226;&#8226;&#8226;&#8226;&#8226;&#8226;" spellcheck="false" autocomplete="off"/>
-      </div>
+      <div style="font-size:0.78em;color:var(--text-mute);margin-bottom:8px;line-height:1.5;">Syncs your CMDR profile from Inara every 5 minutes.</div>
       <div style="margin-top:6px;">
         <label style="font-size:0.72em;color:var(--text-dim);display:block;margin-bottom:3px;">CMDR Name Override <span style="opacity:0.5">(only if different from in-game name)</span></label>
         <input class="opt-input" id="opt-inara-cmdr-name" type="text" placeholder="Your Inara display name" spellcheck="false"/>

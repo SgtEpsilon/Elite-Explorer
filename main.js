@@ -15,6 +15,7 @@ const capiService      = require('./engine/services/capiService');
 const updaterService   = require('./engine/services/updaterService');
 const inaraService     = require('./engine/services/inaraService');
 const engine           = require('./engine/core/engine');
+const eventBus         = require('./engine/core/eventBus');
 const api              = require('./engine/api/server');
 const networkServer    = require('./engine/api/network-server');
 
@@ -156,6 +157,14 @@ app.whenReady().then(async () => {
 
   engine.start();      // DB + eventBus listeners
   logger.info('ENGINE', 'Engine started');
+
+  // ── Auto-update history on every FSDJump ─────────────────────────────────
+  // journal.raw.FSDJump fires from the live journal watcher with the full
+  // journal entry. We append it to the history cache immediately so the
+  // history page and web UI update on every jump without a full re-scan.
+  eventBus.on('journal.raw.FSDJump', (entry) => {
+    historyProvider.appendJump(entry);
+  });
   api.start();         // REST API on :3721
   logger.info('API', 'REST API started on :3721');
 

@@ -576,22 +576,42 @@ function capiUpdateUI(status) {
 function openOptions() {
   document.getElementById('options-panel').classList.add('open');
   document.getElementById('options-overlay').classList.add('open');
-  if (window.electronAPI && window.electronAPI.getJournalPath) {
-    window.electronAPI.getJournalPath()
-      .then(function(p) { if (p) document.getElementById('opt-journal-path').value = p; })
-      .catch(function() {});
-  }
-  if (window.electronAPI && window.electronAPI.getConfig) {
-    window.electronAPI.getConfig().then(function(cfg) {
-      var el = document.getElementById('capi-client-id');
-      if (el) el.value = cfg.capiClientId || '';
-      var cmdrEl = document.getElementById('opt-edsm-cmdr');
-      if (cmdrEl) cmdrEl.value = cfg.edsmCommanderName || '';
-      var keyEl = document.getElementById('opt-edsm-key');
-      if (keyEl) keyEl.value = cfg.edsmApiKey || '';
-    }).catch(function() {});
-  }
-  if (window.electronAPI && window.electronAPI.capiGetStatus) {
+  if (!window.electronAPI) return;
+  window.electronAPI.getJournalPath()
+    .then(function(p) { if (p) document.getElementById('opt-journal-path').value = p; })
+    .catch(function() {});
+  window.electronAPI.getConfig().then(function(cfg) {
+    var el;
+    el = document.getElementById('opt-eddn-enabled'); if (el) el.checked = !!cfg.eddnEnabled;
+    el = document.getElementById('opt-cmdr-name');    if (el) el.value   = cfg.commanderName       || '';
+    el = document.getElementById('opt-edsm-enabled'); if (el) el.checked = !!cfg.edsmEnabled;
+    el = document.getElementById('opt-edsm-cmdr');    if (el) el.value   = cfg.edsmCommanderName   || '';
+    el = document.getElementById('opt-edsm-key');     if (el) el.value   = cfg.edsmApiKey          || '';
+    el = document.getElementById('capi-client-id');   if (el) el.value   = cfg.capiClientId        || '';
+    el = document.getElementById('opt-inara-cmdr-name'); if (el) el.value = cfg.inaraCommanderName || '';
+    el = document.getElementById('opt-network-enabled'); if (el) el.checked = !!cfg.networkServerEnabled;
+    el = document.getElementById('opt-network-port');    if (el) el.value   = cfg.networkServerPort || 3722;
+    if (window.electronAPI.getNetworkInfo) {
+      window.electronAPI.getNetworkInfo().then(function(info) {
+        var urlsDiv = document.getElementById('opt-network-urls');
+        if (!urlsDiv) return;
+        if (info && info.enabled && info.ips && info.ips.length) {
+          var port = info.port || 3722;
+          var links = info.ips.map(function(ip) {
+            var url = 'http://' + ip + ':' + port;
+            return '<a href="' + url + '" style="color:var(--green);text-decoration:none;font-family:monospace;font-size:1.05em;" ' +
+              'onclick="if(window.electronAPI&&window.electronAPI.openExternal){event.preventDefault();window.electronAPI.openExternal(\'' + url + '\');}">' +
+              url + '</a>';
+          }).join('<br>');
+          urlsDiv.style.display = 'block';
+          urlsDiv.innerHTML = '<div style="margin-bottom:4px;color:var(--text-mute);">Network UI is active — open on any device:</div>' + links;
+        } else {
+          urlsDiv.style.display = 'none';
+        }
+      }).catch(function() {});
+    }
+  }).catch(function() {});
+  if (window.electronAPI.capiGetStatus) {
     window.electronAPI.capiGetStatus().then(capiUpdateUI).catch(function() {});
   }
 }
@@ -679,6 +699,36 @@ if (capiLogoutBtnH) capiLogoutBtnH.addEventListener('click', async function() {
   } catch {}
 });
 
+// --- EDDN / EDSM SAVE BUTTON (history page) -----------------------------------
+var saveApiBtnH = document.getElementById('opt-save-api-btn');
+if (saveApiBtnH) saveApiBtnH.addEventListener('click', async function() {
+  if (!window.electronAPI) return;
+  var eddnEnabled       = (document.getElementById('opt-eddn-enabled') || {}).checked || false;
+  var edsmEnabled       = (document.getElementById('opt-edsm-enabled') || {}).checked || false;
+  var commanderName     = ((document.getElementById('opt-cmdr-name')   || {}).value || '').trim();
+  var edsmCommanderName = ((document.getElementById('opt-edsm-cmdr')   || {}).value || '').trim();
+  var edsmApiKey        = ((document.getElementById('opt-edsm-key')    || {}).value || '').trim();
+  try {
+    await window.electronAPI.saveConfig({ eddnEnabled, edsmEnabled, commanderName, edsmCommanderName, edsmApiKey });
+    var hint = document.getElementById('opt-api-hint');
+    if (hint) { hint.textContent = 'Saved \u2714'; hint.style.color = 'var(--green)'; setTimeout(function() { hint.textContent = 'Changes take effect immediately'; hint.style.color = ''; }, 2500); }
+  } catch {}
+});
+
+// --- NETWORK SAVE BUTTON (history page) ---------------------------------------
+var networkSaveBtnH = document.getElementById('opt-network-save-btn');
+if (networkSaveBtnH) networkSaveBtnH.addEventListener('click', async function() {
+  if (!window.electronAPI) return;
+  var networkServerEnabled = (document.getElementById('opt-network-enabled') || {}).checked || false;
+  var portVal = parseInt(((document.getElementById('opt-network-port') || {}).value || '3722'), 10);
+  var networkServerPort = (portVal >= 1024 && portVal <= 65535) ? portVal : 3722;
+  try {
+    await window.electronAPI.saveConfig({ networkServerEnabled, networkServerPort });
+    var hint = document.getElementById('opt-network-hint');
+    if (hint) { hint.textContent = 'Saved \u2714 \u2014 restart to apply'; hint.style.color = 'var(--green)'; setTimeout(function() { hint.textContent = 'Restart required to apply changes'; hint.style.color = ''; }, 3000); }
+  } catch {}
+});
+
 // --- EDSM CREDENTIALS (history page) -----------------------------------------
 var edsmCmdrInput = document.getElementById('opt-edsm-cmdr');
 if (edsmCmdrInput) edsmCmdrInput.addEventListener('change', async function() {
@@ -691,6 +741,63 @@ if (edsmKeyInput) edsmKeyInput.addEventListener('change', async function() {
   if (!window.electronAPI) return;
   try { await window.electronAPI.saveConfig({ edsmApiKey: edsmKeyInput.value.trim() }); } catch {}
 });
+
+// --- INARA SAVE BUTTON (history page) ----------------------------------------
+(function() {
+  var inaraSaveBtn    = document.getElementById('opt-inara-save-btn');
+  var inaraSaveStatus = document.getElementById('opt-inara-save-status');
+  var inaraSyncBtn    = document.getElementById('opt-inara-sync-now-btn');
+  var inaraSyncStatus = document.getElementById('opt-inara-sync-status');
+  function inaraSetStatus(el, msg, color, resetMs) {
+    if (!el) return;
+    el.textContent = msg;
+    el.style.color = color || '';
+    if (resetMs) setTimeout(function() { el.textContent = el.dataset.default || ''; el.style.color = ''; }, resetMs);
+  }
+  if (inaraSaveStatus) inaraSaveStatus.dataset.default = inaraSaveStatus.textContent;
+  if (inaraSyncStatus) inaraSyncStatus.dataset.default = inaraSyncStatus.textContent;
+  if (inaraSaveBtn && window.electronAPI) {
+    inaraSaveBtn.addEventListener('click', function() {
+      var cmdrName = (document.getElementById('opt-inara-cmdr-name') || {}).value || '';
+      inaraSetStatus(inaraSaveStatus, 'Saving\u2026');
+      window.electronAPI.saveConfig({ inaraCommanderName: cmdrName.trim() })
+        .then(function() {
+          inaraSetStatus(inaraSaveStatus, '\u2713 Saved', 'var(--green)', 3000);
+          if (window.electronAPI.inaraSyncProfile) {
+            window.electronAPI.inaraSyncProfile(cmdrName.trim()).then(function(r) {
+              if (r && r.success) {
+                inaraSetStatus(inaraSyncStatus, '\u2713 Synced at ' + new Date().toLocaleTimeString(), 'var(--green)', 5000);
+              } else if (r && !r.skipped) {
+                inaraSetStatus(inaraSyncStatus, '\u26a0 ' + (r.error || 'Sync failed'), 'var(--gold)', 6000);
+              }
+            }).catch(function() {});
+          }
+        })
+        .catch(function(err) { inaraSetStatus(inaraSaveStatus, 'Error: ' + err.message, 'var(--red)', 5000); });
+    });
+  }
+  if (inaraSyncBtn && window.electronAPI && window.electronAPI.inaraSyncProfile) {
+    inaraSyncBtn.addEventListener('click', function() {
+      var cmdrName = (document.getElementById('opt-inara-cmdr-name') || {}).value || '';
+      inaraSetStatus(inaraSyncStatus, 'Syncing\u2026');
+      inaraSyncBtn.disabled = true;
+      window.electronAPI.inaraSyncProfile(cmdrName.trim()).then(function(r) {
+        inaraSyncBtn.disabled = false;
+        if (!r) { inaraSetStatus(inaraSyncStatus, 'No response', 'var(--red)', 4000); return; }
+        if (r.skipped) {
+          inaraSetStatus(inaraSyncStatus, 'Rate limited \u2014 try again later', 'var(--text-mute)', 5000);
+        } else if (r.success) {
+          inaraSetStatus(inaraSyncStatus, '\u2713 Synced at ' + new Date().toLocaleTimeString(), 'var(--green)', 5000);
+        } else {
+          inaraSetStatus(inaraSyncStatus, '\u26a0 ' + (r.error || 'Failed'), 'var(--gold)', 6000);
+        }
+      }).catch(function(err) {
+        inaraSyncBtn.disabled = false;
+        inaraSetStatus(inaraSyncStatus, 'Error: ' + err.message, 'var(--red)', 5000);
+      });
+    });
+  }
+})();
 
 // --- EDSM FLIGHT LOG SYNC ---
 // Passes current _allJumps to main, which fetches all EDSM logs in weekly

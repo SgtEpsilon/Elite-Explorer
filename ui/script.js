@@ -105,7 +105,37 @@ function isMoonBody(b, system) {
   return /\d+\s+[a-z]/i.test(short) || /[a-z]\s+\d+/i.test(short);
 }
 
-// Merge journal + EDSM data into a unified list sorted by distance
+// Parse a short body name into sortable key parts.
+// Elite body names follow patterns like: "A", "1", "2", "3 a", "3 b", "4", "5 a", "5 b"
+// We need to produce sort keys that give: Main Star < 1 < 2 < 3 < 3A < 4 < 5 < 5A < 5B
+function bodyNameSortKey(name, system) {
+  var short = shortBodyName(name, system).trim().toUpperCase();
+  // Split into tokens: numbers and letters separately
+  var tokens = short.match(/[A-Z]+|\d+/g) || [];
+  // Build a sort tuple: [firstNum, firstLetter, secondNum, secondLetter, ...]
+  var parts = [];
+  for (var i = 0; i < tokens.length; i++) {
+    if (/^\d+$/.test(tokens[i])) {
+      parts.push(parseInt(tokens[i], 10));
+    } else {
+      // Letter component (e.g. "A", "B") — encode as offset after preceding number
+      parts.push(tokens[i].charCodeAt(0) - 64); // A=1, B=2, etc.
+    }
+  }
+  return parts;
+}
+
+function compareSortKeys(ak, bk) {
+  var len = Math.max(ak.length, bk.length);
+  for (var i = 0; i < len; i++) {
+    var av = ak[i] != null ? ak[i] : 0;
+    var bv = bk[i] != null ? bk[i] : 0;
+    if (av !== bv) return av - bv;
+  }
+  return 0;
+}
+
+// Merge journal + EDSM data into a unified list sorted by body name order
 function buildMergedBodies(system) {
   var merged = {};  // name.toLowerCase() → merged body
 
@@ -125,6 +155,7 @@ function buildMergedBodies(system) {
     }
   });
 
+  var sys = system || _currentSystem;
   return Object.values(merged).sort(function(a, b) {
     // Helper: is this entry the arrival/main star (distance ≈ 0 or missing)?
     function isMainStar(entry) {
@@ -137,15 +168,21 @@ function buildMergedBodies(system) {
     var aMain = isMainStar(a), bMain = isMainStar(b);
     if (aMain && !bMain) return -1;
     if (!aMain && bMain) return 1;
-    // Stars before non-stars
-    var aIsstar = (a.journal && a.journal.type === 'Star') || (a.edsm && a.edsm.type === 'Star');
-    var bIsStar = (b.journal && b.journal.type === 'Star') || (b.edsm && b.edsm.type === 'Star');
-    if (aIsstar && !bIsStar) return -1;
-    if (!aIsstar && bIsStar)  return 1;
-    // Within same tier, sort by distance
-    var aDist = (a.journal && a.journal.distanceFromArrival) || (a.edsm && a.edsm.distanceToArrival) || 999999;
-    var bDist = (b.journal && b.journal.distanceFromArrival) || (b.edsm && b.edsm.distanceToArrival) || 999999;
-    return aDist - bDist;
+
+    // Sort by parsed body name: e.g. "1" < "2" < "3" < "3 A" < "4" < "5" < "5 A" < "5 B"
+    var aName = (a.journal && a.journal.name) || (a.edsm && a.edsm.name) || '';
+    var bName = (b.journal && b.journal.name) || (b.edsm && b.edsm.name) || '';
+    var ak = bodyNameSortKey(aName, sys);
+    var bk = bodyNameSortKey(bName, sys);
+
+    // If both have no parseable tokens (edge case), fall back to distance
+    if (!ak.length && !bk.length) {
+      var aDist = (a.journal && a.journal.distanceFromArrival) || (a.edsm && a.edsm.distanceToArrival) || 999999;
+      var bDist = (b.journal && b.journal.distanceFromArrival) || (b.edsm && b.edsm.distanceToArrival) || 999999;
+      return aDist - bDist;
+    }
+
+    return compareSortKeys(ak, bk);
   });
 }
 
@@ -310,6 +347,18 @@ function populateBodies() {
   renderBodies(_currentSystem);
 }
 
+// Debounced version of renderBodies — coalesces rapid calls (e.g. onLocation +
+// onBodiesData + onEdsmBodies firing in quick succession) into a single DOM
+// update, eliminating the flicker seen when switching systems.
+var _renderBodiesTimer = null;
+function renderBodiesDebounced(system) {
+  if (_renderBodiesTimer) clearTimeout(_renderBodiesTimer);
+  _renderBodiesTimer = setTimeout(function() {
+    _renderBodiesTimer = null;
+    renderBodies(system || _currentSystem);
+  }, 80);
+}
+
 // ─── SCAN VALUES PANEL ────────────────────────────────────────────
 var _scanEntries = {};  // bodyName → { value, mapped }
 
@@ -369,6 +418,22 @@ if (window.electronAPI) {
     if (d.rebuy  != null) set('ship-rebuy', fmtCr(d.rebuy));
     if (d.credits != null) set('credits',  fmtCr(d.credits));
 
+    // Fuel reservoir (from Status.json, updated ~1s while in-game)
+    if (d.fuelReservoir != null) {
+      set('ship-fuel-reserve', d.fuelReservoir.toFixed(2) + ' t');
+    }
+
+    // Fuel bar — colour-coded: cyan ≥50%, gold 25–49%, red <25%
+    var fuelBar = document.getElementById('fuel-bar');
+    if (fuelBar && d.fuelPct != null) {
+      fuelBar.style.width = d.fuelPct + '%';
+      fuelBar.style.background = d.fuelPct >= 50
+        ? 'var(--cyan)'
+        : d.fuelPct >= 25
+          ? 'var(--gold)'
+          : 'var(--red, #e05252)';
+    }
+
     // Hull — colour-coded: green ≥70%, gold 40–69%, red <40%
     if (d.hull != null) {
       var hullEl = document.getElementById('ship-hull');
@@ -378,8 +443,6 @@ if (window.electronAPI) {
       }
     }
 
-    var fuelBar = document.getElementById('fuel-bar');
-    if (fuelBar && d.fuelPct != null) fuelBar.style.width = d.fuelPct + '%';
     set('station-name',    d.dockedStation     || '\u2014');
     set('station-type',    d.dockedStationType || '\u2014');
     set('station-faction', d.dockedFaction     || '\u2014');
@@ -603,7 +666,7 @@ if (window.electronAPI) {
       _journalSignals = {};
       _edsmBodies     = [];
       _scanEntries    = {};
-      renderBodies(data.system);
+      renderBodiesDebounced(data.system);
       renderScans();
 
       // Clear EDSM fields until new system data arrives
@@ -659,7 +722,7 @@ if (window.electronAPI) {
           };
         }
       });
-      renderBodies(_currentSystem);
+      renderBodiesDebounced(_currentSystem);
       renderScans();
     });
   }
@@ -681,7 +744,7 @@ if (window.electronAPI) {
       if (data.system && !_currentSystem) _currentSystem = data.system;
 
       _edsmBodies = data.bodies || [];
-      renderBodies(data.system || _currentSystem);
+      renderBodiesDebounced(data.system || _currentSystem);
       log('EDSM: ' + _edsmBodies.length + ' bodies for ' + (data.system || _currentSystem || '?'), 'info');
     });
   }
@@ -841,7 +904,6 @@ function openOptions() {
     el = document.getElementById('opt-edsm-key');     if (el) el.value  = cfg.edsmApiKey        || '';
     el = document.getElementById('capi-client-id');   if (el) el.value  = cfg.capiClientId      || '';
     // Inara settings
-    el = document.getElementById('opt-inara-api-key');    if (el) el.value = cfg.inaraApiKey        || '';
     el = document.getElementById('opt-inara-cmdr-name');  if (el) el.value = cfg.inaraCommanderName || '';
     // Network server settings
     el = document.getElementById('opt-network-enabled'); if (el) el.checked = !!cfg.networkServerEnabled;
@@ -1300,19 +1362,8 @@ if (window.electronAPI && window.electronAPI.triggerProfileRefresh) {
 }
 
 // ── Inara options panel — shared across all pages ─────────────────────────────
-// Save button: persists key + name, then triggers a sync.
+// Save button: persists name, then triggers a sync.
 (function () {
-  // Open Inara API settings page in the system browser
-  var inaraApiLink = document.getElementById('inara-api-link');
-  if (inaraApiLink) {
-    inaraApiLink.addEventListener('click', function (e) {
-      e.preventDefault();
-      if (window.electronAPI && window.electronAPI.openExternal) {
-        window.electronAPI.openExternal('https://inara.cz/elite/settings-api/');
-      }
-    });
-  }
-
   var inaraSaveBtn    = document.getElementById('opt-inara-save-btn');
   var inaraSaveStatus = document.getElementById('opt-inara-save-status');
   var inaraSyncBtn    = document.getElementById('opt-inara-sync-now-btn');
@@ -1331,10 +1382,9 @@ if (window.electronAPI && window.electronAPI.triggerProfileRefresh) {
 
   if (inaraSaveBtn && window.electronAPI) {
     inaraSaveBtn.addEventListener('click', function () {
-      var apiKey   = (document.getElementById('opt-inara-api-key')   || {}).value || '';
       var cmdrName = (document.getElementById('opt-inara-cmdr-name') || {}).value || '';
       inaraSetStatus(inaraSaveStatus, 'Saving\u2026');
-      window.electronAPI.saveConfig({ inaraApiKey: apiKey.trim(), inaraCommanderName: cmdrName.trim() })
+      window.electronAPI.saveConfig({ inaraCommanderName: cmdrName.trim() })
         .then(function () {
           inaraSetStatus(inaraSaveStatus, '\u2713 Saved', 'var(--green)', 3000);
           // Kick off a sync immediately after saving — fire-and-forget from the options panel
