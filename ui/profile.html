@@ -34,22 +34,8 @@
       <div class="sub">Run "Scan All Journals" from Options &#9881; to populate this view</div>
     </div>
     <div id="prof-content" style="display:none;">
-
-      <!-- ── Inara freshness bar ── shown once Inara data loads ──────────── -->
-      <div id="inara-status-bar" style="display:none;align-items:center;gap:8px;padding:7px 16px;background:var(--panel2);border-bottom:1px solid var(--border);font-family:var(--mono);font-size:0.72em;">
-        <span id="inara-bar-icon" style="color:var(--gold);font-size:1.1em;">&#9672;</span>
-        <span id="inara-bar-text" style="color:var(--text-dim);">Querying Inara&hellip;</span>
-        <span id="inara-bar-time" style="color:var(--text-mute);"></span>
-        <a id="inara-profile-link" href="#" style="display:none;margin-left:4px;color:var(--cyan2);text-decoration:none;font-size:0.9em;" title="Open on inara.cz">&#8599; View on Inara</a>
-        <div style="flex:1;"></div>
-        <button id="inara-refresh-btn" style="font-family:var(--mono);font-size:0.9em;padding:2px 10px;background:transparent;border:1px solid var(--border2);color:var(--text-mute);cursor:pointer;letter-spacing:0.05em;" title="Re-query Inara now">&#8635; Refresh</button>
-      </div>
-
       <div class="ident-card">
-        <div class="ident-avatar" id="ident-avatar-wrap">
-          <img id="prof-avatar-img" style="display:none;width:52px;height:52px;border-radius:50%;object-fit:cover;border:2px solid var(--gold);" src="" alt="Avatar" referrerpolicy="no-referrer"/>
-          <span id="prof-avatar-sym">&#9672;</span>
-        </div>
+        <div class="ident-avatar">&#9672;</div>
         <div>
           <div class="ident-name" id="prof-name">CMDR &#8212;</div>
           <div class="ident-ship">
@@ -65,22 +51,11 @@
             <div><div class="ident-kv-val" style="color:var(--cyan2)"><span id="prof-system">&#8212;</span><span id="prof-discovery-badge" title="First Discovery — you found this system!" style="display:none;margin-left:6px;color:var(--gold);font-size:0.9em;">&#9733;</span></div><div class="ident-kv-lbl">Current System</div></div>
             <div><div class="ident-kv-val" id="prof-jump" style="color:var(--cyan)">&#8212;</div><div class="ident-kv-lbl">Jump Range</div></div>
           </div>
-          <!-- Inara-sourced row: hidden until Inara data arrives -->
-          <div class="ident-kv-row" id="inara-kv-row" style="display:none;margin-top:10px;">
-            <div><div class="ident-kv-val" id="prof-allegiance" style="color:var(--gold)">&#8212;</div><div class="ident-kv-lbl">Allegiance</div></div>
-            <div><div class="ident-kv-val" id="prof-power" style="color:var(--cyan)">&#8212;</div><div class="ident-kv-lbl">Power</div></div>
-            <div><div class="ident-kv-val" id="prof-game-role" style="color:var(--text-dim)">&#8212;</div><div class="ident-kv-lbl">Role</div></div>
-          </div>
         </div>
       </div>
       <div class="prof-section" style="background:var(--panel);">
         <div class="prof-title">Commander Ranks</div>
         <div class="ranks-grid" id="prof-ranks-grid"></div>
-      </div>
-      <!-- Squadron section — hidden until Inara data confirms membership -->
-      <div class="prof-section" id="prof-squadron-section" style="display:none;background:var(--panel);">
-        <div class="prof-title">Squadron</div>
-        <div id="prof-squadron-content"></div>
       </div>
       <div class="prof-section" style="background:var(--panel);">
         <div class="prof-title">Superpower Reputation</div>
@@ -129,27 +104,6 @@
       <button class="opt-action-btn" id="opt-scan-btn">
         <span class="opt-btn-icon">&#11041;</span>
         <div><div class="opt-btn-label">Scan All Journals</div><div class="opt-btn-sub">Re-process all Elite journal files</div></div>
-      </button>
-    </div>
-    <div class="opt-section">
-      <div class="opt-section-title">Inara Profile</div>
-      <div class="opt-hint" style="margin-bottom:8px;line-height:1.5;">
-        Your personal Inara API key enriches this page with squadron, allegiance, power and avatar data.<br>
-        Get your key at <span style="color:var(--cyan);font-family:var(--mono);">inara.cz/elite/settings-api</span>
-      </div>
-      <div class="opt-path-row">
-        <input class="opt-input" id="opt-inara-key" type="password" placeholder="Paste Inara API key here&hellip;" spellcheck="false" autocomplete="off"/>
-      </div>
-      <div class="opt-hint" style="margin-top:8px;margin-bottom:4px;">Inara display name <span style="color:var(--text-mute);">(if different from your in-game CMDR name)</span></div>
-      <div class="opt-path-row">
-        <input class="opt-input" id="opt-inara-name" type="text" placeholder="Leave blank to use in-game CMDR name" spellcheck="false" autocomplete="off"/>
-      </div>
-      <button class="opt-action-btn" id="opt-inara-save-btn" style="margin-top:8px;">
-        <span class="opt-btn-icon">&#9650;</span>
-        <div>
-          <div class="opt-btn-label">Save &amp; Refresh Profile</div>
-          <div class="opt-btn-sub" id="opt-inara-hint">Saves key and immediately queries Inara</div>
-        </div>
       </button>
     </div>
     <div class="opt-section">

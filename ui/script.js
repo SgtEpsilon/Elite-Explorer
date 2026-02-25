@@ -17,6 +17,7 @@ function ts() { return new Date().toTimeString().slice(0,8); }
 function set(id, v) { const el = document.getElementById(id); if (el) el.textContent = (v != null ? v : '\u2014'); }
 
 // ─── LOGGING (live page only) ──────────────────────────────────────
+const LOG_MAX_ENTRIES = 200;
 let logCount = 0;
 function log(msg, type = 'info') {
   const countEl   = document.getElementById('log-count');
@@ -28,6 +29,10 @@ function log(msg, type = 'info') {
   e.className = 'log-entry';
   e.innerHTML = '<span class="log-ts">' + ts() + '</span><span class="log-msg ' + type + '">' + msg + '</span>';
   entriesEl.insertBefore(e, entriesEl.firstChild);
+  // FIX: cap DOM entries to prevent unbounded growth and layout thrashing
+  while (entriesEl.children.length > LOG_MAX_ENTRIES) {
+    entriesEl.removeChild(entriesEl.lastChild);
+  }
 }
 
 // ─── BODY RENDERING ───────────────────────────────────────────────
@@ -575,9 +580,6 @@ if (window.electronAPI) {
     if (content) content.style.display = 'block';
 
     log('Profile data loaded: ' + (id.name || '?'), 'good');
-
-    // Enrich with Inara data now that the commander name is confirmed
-    fetchInaraProfile();
   });
 
   // ── REAL-TIME LOCATION (watcher fires on FSDJump AND Location events) ───────
@@ -838,8 +840,6 @@ function openOptions() {
     el = document.getElementById('opt-edsm-cmdr');    if (el) el.value  = cfg.edsmCommanderName || '';
     el = document.getElementById('opt-edsm-key');     if (el) el.value  = cfg.edsmApiKey        || '';
     el = document.getElementById('capi-client-id');   if (el) el.value  = cfg.capiClientId      || '';
-    el = document.getElementById('opt-inara-key');    if (el) el.value  = cfg.inaraApiKey         || '';
-    el = document.getElementById('opt-inara-name');   if (el) el.value  = cfg.inaraCommanderName  || '';
     // Network server settings
     el = document.getElementById('opt-network-enabled'); if (el) el.checked = !!cfg.networkServerEnabled;
     el = document.getElementById('opt-network-port');    if (el) el.value  = cfg.networkServerPort || 3722;
@@ -986,249 +986,6 @@ if (networkSaveBtn) networkSaveBtn.addEventListener('click', async function() {
     }
     log('Network settings saved — restart to apply', 'good');
   } catch { log('Failed to save network settings', 'error'); }
-});
-
-// ─── INARA API KEY SAVE BUTTON ────────────────────────────────────
-var inaraSaveBtn = document.getElementById('opt-inara-save-btn');
-if (inaraSaveBtn) inaraSaveBtn.addEventListener('click', async function() {
-  if (!window.electronAPI) return;
-  var inaraApiKey        = ((document.getElementById('opt-inara-key')  || {}).value || '').trim();
-  var inaraCommanderName = ((document.getElementById('opt-inara-name') || {}).value || '').trim();
-  var hint = document.getElementById('opt-inara-hint');
-  try {
-    await window.electronAPI.saveConfig({ inaraApiKey, inaraCommanderName });
-    if (hint) {
-      hint.textContent = 'Saved \u2714';
-      hint.style.color = 'var(--green)';
-      setTimeout(function() {
-        hint.textContent = 'Saves key and immediately queries Inara';
-        hint.style.color = '';
-      }, 2500);
-    }
-    log('Inara settings saved', 'good');
-    fetchInaraProfile();
-  } catch {
-    if (hint) { hint.textContent = 'Save failed'; hint.style.color = 'var(--red)'; }
-    log('Failed to save Inara settings', 'error');
-  }
-});
-
-// ── fetchInaraProfile ─────────────────────────────────────────────────────────
-// Queries inara.cz for the current commander and merges returned data into the
-// profile page.  Fills in:
-//   • Avatar image (replaces the ♦ placeholder)
-//   • Preferred allegiance, power, and game role (shown in a second kv-row)
-//   • Squadron name, member rank, member count, and link
-//   • Rank progress bars — Inara returns precise float progress (0–1) for ranks
-//     whose bars show 0 % because the Progress journal event wasn't found
-//   • "Inara" freshness bar at the top of the profile page
-//
-// The function is called:
-//   1. Immediately inside onProfileData (once the commander name is known)
-//   2. Every 2 minutes alongside triggerProfileRefresh
-//   3. When the user clicks ↺ Refresh in the freshness bar
-//   4. When the user clicks "Save & Refresh Profile" in the Options panel
-//
-// If no Inara API key is configured the function returns silently; the service
-// will return an error that is displayed in the status bar on the next call.
-// ─────────────────────────────────────────────────────────────────────────────
-function fetchInaraProfile() {
-  if (!window.electronAPI || !window.electronAPI.inaraGetProfile) return;
-
-  // Only run on the profile page — bail if the status bar element is absent
-  var statusBar = document.getElementById('inara-status-bar');
-  if (!statusBar) return;
-
-  // Resolve commander name: prefer the live element, fall back to stored cfg name
-  var cmdrRaw  = (document.getElementById('prof-name') || {}).textContent || '';
-  var cmdrName = cmdrRaw.replace(/^CMDR\s+/i, '').trim();
-  if (!cmdrName || cmdrName === '\u2014' || cmdrName === '\u2013' || cmdrName === '-') {
-    // Name not yet populated — will be called again once onProfileData fires
-    return;
-  }
-
-  // Show the bar in a "loading" state
-  statusBar.style.display = 'flex';
-  var barIcon = document.getElementById('inara-bar-icon');
-  var barText = document.getElementById('inara-bar-text');
-  var barTime = document.getElementById('inara-bar-time');
-  if (barIcon) { barIcon.textContent = '\u29d6'; barIcon.style.color = 'var(--text-mute)'; }
-  if (barText) { barText.textContent = 'Querying Inara\u2026'; barText.style.color = 'var(--text-mute)'; }
-  if (barTime) barTime.textContent = '';
-
-  window.electronAPI.inaraGetProfile(cmdrName).then(function(res) {
-    var barIcon = document.getElementById('inara-bar-icon');
-    var barText = document.getElementById('inara-bar-text');
-    var barTime = document.getElementById('inara-bar-time');
-
-    // ── Error path ────────────────────────────────────────────────
-    if (!res || !res.success) {
-      var errMsg = (res && res.error) || 'Inara query failed';
-      var isNoKey     = errMsg.indexOf('No Inara API key') === 0;
-      var isTransient = /50[2349]|429|unavailable|timed out/i.test(errMsg);
-      var iconChar  = isNoKey ? '\u29d6' : '\u26a0';
-      var iconColor = isNoKey ? 'var(--text-mute)' : (isTransient ? 'var(--yellow)' : 'var(--red)');
-      var textColor = iconColor;
-      var displayMsg = isNoKey ? 'Inara key not set \u2014 add it in Options \u2699' : ('\u26a0\ufe0f ' + errMsg);
-      if (barIcon) { barIcon.textContent = iconChar; barIcon.style.color = iconColor; }
-      if (barText) { barText.textContent = displayMsg; barText.style.color = textColor; }
-      if (barTime) barTime.textContent = '';
-      if (!isNoKey) log('Inara: ' + errMsg, isTransient ? 'warn' : 'error');
-      return;
-    }
-
-    var d   = res.data || {};
-    var now = new Date();
-    var timeStr = now.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
-
-    // ── Success status bar ────────────────────────────────────────
-    if (barIcon) { barIcon.textContent = '\u29bf'; barIcon.style.color = 'var(--gold)'; }
-    if (barText) {
-      var warningNote = res.warning ? (' \u2014 \u26a0 ' + res.warning) : '';
-      barText.textContent = 'Inara data loaded' + warningNote + ' \u2014 ';
-      barText.style.color = res.warning ? 'var(--yellow)' : 'var(--text-dim)';
-    }
-    if (barTime) {
-      barTime.textContent = timeStr;
-      barTime.style.color = 'var(--text-mute)';
-    }
-
-    // Inara profile link
-    var profileLink = document.getElementById('inara-profile-link');
-    if (profileLink && d.inaraURL) {
-      profileLink.style.display = 'inline';
-      profileLink.onclick = function(e) {
-        e.preventDefault();
-        if (window.electronAPI && window.electronAPI.openExternal) window.electronAPI.openExternal(d.inaraURL);
-      };
-    }
-
-    // ── Avatar ────────────────────────────────────────────────────
-    if (d.avatarImageURL) {
-      var avatarImg = document.getElementById('prof-avatar-img');
-      var avatarSym = document.getElementById('prof-avatar-sym');
-      if (avatarImg) {
-        avatarImg.src = d.avatarImageURL;
-        avatarImg.style.display = 'block';
-        avatarImg.onerror = function() {
-          // Image failed to load — fall back to the symbol
-          avatarImg.style.display = 'none';
-          if (avatarSym) avatarSym.style.display = '';
-        };
-      }
-      if (avatarSym) avatarSym.style.display = 'none';
-    }
-
-    // ── Allegiance / Power / Game Role ────────────────────────────
-    var inaraKvRow  = document.getElementById('inara-kv-row');
-    var hasInaraRow = false;
-
-    if (d.preferredAllegianceName && d.preferredAllegianceName !== 'Independent') {
-      set('prof-allegiance', d.preferredAllegianceName);
-      hasInaraRow = true;
-    } else if (d.preferredAllegianceName) {
-      set('prof-allegiance', d.preferredAllegianceName);
-      hasInaraRow = true;
-    }
-    if (d.preferredPowerName && d.preferredPowerName !== 'none') {
-      set('prof-power', d.preferredPowerName);
-      hasInaraRow = true;
-    }
-    if (d.preferredGameRole && d.preferredGameRole !== 'none') {
-      set('prof-game-role', d.preferredGameRole);
-      hasInaraRow = true;
-    }
-    if (inaraKvRow) inaraKvRow.style.display = hasInaraRow ? 'flex' : 'none';
-
-    // ── Squadron ──────────────────────────────────────────────────
-    var sqSection = document.getElementById('prof-squadron-section');
-    var sqContent = document.getElementById('prof-squadron-content');
-    if (d.commanderSquadron && sqContent) {
-      var sq = d.commanderSquadron;
-      var sqLink = sq.inaraURL
-        ? '<div style="align-self:flex-end;">' +
-          '<a href="' + sq.inaraURL + '" style="font-family:var(--mono);font-size:0.75em;color:var(--cyan2);text-decoration:none;" ' +
-          'onclick="event.preventDefault();if(window.electronAPI&&window.electronAPI.openExternal){window.electronAPI.openExternal(\'' + sq.inaraURL + '\');}">' +
-          '&#8599; View on Inara</a></div>'
-        : '';
-      sqContent.innerHTML =
-        '<div style="display:flex;gap:24px;flex-wrap:wrap;align-items:flex-start;">' +
-          '<div><div class="ident-kv-val" style="color:var(--gold);">' + (sq.SquadronName || '\u2014') + '</div>' +
-            '<div class="ident-kv-lbl">Name</div></div>' +
-          '<div><div class="ident-kv-val" style="color:var(--cyan);">' + (sq.SquadronMemberRank || '\u2014') + '</div>' +
-            '<div class="ident-kv-lbl">Your Rank</div></div>' +
-          '<div><div class="ident-kv-val">' + (sq.SquadronMembersCount != null ? Number(sq.SquadronMembersCount).toLocaleString() : '\u2014') + '</div>' +
-            '<div class="ident-kv-lbl">Members</div></div>' +
-          sqLink +
-        '</div>';
-      if (sqSection) sqSection.style.display = 'block';
-    } else if (sqSection) {
-      // Confirmed no squadron — collapse the section
-      sqSection.style.display = 'none';
-    }
-
-    // ── Rank progress back-fill ───────────────────────────────────
-    // Inara returns rankProgress as a 0–1 float.  The journal worker emits
-    // progress as an integer 0–100.  We only overwrite a rank bar when the
-    // journal gave us 0 % (Progress event missing or not yet found) AND
-    // Inara has a non-zero value for that rank.
-    if (Array.isArray(d.commanderRanksPilot)) {
-      var inaraRankMap = {};
-      d.commanderRanksPilot.forEach(function(r) { inaraRankMap[r.rankName] = r; });
-
-      var labelToKey = {
-        'combat':      'combat',
-        'trade':       'trade',
-        'exploration': 'explore',
-        'exobiology':  'exobiology',
-        'empire':      'empire',
-        'federation':  'federation',
-        'cqc':         'cqc',
-      };
-
-      var ranksGrid = document.getElementById('prof-ranks-grid');
-      if (ranksGrid) {
-        var rankCards = ranksGrid.querySelectorAll('.rank-card');
-        rankCards.forEach(function(card) {
-          var barEl  = card.querySelector('.rank-bar');
-          var pctEl  = card.querySelector('.rank-pct');
-          var lblEl  = card.querySelector('.rank-label');
-          if (!barEl || !lblEl) return;
-
-          // Only fill in if journal left the progress bar at 0 %
-          var currentWidth = parseFloat(barEl.style.width) || 0;
-          if (currentWidth > 0) return;
-
-          var inaraKey = labelToKey[(lblEl.textContent || '').toLowerCase().trim()];
-          if (!inaraKey) return;
-
-          var inaraRank = inaraRankMap[inaraKey];
-          if (!inaraRank || inaraRank.rankProgress == null) return;
-
-          var pct = Math.round(inaraRank.rankProgress * 100);
-          if (pct > 0) {
-            barEl.style.width = pct + '%';
-            if (pctEl) pctEl.textContent = pct + '%';
-          }
-        });
-      }
-    }
-
-    log('Inara profile enriched for ' + (d.commanderName || d.userName || cmdrName), 'good');
-
-  }).catch(function(err) {
-    var barText = document.getElementById('inara-bar-text');
-    var barIcon = document.getElementById('inara-bar-icon');
-    if (barIcon) { barIcon.textContent = '\u26a0'; barIcon.style.color = 'var(--red)'; }
-    if (barText) { barText.textContent = '\u26a0\ufe0f Inara fetch failed: ' + (err.message || err); barText.style.color = 'var(--red)'; }
-    log('Inara fetch error: ' + (err.message || err), 'error');
-  });
-}
-
-// Wire up the ↺ Refresh button in the freshness bar
-var inaraRefreshBtn = document.getElementById('inara-refresh-btn');
-if (inaraRefreshBtn) inaraRefreshBtn.addEventListener('click', function() {
-  fetchInaraProfile();
 });
 
 // ─── FRONTIER cAPI BUTTONS ────────────────────────────────────────
@@ -1528,14 +1285,13 @@ log('Journal watcher active', 'info');
 log('API connected on :3721', 'info');
 setInterval(refreshStats, 30000);
 
-// ── Profile refresh poll (every 2 minutes) ─────────────────────────
+// ── Profile refresh poll (every 10 minutes) ─────────────────────────
 // Keeps profile.html accurate without requiring a manual rescan.
-// The main process re-reads journals and pushes fresh profile-data,
-// which onProfileData above applies immediately.
+// FIX: interval raised from 2m → 10m: rank/stats change infrequently
+// and each refresh scans journal files + spawns a Worker thread, so
+// running it too often wastes CPU for no visible benefit.
 if (window.electronAPI && window.electronAPI.triggerProfileRefresh) {
   setInterval(function() {
     window.electronAPI.triggerProfileRefresh();
-    // Also re-query Inara so the freshness timestamp stays current
-    fetchInaraProfile();
-  }, 2 * 60 * 1000);
+  }, 10 * 60 * 1000);
 }

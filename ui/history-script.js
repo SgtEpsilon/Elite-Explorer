@@ -224,19 +224,26 @@ function runEnrichment() {
     }
     var batch = batches[batchIdx++];
     window.electronAPI.enrichHistoryBulk(batch).then(function(results) {
+      // FIX: build a name→rows index once per batch (O(n)) instead of
+      // calling querySelectorAll for every result (was O(n * batch) = O(n²)).
+      var rowMap = {};
+      document.querySelectorAll('#hist-tbody tr[data-system-name]').forEach(function(row) {
+        var key = (row.dataset.systemName || '');
+        if (!rowMap[key]) rowMap[key] = [];
+        rowMap[key].push(row);
+      });
+
       results.forEach(function(r) {
         // Store in cache
         var key = r.system.toLowerCase();
         if (!enrichmentCache[key]) enrichmentCache[key] = {};
-        if (r.starClass)       enrichmentCache[key].starClass  = r.starClass;
-        if (r.bodyCount != null) enrichmentCache[key].bodyCount = r.bodyCount;
+        if (r.starClass)           enrichmentCache[key].starClass  = r.starClass;
+        if (r.bodyCount != null)   enrichmentCache[key].bodyCount  = r.bodyCount;
 
-        // Update every row for this system in the DOM
-        var allRows = document.querySelectorAll('#hist-tbody tr[data-system-name]');
-        allRows.forEach(function(row) {
-          if (row.dataset.systemName !== r.system) return;
-          var starCell   = row.querySelector('.hist-col-star');
-          var bodyCell   = row.querySelector('.hist-col-bodies');
+        // Update every row for this system using the pre-built index
+        (rowMap[r.system] || []).forEach(function(row) {
+          var starCell  = row.querySelector('.hist-col-star');
+          var bodyCell  = row.querySelector('.hist-col-bodies');
           if (starCell && row.dataset.needsStar === '1' && r.starClass) {
             starCell.textContent = r.starClass;
             delete row.dataset.needsStar;
@@ -361,11 +368,20 @@ function runEdsmDiscoveryCheck() {
 
 // Apply EDSM results to the table rows that match
 function applyEdsmResults(results) {
-  // Apply the new results we just got
+  // FIX: build a name→rows index once (O(n)) instead of calling
+  // querySelectorAll inside every result loop (was O(n * results) = O(n²)).
+  var rowMap = {};
+  document.querySelectorAll('#hist-tbody tr[data-system-name]').forEach(function(row) {
+    var key = (row.dataset.systemName || '').toLowerCase();
+    if (!rowMap[key]) rowMap[key] = [];
+    rowMap[key].push(row);
+  });
+
+  // Apply the new results we just got — O(results)
   results.forEach(function(r) {
-    var rows = document.querySelectorAll('#hist-tbody tr[data-system-name]');
-    rows.forEach(function(row) {
-      if (row.dataset.systemName !== r.systemName) return;
+    var key = r.systemName.toLowerCase();
+    edsmResultsCache[key] = r;
+    (rowMap[key] || []).forEach(function(row) {
       var cell = row.querySelector('.hist-col-edsm');
       if (!cell) return;
       if (r.discovered === false) {
@@ -373,25 +389,25 @@ function applyEdsmResults(results) {
       } else if (r.discovered === null) {
         cell.innerHTML = '<span class="edsm-unknown" title="EDSM check failed or timed out">?</span>';
       } else {
-        cell.innerHTML = ''; // known system, no badge needed
+        cell.innerHTML = '';
       }
     });
   });
 
-  // Also apply any already-cached results that might be in the current filtered view
-  // (e.g. user filtered the table while check was running)
-  var allRows = document.querySelectorAll('#hist-tbody tr[data-system-name]');
-  allRows.forEach(function(row) {
-    var cacheKey = (row.dataset.systemName || '').toLowerCase();
-    var cached   = edsmResultsCache[cacheKey];
+  // Also apply any already-cached results visible in the current filtered view
+  // (e.g. user filtered the table while check was running) — single O(n) pass
+  Object.keys(rowMap).forEach(function(key) {
+    var cached = edsmResultsCache[key];
     if (!cached) return;
-    var cell = row.querySelector('.hist-col-edsm');
-    if (!cell || cell.innerHTML !== '') return; // already filled in
-    if (cached.discovered === false) {
-      cell.innerHTML = '<span class="edsm-undiscovered" title="Not in EDSM \u2014 you may have been first to report this system!">&#11088;</span>';
-    } else if (cached.discovered === null) {
-      cell.innerHTML = '<span class="edsm-unknown" title="EDSM check failed">?</span>';
-    }
+    (rowMap[key] || []).forEach(function(row) {
+      var cell = row.querySelector('.hist-col-edsm');
+      if (!cell || cell.innerHTML !== '') return;
+      if (cached.discovered === false) {
+        cell.innerHTML = '<span class="edsm-undiscovered" title="Not in EDSM \u2014 you may have been first to report this system!">&#11088;</span>';
+      } else if (cached.discovered === null) {
+        cell.innerHTML = '<span class="edsm-unknown" title="EDSM check failed">?</span>';
+      }
+    });
   });
 }
 
