@@ -7,6 +7,9 @@
   "eddnEnabled": false,
   "edsmEnabled": false,
   "commanderName": "",
+  "inaraApiKey": "",
+  "inaraCommanderName": "",
+  "inaraEnabled": true,
   "updateChannel": "stable",
   "networkServerEnabled": false,
   "networkServerPort": 3722

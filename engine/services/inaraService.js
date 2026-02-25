@@ -1,22 +1,16 @@
 /**
  * engine/services/inaraService.js
  * ─────────────────────────────────────────────────────────────────────────────
- * Inara.cz API integration — read-only profile enrichment.
+ * Inara.cz API integration — batched profile sync.
  *
- * Fetches commander data from inara.cz using the `getCommanderProfile` event.
- * This supplements local journal data with fields that journals don't contain:
- *   • Squadron name, member rank, member count, and Inara URL
- *   • Preferred allegiance (Federation / Empire / Alliance / Independent)
- *   • Preferred power (Powerplay pledge)
- *   • Preferred game role
- *   • Avatar image URL
- *   • Rank progress percentages (0–1 float) as a cross-check against journals
+ * Each sync sends a SINGLE request containing:
+ *   1. getCommanderProfile  (read)  — returns squadron, avatar, preferred role, etc.
+ *   2. setCommanderRankPilot        — pushes current ranks + progress from journals
+ *   3. setCommanderReputationMajorFaction — pushes empire/fed/alliance rep
+ *   4. setCommanderCredits          — pushes current credits (session start value)
  *
- * AUTHENTICATION:
- *   getCommanderProfile can be called with the user's *personal* API key
- *   (found at https://inara.cz/elite/settings-api/) or with a generic
- *   application key registered on Inara's developer portal.
- *   We use the personal key approach — the user enters it in Options.
+ * Inara's rate limit is 2 req/min. Batching everything into one call means we
+ * stay well within that limit regardless of how often the user opens the app.
  *
  * API DOCS: https://inara.cz/elite/inara-api-docs/
  * ─────────────────────────────────────────────────────────────────────────────
@@ -29,16 +23,35 @@ const path   = require('path');
 const fs     = require('fs');
 const logger = require('../core/logger');
 
-// CONFIG_PATH mirrors the pattern used by capiService — reads from userData
 const { app: electronApp } = (() => { try { return require('electron'); } catch { return {}; } })();
 const userDataDir  = (electronApp && electronApp.getPath) ? electronApp.getPath('userData') : path.join(__dirname, '../..');
 const CONFIG_PATH  = path.join(userDataDir, 'config.json');
 
 const INARA_HOST   = 'inara.cz';
-const INARA_PATH   = '/inara-api-input/';
+const INARA_PATH   = '/inapi/v1/';
 const APP_NAME     = 'Elite Explorer';
 const APP_VERSION  = '1.0';
 const TIMEOUT_MS   = 15_000;
+
+// Journal rank names → Inara rankName values
+// Inara expects: combat, trade, explore, cqc, soldier, exobiologist, federation, empire
+const RANK_MAP = {
+  combat:     'combat',
+  trade:      'trade',
+  explore:    'explore',
+  cqc:        'cqc',
+  exobiology: 'exobiologist',
+  empire:     'empire',
+  federation: 'federation',
+};
+
+// Major faction names → Inara majorfactionName values
+const FACTION_MAP = {
+  empire:      'empire',
+  federation:  'federation',
+  alliance:    'alliance',
+  independent: 'independent',
+};
 
 // ── Config reader ─────────────────────────────────────────────────────────────
 function readConfig() {
@@ -77,29 +90,106 @@ function httpsPostJson(hostname, urlPath, payload) {
   });
 }
 
-// ── getCommanderProfile ───────────────────────────────────────────────────────
-// Searches Inara for the commander by name.
+// ── buildWriteEvents ──────────────────────────────────────────────────────────
+// Converts the journalProvider cache (ranks, progress, reputation, identity)
+// into Inara write events to piggyback on the same request as getCommanderProfile.
 //
-// Name resolution order:
-//   1. `inaraCommanderName` from config  — user-specified override
-//   2. `searchName` argument             — in-game name from journals
+// All write events are idempotent on Inara's side — if the stored value is
+// already equal or newer, Inara silently ignores the update.
+// ─────────────────────────────────────────────────────────────────────────────
+function buildWriteEvents(journalCache, ts) {
+  const events = [];
+  if (!journalCache) return events;
+
+  const { ranks, progress, reputation, identity } = journalCache;
+
+  // setCommanderRankPilot — array form sends all ranks in one event
+  if (ranks && progress) {
+    const rankData = [];
+    for (const [key, inaraName] of Object.entries(RANK_MAP)) {
+      const rankEntry = ranks[key];
+      const prog      = progress[key];
+      if (rankEntry == null && prog == null) continue;
+      const item = { rankName: inaraName };
+      if (rankEntry != null) item.rankValue    = rankEntry.level;
+      if (prog      != null) item.rankProgress = Math.round(prog) / 100; // journals store 0-100, Inara wants 0-1
+      rankData.push(item);
+    }
+    if (rankData.length > 0) {
+      events.push({
+        eventName:      'setCommanderRankPilot',
+        eventTimestamp: ts,
+        eventData:      rankData,
+      });
+    }
+  }
+
+  // setCommanderReputationMajorFaction — array form
+  if (reputation) {
+    const repData = [];
+    for (const [key, inaraName] of Object.entries(FACTION_MAP)) {
+      const val = reputation[key];
+      if (val == null) continue;
+      repData.push({ majorfactionName: inaraName, majorfactionReputation: val / 100 }); // journals: -100..100 → Inara: -1..1
+    }
+    if (repData.length > 0) {
+      events.push({
+        eventName:      'setCommanderReputationMajorFaction',
+        eventTimestamp: ts,
+        eventData:      repData,
+      });
+    }
+  }
+
+  // setCommanderCredits — only send if we have a non-zero value
+  if (identity && identity.credits != null && identity.credits > 0) {
+    events.push({
+      eventName:      'setCommanderCredits',
+      eventTimestamp: ts,
+      eventData:      { commanderCredits: identity.credits },
+    });
+  }
+
+  return events;
+}
+
+// ── syncCommanderProfile ──────────────────────────────────────────────────────
+// Sends a batched request: getCommanderProfile + journal write events.
+//
+// journalCache — optional { ranks, progress, reputation, identity } from
+//                journalProvider.getCache().profileData — used to build write
+//                events. If absent only the read event is sent.
 //
 // Returns:
-//   { success: true,  data: <Inara eventData>, fetchedAt: <ms timestamp> }
-//   { success: false, error: <string> }
+//   { success: true,  data: <Inara eventData>, fetchedAt, batchedEvents }
+//   { success: false, error: <string>, retryable?: true }
 // ─────────────────────────────────────────────────────────────────────────────
-async function getCommanderProfile(searchName) {
+async function syncCommanderProfile(searchName, journalCache) {
   const cfg    = readConfig();
   const apiKey = (cfg.inaraApiKey || '').trim();
   if (!apiKey) {
     return { success: false, error: 'No Inara API key configured. Add your key in Options ⚙ → Inara.' };
   }
 
-  // Prefer the manual override; fall back to the in-game name from journals
   const resolvedName = (cfg.inaraCommanderName || '').trim() || (searchName || '').trim();
   if (!resolvedName) {
     return { success: false, error: 'No commander name available. Set one in Options ⚙ → Inara.' };
   }
+
+  const ts = new Date().toISOString().slice(0, 19) + 'Z';
+
+  // Build the write events from journal data (may be empty if no cache yet)
+  const writeEvents = buildWriteEvents(journalCache, ts);
+
+  // getCommanderProfile is always index 0 — the response parser relies on this
+  const events = [
+    {
+      eventName:      'getCommanderProfile',
+      eventTimestamp: ts,
+      eventData:      { searchName: resolvedName },
+    },
+    ...writeEvents,
+  ];
 
   const payload = {
     header: {
@@ -109,21 +199,13 @@ async function getCommanderProfile(searchName) {
       APIkey:           apiKey,
       commanderName:    resolvedName,
     },
-    events: [
-      {
-        eventName:      'getCommanderProfile',
-        eventTimestamp: new Date().toISOString().slice(0, 19) + 'Z',
-        eventData:      { searchName: resolvedName },
-      },
-    ],
+    events,
   };
 
-  logger.info('INARA', 'Querying commander profile', { resolvedName });
-  logger.debug('INARA', 'Outbound payload', {
-    appName:      payload.header.appName,
-    hasApiKey:    !!payload.header.APIkey,
-    commanderName: payload.header.commanderName,
-    searchName:   payload.events[0].eventData.searchName,
+  logger.info('INARA', 'Batched sync', {
+    resolvedName,
+    totalEvents:   events.length,
+    writeEvents:   writeEvents.map(e => e.eventName),
   });
 
   let response;
@@ -131,75 +213,168 @@ async function getCommanderProfile(searchName) {
     response = await httpsPostJson(INARA_HOST, INARA_PATH, payload);
   } catch (err) {
     logger.error('INARA', 'Network error: ' + err.message);
-    return { success: false, error: 'Network error: ' + err.message };
+    return { success: false, error: 'Network error: ' + err.message, retryable: true };
   }
 
   if (response.status !== 200) {
-    const statusMessages = {
-      503: 'Inara is temporarily unavailable (503) — try again in a few minutes.',
-      502: 'Inara is temporarily unavailable (502) — try again in a few minutes.',
-      504: 'Inara gateway timed out (504) — try again in a few minutes.',
-      429: 'Inara rate limit hit (429) — please wait before retrying.',
+    const TRANSIENT_CODES = new Set([429, 500, 502, 503, 504]);
+    const statusMessages  = {
+      429: 'Inara rate limit hit (429) — will retry shortly.',
+      500: 'Inara internal server error (500) — will retry shortly.',
+      502: 'Inara gateway error (502) — will retry shortly.',
+      503: 'Inara temporarily unavailable (503) — will retry shortly.',
+      504: 'Inara gateway timed out (504) — will retry shortly.',
       401: 'Inara rejected the API key (401) — check your key in Options ⚙ → Inara.',
       403: 'Inara access forbidden (403) — check your API key in Options ⚙ → Inara.',
     };
-    const msg = statusMessages[response.status] || 'Inara returned HTTP ' + response.status;
-    logger.warn('INARA', msg);
+    const msg       = statusMessages[response.status] || 'Inara returned HTTP ' + response.status;
+    const retryable = TRANSIENT_CODES.has(response.status);
+    logger.warn('INARA', msg, { httpStatus: response.status, retryable });
+    return { success: false, error: msg, retryable };
+  }
+
+  const respBody     = response.body;
+  const headerStatus = (respBody.header && respBody.header.eventStatus) ?? null;
+  const headerText   = (respBody.header && respBody.header.eventStatusText) || '';
+
+  logger.debug('INARA', 'Raw response', {
+    httpStatus:   response.status,
+    headerStatus,
+    headerText,
+    eventsCount:  Array.isArray(respBody.events) ? respBody.events.length : 'missing',
+    eventStatuses: Array.isArray(respBody.events)
+      ? respBody.events.map((e, i) => ({ i, name: events[i]?.eventName, status: e.eventStatus }))
+      : [],
+  });
+
+  // ── Header-level auth check ───────────────────────────────────────────────
+  if (headerStatus !== null && headerStatus !== 200 && headerStatus !== 202) {
+    const knownHeaderMsgs = {
+      400: 'API key rejected or app not recognised by Inara.',
+      401: 'Inara API key is unauthorised.',
+      403: 'Inara API access forbidden — check your key.',
+      429: 'Inara rate limit hit at the header level — wait a few minutes.',
+    };
+    const base = knownHeaderMsgs[headerStatus] || ('Inara header error ' + headerStatus);
+    const msg  = headerText ? (base + ' — ' + headerText) : base;
+    logger.warn('INARA', 'Header-level error: ' + msg);
     return { success: false, error: msg };
   }
 
-  const respBody = response.body;
-  logger.debug('INARA', 'Raw response', {
-    httpStatus:   response.status,
-    headerStatus: respBody.header && respBody.header.eventStatus,
-    headerText:   respBody.header && respBody.header.eventStatusText,
-    eventsCount:  respBody.events ? respBody.events.length : 'missing',
-    firstEvent:   respBody.events && respBody.events[0]
-      ? { status: respBody.events[0].eventStatus, text: respBody.events[0].eventStatusText }
-      : null,
-  });
-
-  // Check header-level auth status
-  const headerStatus = respBody.header && respBody.header.eventStatus;
-  if (headerStatus === 400) {
-    const msg = (respBody.header && respBody.header.eventStatusText) || 'API key invalid or unauthorised.';
-    logger.warn('INARA', 'Auth failure: ' + msg);
-    return { success: false, error: 'Inara auth error: ' + msg };
+  // ── Missing events array ──────────────────────────────────────────────────
+  const respEvents = respBody.events;
+  if (!Array.isArray(respEvents) || respEvents.length === 0) {
+    const hint = headerText
+      ? ' — ' + headerText
+      : ' — verify your API key and commander name in Options ⚙ → Inara.';
+    const msg = 'No events in Inara response' + hint;
+    logger.warn('INARA', msg, { rawBody: JSON.stringify(respBody).slice(0, 400) });
+    return { success: false, error: msg };
   }
 
-  // Check event-level status
-  const events = respBody.events;
-  if (!events || !events.length) {
-    const headerText = (respBody.header && respBody.header.eventStatusText) || '';
-    const detail     = headerText ? (' — ' + headerText) : ' — check the Debug Log in Preferences ⚙ for the full response.';
-    return { success: false, error: 'Empty response from Inara' + detail };
-  }
-
-  const evt = events[0];
-  if (evt.eventStatus === 204) {
+  // ── Parse getCommanderProfile response (always index 0) ──────────────────
+  const profileEvt = respEvents[0];
+  if (profileEvt.eventStatus === 204) {
     return { success: false, error: 'Commander "' + resolvedName + '" not found on Inara. Check the name in Options ⚙ → Inara.' };
   }
-  if (evt.eventStatus === 400) {
-    return { success: false, error: 'Inara event error: ' + (evt.eventStatusText || 'unknown') };
+  if (profileEvt.eventStatus === 400) {
+    return { success: false, error: 'Inara event error: ' + (profileEvt.eventStatusText || 'unknown') };
   }
-  if (evt.eventStatus !== 200 && evt.eventStatus !== 202) {
-    return { success: false, error: 'Inara returned event status ' + evt.eventStatus };
+  if (profileEvt.eventStatus !== 200 && profileEvt.eventStatus !== 202) {
+    return { success: false, error: 'Inara returned event status ' + profileEvt.eventStatus };
   }
 
-  const data = evt.eventData;
+  const data = profileEvt.eventData;
   if (!data) {
     return { success: false, error: 'No data in Inara response.' };
   }
 
-  logger.info('INARA', 'Profile fetched successfully', { inaraUser: data.userName });
+  // ── Log write event results (non-fatal — profile read already succeeded) ──
+  for (let i = 1; i < respEvents.length; i++) {
+    const we = respEvents[i];
+    const weName = events[i]?.eventName || ('event[' + i + ']');
+    if (we.eventStatus === 200 || we.eventStatus === 202) {
+      logger.debug('INARA', weName + ' accepted', { status: we.eventStatus });
+    } else {
+      logger.warn('INARA', weName + ' rejected', { status: we.eventStatus, text: we.eventStatusText });
+    }
+  }
+
+  logger.info('INARA', 'Batched sync succeeded', {
+    inaraUser:     data.userName,
+    batchedWrites: writeEvents.map(e => e.eventName),
+  });
 
   return {
-    success:   true,
-    data:      data,
-    fetchedAt: Date.now(),
-    // 202 means the name wasn't an exact match — Inara returned the closest result
-    warning:   evt.eventStatus === 202 ? (evt.eventStatusText || 'Name was not an exact match — check your Inara display name in Options ⚙') : null,
+    success:       true,
+    data,
+    fetchedAt:     Date.now(),
+    batchedEvents: writeEvents.map(e => e.eventName),
+    warning:       profileEvt.eventStatus === 202
+      ? (profileEvt.eventStatusText || 'Name was not an exact match — check your Inara display name in Options ⚙')
+      : null,
   };
 }
 
-module.exports = { getCommanderProfile };
+// ── syncProfile — rate-limited wrapper with retry back-off ────────────────────
+const SYNC_INTERVAL_MS  = 5 * 60 * 1000;
+const RETRY_DELAYS_MS   = [30_000, 60_000, 120_000];
+
+let _lastSyncAt     = 0;
+let _nextAllowedAt  = 0;
+let _cachedResult   = null;
+let _retryCount     = 0;
+
+async function syncProfile(commanderName, journalCache) {
+  const now = Date.now();
+
+  if (now < _nextAllowedAt) {
+    if (_cachedResult) {
+      return { ..._cachedResult, fromCache: true, nextSyncAt: _nextAllowedAt };
+    }
+    return {
+      skipped:    true,
+      nextSyncAt: _nextAllowedAt,
+      success:    false,
+      error:      'Rate-limited — next sync at ' + new Date(_nextAllowedAt).toLocaleTimeString(),
+    };
+  }
+
+  _lastSyncAt    = now;
+  _nextAllowedAt = now + SYNC_INTERVAL_MS;
+
+  const result = await syncCommanderProfile(commanderName, journalCache);
+
+  if (result.success) {
+    _cachedResult  = result;
+    _retryCount    = 0;
+    _nextAllowedAt = now + SYNC_INTERVAL_MS;
+    logger.debug('INARA', 'Sync succeeded — next allowed at ' + new Date(_nextAllowedAt).toLocaleTimeString());
+  } else if (result.retryable) {
+    const delay    = RETRY_DELAYS_MS[Math.min(_retryCount, RETRY_DELAYS_MS.length - 1)];
+    _retryCount   += 1;
+    _nextAllowedAt = now + delay;
+    logger.warn('INARA',
+      `Transient error (attempt ${_retryCount}) — retrying in ${delay / 1000}s at ` +
+      new Date(_nextAllowedAt).toLocaleTimeString(),
+    );
+  } else {
+    _retryCount    = 0;
+    _nextAllowedAt = now + SYNC_INTERVAL_MS;
+    logger.warn('INARA', 'Permanent error — applying full cooldown until ' + new Date(_nextAllowedAt).toLocaleTimeString());
+  }
+
+  return { ...result, fromCache: false, nextSyncAt: _nextAllowedAt };
+}
+
+function getSyncStatus() {
+  return {
+    lastSyncAt:  _lastSyncAt,
+    nextSyncAt:  _nextAllowedAt,
+    cooldownMs:  SYNC_INTERVAL_MS,
+    hasCached:   !!_cachedResult,
+    retryCount:  _retryCount,
+  };
+}
+
+module.exports = { syncProfile, getSyncStatus };

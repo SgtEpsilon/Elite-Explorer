@@ -6,6 +6,205 @@
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link href="https://fonts.googleapis.com/css2?family=Rajdhani:wght@400;500;600;700&family=Share+Tech+Mono&family=Orbitron:wght@400;500;700&family=Exo+2:wght@200;300;400&display=swap" rel="stylesheet">
 <link rel="stylesheet" href="styles.css">
+<style>
+
+/* ── Live Status Strip ─────────────────────────────────────────────────────── */
+#prof-status-strip {
+  display: none;
+  grid-template-columns: repeat(auto-fill, minmax(148px, 1fr));
+  gap: 10px;
+  padding: 14px 24px;
+  background: var(--bg2);
+  border-bottom: 1px solid var(--border);
+}
+.status-item {
+  background: var(--panel2);
+  border: 1px solid var(--border);
+  border-radius: 3px;
+  padding: 10px 12px;
+  position: relative;
+  overflow: hidden;
+}
+.status-item::before {
+  content: '';
+  position: absolute;
+  top: 0; left: 0; right: 0;
+  height: 2px;
+}
+.status-item.s-fuel::before   { background: linear-gradient(to right, var(--cyan), transparent); }
+.status-item.s-hull::before   { background: linear-gradient(to right, var(--green), transparent); }
+.status-item.s-jump::before   { background: linear-gradient(to right, var(--gold), transparent); }
+.status-item.s-cargo::before  { background: linear-gradient(to right, #60c890, transparent); }
+.status-item.s-loc::before    { background: linear-gradient(to right, #a090e0, transparent); }
+.status-lbl {
+  font-family: var(--mono);
+  font-size: 0.58em;
+  color: var(--text-mute);
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  margin-bottom: 5px;
+}
+.status-val {
+  font-family: var(--mono);
+  font-size: 0.95em;
+  color: var(--text);
+  line-height: 1.2;
+  margin-bottom: 4px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.status-sub {
+  font-family: var(--mono);
+  font-size: 0.65em;
+  color: var(--text-mute);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.status-gauge {
+  height: 3px;
+  background: var(--border);
+  border-radius: 1px;
+  overflow: hidden;
+  margin-top: 5px;
+}
+.status-gauge-fill {
+  height: 100%;
+  border-radius: 1px;
+  transition: width 0.8s ease, background 0.4s ease;
+}
+
+/* ── Hero card additions ────────────────────────────────────────────────────── */
+.ident-avatar-img {
+  width: 56px;
+  height: 56px;
+  border-radius: 6px;
+  object-fit: cover;
+  border: 1px solid rgba(46,207,207,0.3);
+  display: block;
+}
+.ident-hero-meta {
+  display: none;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-top: 3px;
+  margin-bottom: 5px;
+}
+.ident-role {
+  font-family: var(--mono);
+  font-size: 0.73em;
+  color: var(--text-dim);
+}
+.ident-squadron-pill {
+  display: none;
+  font-family: var(--mono);
+  font-size: 0.68em;
+  color: var(--cyan2);
+  background: rgba(46,207,207,0.07);
+  border: 1px solid rgba(46,207,207,0.2);
+  border-radius: 10px;
+  padding: 2px 8px;
+}
+.ident-inara-link {
+  display: none;
+  font-family: var(--mono);
+  font-size: 0.7em;
+  color: var(--cyan);
+  text-decoration: none;
+  opacity: 0.7;
+  transition: opacity 0.15s;
+  cursor: pointer;
+}
+.ident-inara-link:hover { opacity: 1; }
+
+/* ── Rep preference banner ──────────────────────────────────────────────────── */
+#inara-rep-pref {
+  display: none;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 12px;
+  flex-wrap: wrap;
+}
+.rep-pref-label {
+  font-family: var(--mono);
+  font-size: 0.6em;
+  color: var(--text-mute);
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+.rep-pref-pill {
+  font-family: var(--mono);
+  font-size: 0.72em;
+  padding: 2px 9px;
+  border-radius: 10px;
+  letter-spacing: 0.03em;
+}
+.rep-pref-pill.allegiance {
+  color: var(--gold);
+  background: rgba(200,151,42,0.08);
+  border: 1px solid rgba(200,151,42,0.2);
+}
+.rep-pref-pill.power {
+  color: var(--cyan2);
+  background: rgba(46,207,207,0.06);
+  border: 1px solid rgba(46,207,207,0.15);
+}
+
+/* ── Inara rank enrichment ──────────────────────────────────────────────────── */
+.inara-rank-row {
+  animation: inaraFadeIn 0.35s ease;
+}
+@keyframes inaraFadeIn {
+  from { opacity: 0; transform: translateY(4px); }
+  to   { opacity: 1; transform: none; }
+}
+#ranks-inara-badge {
+  font-family: var(--mono);
+  font-size: 0.62em;
+  color: var(--green);
+  background: rgba(76,175,130,0.08);
+  border: 1px solid rgba(76,175,130,0.2);
+  border-radius: 8px;
+  padding: 1px 7px;
+  vertical-align: middle;
+  margin-left: 8px;
+  display: none;
+}
+
+/* ── Inara sync footer ──────────────────────────────────────────────────────── */
+#inara-panel {
+  padding: 10px 24px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 8px;
+  border-top: 1px solid rgba(100,180,255,0.06);
+  background: var(--bg2);
+}
+.inara-footer-left {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+.inara-source-tag {
+  font-family: var(--mono);
+  font-size: 0.6em;
+  text-transform: uppercase;
+  letter-spacing: 0.14em;
+  color: var(--text-mute);
+  opacity: 0.55;
+}
+.inara-footer-right {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+</style>
 </head>
 <body>
 
@@ -19,79 +218,214 @@
     <a class="tab-btn" href="index.html">Live</a>
     <a class="tab-btn active" href="profile.html">Profile</a>
     <a class="tab-btn" href="history.html">History</a>
-	<a class="tab-btn" href="spansh.html">Spansh</a>
+    <a class="tab-btn" href="spansh.html">Spansh</a>
   </div>
   <span class="tb-credits" id="tb-credits"></span>
   <button id="options-btn" title="Options">&#9881;</button>
 </div>
 
-<div id="app-wrapper" style="display:flex;flex-direction:column;height:calc(100vh - 44px);">
+<div id="app-wrapper" style="display:flex;flex-direction:column;height:calc(100vh - 44px);overflow-y:auto;">
+<div id="view-profile" class="active">
 
-  <div id="view-profile" class="active">
-    <div id="prof-no-data">
-      <div class="icon">&#9672;</div>
-      <div class="msg">No Commander Data Yet</div>
-      <div class="sub">Run "Scan All Journals" from Options &#9881; to populate this view</div>
-    </div>
-    <div id="prof-content" style="display:none;">
-      <div class="ident-card">
-        <div class="ident-avatar">&#9672;</div>
-        <div>
+  <!-- ── No data placeholder ─────────────────────────────────────────────── -->
+  <div id="prof-no-data">
+    <div class="icon">&#9672;</div>
+    <div class="msg">No Commander Data Yet</div>
+    <div class="sub">Run &ldquo;Scan All Journals&rdquo; from Options &#9881; to populate this view</div>
+  </div>
+
+  <!-- ── Main content ────────────────────────────────────────────────────── -->
+  <div id="prof-content" style="display:none;">
+
+    <!-- ════════════════════════════════════════════════════════════════════ -->
+    <!-- HERO IDENTITY CARD                                                   -->
+    <!-- Left:  Inara avatar (◆ glyph until Inara syncs)                     -->
+    <!-- Right: CMDR name + Inara link, role + squadron, ship, kv pills       -->
+    <!-- ════════════════════════════════════════════════════════════════════ -->
+    <div class="ident-card">
+
+      <!-- Avatar: replaced by Inara img after sync -->
+      <div class="ident-avatar" id="ident-avatar-wrap">&#9672;</div>
+
+      <!-- Right-hand identity block -->
+      <div style="flex:1;min-width:0;">
+
+        <!-- Name + Inara link -->
+        <div style="display:flex;align-items:baseline;gap:12px;flex-wrap:wrap;margin-bottom:2px;">
           <div class="ident-name" id="prof-name">CMDR &#8212;</div>
-          <div class="ident-ship">
-            <span id="prof-ship-type" style="color:var(--text-dim)">&#8212;</span>
-            <span style="color:var(--text-mute)"> &middot; </span>
-            <span id="prof-ship-name" style="color:var(--cyan)">&#8212;</span>
-            <span style="color:var(--text-mute)"> &middot; </span>
-            <span id="prof-ship-ident" style="color:var(--text-mute)">&#8212;</span>
+          <a class="ident-inara-link" id="inara-url" href="#">&#8599; Inara Profile</a>
+        </div>
+
+        <!-- Role + squadron  (hidden until Inara syncs) -->
+        <div class="ident-hero-meta" id="inara-hero-meta">
+          <span class="ident-role" id="inara-role"></span>
+          <span class="ident-squadron-pill" id="inara-squadron-pill"></span>
+        </div>
+
+        <!-- Current ship -->
+        <div class="ident-ship">
+          <span id="prof-ship-type" style="color:var(--text-dim)">&#8212;</span>
+          <span style="color:var(--text-mute)"> &middot; </span>
+          <span id="prof-ship-name" style="color:var(--cyan)">&#8212;</span>
+          <span style="color:var(--text-mute)"> &middot; </span>
+          <span id="prof-ship-ident" style="color:var(--text-mute)">&#8212;</span>
+        </div>
+
+        <!-- Key-value pills: credits / system / game mode -->
+        <div class="ident-kv-row">
+          <div>
+            <div class="ident-kv-val" id="prof-credits">&#8212;</div>
+            <div class="ident-kv-lbl">Credits</div>
           </div>
-          <div class="ident-kv-row">
-            <div><div class="ident-kv-val" id="prof-credits">&#8212;</div><div class="ident-kv-lbl">Credits</div></div>
-            <div><div class="ident-kv-val" style="color:var(--text-dim)" id="prof-mode">&#8212;</div><div class="ident-kv-lbl">Game Mode</div></div>
-            <div><div class="ident-kv-val" style="color:var(--cyan2)"><span id="prof-system">&#8212;</span><span id="prof-discovery-badge" title="First Discovery — you found this system!" style="display:none;margin-left:6px;color:var(--gold);font-size:0.9em;">&#9733;</span></div><div class="ident-kv-lbl">Current System</div></div>
-            <div><div class="ident-kv-val" id="prof-jump" style="color:var(--cyan)">&#8212;</div><div class="ident-kv-lbl">Jump Range</div></div>
+          <div>
+            <div class="ident-kv-val" style="color:var(--cyan2)">
+              <span id="prof-system">&#8212;</span>
+              <span id="prof-discovery-badge" title="First Discovery &#8212; you found this system!" style="display:none;margin-left:6px;color:var(--gold);font-size:0.9em;">&#9733;</span>
+            </div>
+            <div class="ident-kv-lbl">Current System</div>
+          </div>
+          <div>
+            <div class="ident-kv-val" style="color:var(--text-dim)" id="prof-mode">&#8212;</div>
+            <div class="ident-kv-lbl">Game Mode</div>
           </div>
         </div>
-      </div>
-      <div class="prof-section" style="background:var(--panel);">
-        <div class="prof-title">Commander Ranks</div>
-        <div class="ranks-grid" id="prof-ranks-grid"></div>
-      </div>
-      <div class="prof-section" style="background:var(--panel);">
-        <div class="prof-title">Superpower Reputation</div>
-        <div class="rep-grid">
-          <div class="rep-card rep-empire">
-            <div class="rep-name">Empire</div><div class="rep-num" id="rep-empire-num">&#8212;</div>
-            <div class="rep-sub" id="rep-empire-lbl">&#8212;</div>
-            <div class="rep-track"><div class="rep-fill" id="rep-empire-bar" style="width:0%"></div></div>
-          </div>
-          <div class="rep-card rep-federation">
-            <div class="rep-name">Federation</div><div class="rep-num" id="rep-fed-num">&#8212;</div>
-            <div class="rep-sub" id="rep-fed-lbl">&#8212;</div>
-            <div class="rep-track"><div class="rep-fill" id="rep-fed-bar" style="width:0%"></div></div>
-          </div>
-          <div class="rep-card rep-alliance">
-            <div class="rep-name">Alliance</div><div class="rep-num" id="rep-all-num">&#8212;</div>
-            <div class="rep-sub" id="rep-all-lbl">&#8212;</div>
-            <div class="rep-track"><div class="rep-fill" id="rep-all-bar" style="width:0%"></div></div>
-          </div>
-          <div class="rep-card rep-independent">
-            <div class="rep-name">Independent</div><div class="rep-num" id="rep-ind-num">&#8212;</div>
-            <div class="rep-sub" id="rep-ind-lbl">&#8212;</div>
-            <div class="rep-track"><div class="rep-fill" id="rep-ind-bar" style="width:0%"></div></div>
-          </div>
+
+      </div><!-- /identity block -->
+    </div><!-- /ident-card -->
+
+    <!-- ════════════════════════════════════════════════════════════════════ -->
+    <!-- LIVE STATUS STRIP                                                    -->
+    <!-- Fuel, Hull, Jump Range, Cargo, Docking — sourced from live journals  -->
+    <!-- Hidden until first live-data arrives                                 -->
+    <!-- ════════════════════════════════════════════════════════════════════ -->
+    <div id="prof-status-strip">
+
+      <div class="status-item s-fuel">
+        <div class="status-lbl">Fuel</div>
+        <div class="status-val" id="prof-fuel-display">&#8212;</div>
+        <div class="status-gauge">
+          <div class="status-gauge-fill" id="prof-fuel-bar" style="width:0%;background:var(--cyan);"></div>
         </div>
       </div>
-      <div class="prof-section" style="background:var(--bg2);">
-        <div class="prof-title">Lifetime Statistics</div>
-        <div class="stats-cols" id="prof-stats-cols"></div>
+
+      <div class="status-item s-hull">
+        <div class="status-lbl">Hull Integrity</div>
+        <div class="status-val" id="prof-hull-val">&#8212;</div>
+        <div class="status-gauge">
+          <div class="status-gauge-fill" id="prof-hull-bar" style="width:0%;background:var(--green);"></div>
+        </div>
+      </div>
+
+      <div class="status-item s-jump">
+        <div class="status-lbl">Jump Range</div>
+        <!-- prof-jump is written by script.js onLiveData — keep this ID here -->
+        <div class="status-val" id="prof-jump">&#8212;</div>
+      </div>
+
+      <div class="status-item s-cargo">
+        <div class="status-lbl">Cargo Capacity</div>
+        <div class="status-val" id="prof-cargo">&#8212;</div>
+      </div>
+
+      <div class="status-item s-loc">
+        <div class="status-lbl">Docked At</div>
+        <div class="status-val" id="prof-docked-name">In Space</div>
+        <div class="status-sub" id="prof-docked-type"></div>
+      </div>
+
+    </div><!-- /prof-status-strip -->
+
+    <!-- ════════════════════════════════════════════════════════════════════ -->
+    <!-- COMMANDER RANKS                                                      -->
+    <!-- 7-card grid built by script.js; Inara enrichment appended after sync -->
+    <!-- ════════════════════════════════════════════════════════════════════ -->
+    <div class="prof-section" style="background:var(--panel);">
+      <div class="prof-title">
+        Commander Ranks
+        <span id="ranks-inara-badge">&#10003; Inara verified</span>
+      </div>
+      <div class="ranks-grid" id="prof-ranks-grid"></div>
+    </div>
+
+    <!-- ════════════════════════════════════════════════════════════════════ -->
+    <!-- SUPERPOWER REPUTATION                                                -->
+    <!-- Inara allegiance + power preference shown above the 4 rep bars      -->
+    <!-- ════════════════════════════════════════════════════════════════════ -->
+    <div class="prof-section" style="background:var(--panel);">
+      <div class="prof-title">Superpower Reputation</div>
+
+      <!-- Inara preferred allegiance / power (hidden until Inara syncs) -->
+      <div id="inara-rep-pref">
+        <span class="rep-pref-label">Preferred &rsaquo;</span>
+        <div id="inara-pref-pills" style="display:flex;gap:6px;flex-wrap:wrap;"></div>
+      </div>
+
+      <div class="rep-grid">
+        <div class="rep-card rep-empire">
+          <div class="rep-name">Empire</div>
+          <div class="rep-num" id="rep-empire-num">&#8212;</div>
+          <div class="rep-sub" id="rep-empire-lbl">&#8212;</div>
+          <div class="rep-track"><div class="rep-fill" id="rep-empire-bar" style="width:0%"></div></div>
+        </div>
+        <div class="rep-card rep-federation">
+          <div class="rep-name">Federation</div>
+          <div class="rep-num" id="rep-fed-num">&#8212;</div>
+          <div class="rep-sub" id="rep-fed-lbl">&#8212;</div>
+          <div class="rep-track"><div class="rep-fill" id="rep-fed-bar" style="width:0%"></div></div>
+        </div>
+        <div class="rep-card rep-alliance">
+          <div class="rep-name">Alliance</div>
+          <div class="rep-num" id="rep-all-num">&#8212;</div>
+          <div class="rep-sub" id="rep-all-lbl">&#8212;</div>
+          <div class="rep-track"><div class="rep-fill" id="rep-all-bar" style="width:0%"></div></div>
+        </div>
+        <div class="rep-card rep-independent">
+          <div class="rep-name">Independent</div>
+          <div class="rep-num" id="rep-ind-num">&#8212;</div>
+          <div class="rep-sub" id="rep-ind-lbl">&#8212;</div>
+          <div class="rep-track"><div class="rep-fill" id="rep-ind-bar" style="width:0%"></div></div>
+        </div>
       </div>
     </div>
-  </div><!-- /view-profile -->
 
+    <!-- ════════════════════════════════════════════════════════════════════ -->
+    <!-- LIFETIME STATISTICS                                                  -->
+    <!-- Built by script.js onProfileData — 5-col grid                       -->
+    <!-- ════════════════════════════════════════════════════════════════════ -->
+    <div class="prof-section" style="background:var(--bg2);">
+      <div class="prof-title">Lifetime Statistics</div>
+      <div class="stats-cols" id="prof-stats-cols"></div>
+    </div>
+
+    <!-- ════════════════════════════════════════════════════════════════════ -->
+    <!-- INARA SYNC FOOTER                                                    -->
+    <!-- Compact status bar: badge / status text / countdown / sync button   -->
+    <!-- ════════════════════════════════════════════════════════════════════ -->
+    <div id="inara-panel">
+      <div class="inara-footer-left">
+        <span class="inara-source-tag">Inara Sync</span>
+        <span id="inara-sync-badge" style="display:none;font-family:var(--mono);font-size:0.68em;padding:2px 8px;border-radius:10px;"></span>
+        <span id="inara-status" style="font-size:0.73em;color:var(--text-mute);font-family:var(--mono);"></span>
+        <span id="inara-no-key" style="display:none;font-size:0.73em;color:var(--gold);font-family:var(--mono);">
+          &#9888; No API key &#8212; add in Options &#9881; &rsaquo; Inara
+        </span>
+      </div>
+      <div class="inara-footer-right">
+        <span id="inara-next-sync" style="font-size:0.68em;color:var(--text-mute);font-family:var(--mono);"></span>
+        <button id="inara-refresh-btn" title="Sync Inara profile now" style="
+          background:rgba(46,207,207,0.08);border:1px solid rgba(46,207,207,0.25);
+          color:var(--cyan);border-radius:6px;padding:4px 12px;cursor:pointer;
+          font-family:var(--mono);font-size:0.78em;letter-spacing:0.05em;
+          transition:background 0.15s,border-color 0.15s;
+        ">&#8635; Sync</button>
+      </div>
+    </div>
+
+  </div><!-- /prof-content -->
+</div><!-- /view-profile -->
 </div><!-- /app-wrapper -->
 
-<!-- OPTIONS PANEL -->
+<!-- ── OPTIONS PANEL ─────────────────────────────────────────────────────── -->
 <div id="options-overlay"></div>
 <div id="options-panel">
   <div id="options-header">
@@ -104,6 +438,78 @@
       <button class="opt-action-btn" id="opt-scan-btn">
         <span class="opt-btn-icon">&#11041;</span>
         <div><div class="opt-btn-label">Scan All Journals</div><div class="opt-btn-sub">Re-process all Elite journal files</div></div>
+      </button>
+    </div>
+    <div class="opt-section">
+      <div class="opt-section-title">Network UI Server</div>
+      <label class="opt-toggle" style="margin-bottom:8px;">
+        <input type="checkbox" id="opt-network-enabled">
+        <span class="tog-track"><span class="tog-thumb"></span></span>
+        <span class="tog-lbl">Enable network UI server</span>
+      </label>
+      <div class="opt-hint">Serves the Elite Explorer UI over HTTP so any device on your local network can access it in a browser. Restart the app after changing this setting.</div>
+      <div style="margin-top:8px;">
+        <label style="font-size:0.72em;color:var(--text-dim);display:block;margin-bottom:3px;">Port <span style="opacity:0.5">(default: 3722)</span></label>
+        <input class="opt-input" id="opt-network-port" type="number" min="1024" max="65535" placeholder="3722" spellcheck="false" style="width:120px;"/>
+      </div>
+      <div id="opt-network-urls" style="margin-top:8px;font-size:0.72em;color:var(--text-dim);display:none;"></div>
+      <button class="opt-action-btn" id="opt-network-save-btn" style="margin-top:10px;">
+        <span class="opt-btn-icon">&#10003;</span>
+        <div><div class="opt-btn-label">Save Network Settings</div><div class="opt-btn-sub" id="opt-network-hint">Restart required to apply changes</div></div>
+      </button>
+    </div>
+    <div class="opt-section">
+      <div class="opt-section-title">EDDN &#8212; Data Network</div>
+      <label class="opt-toggle" style="margin-bottom:8px;">
+        <input type="checkbox" id="opt-eddn-enabled">
+        <span class="tog-track"><span class="tog-thumb"></span></span>
+        <span class="tog-lbl">Submit events to EDDN</span>
+      </label>
+      <div class="opt-hint">Shares jump, scan &amp; dock events with the community network. Your commander name is used as the uploader ID.</div>
+      <div style="margin-top:8px;">
+        <label style="font-size:0.72em;color:var(--text-dim);display:block;margin-bottom:3px;">Commander Name (uploader ID)</label>
+        <input class="opt-input" id="opt-cmdr-name" type="text" placeholder="Your in-game commander name" spellcheck="false"/>
+      </div>
+    </div>
+    <div class="opt-section">
+      <div class="opt-section-title">EDSM &#8212; Star Map</div>
+      <label class="opt-toggle" style="margin-bottom:8px;">
+        <input type="checkbox" id="opt-edsm-enabled">
+        <span class="tog-track"><span class="tog-thumb"></span></span>
+        <span class="tog-lbl">Fetch system data from EDSM</span>
+      </label>
+      <div class="opt-hint">Displays security, allegiance, population and enables the EDSM link for each system you visit. No account required for lookups.</div>
+      <div style="margin-top:8px;">
+        <label style="font-size:0.72em;color:var(--text-dim);display:block;margin-bottom:3px;">EDSM Commander Name <span style="opacity:0.5">(optional &#8212; for flight log sync)</span></label>
+        <input class="opt-input" id="opt-edsm-cmdr" type="text" placeholder="Your EDSM commander name" spellcheck="false"/>
+      </div>
+      <div style="margin-top:6px;">
+        <label style="font-size:0.72em;color:var(--text-dim);display:block;margin-bottom:3px;">EDSM API Key <span style="opacity:0.5">(optional &#8212; from edsm.net/en/settings/api)</span></label>
+        <input class="opt-input" id="opt-edsm-key" type="password" placeholder="&#8226;&#8226;&#8226;&#8226;&#8226;&#8226;&#8226;&#8226;&#8226;&#8226;&#8226;&#8226;&#8226;&#8226;&#8226;&#8226;" spellcheck="false"/>
+      </div>
+      <button class="opt-action-btn" id="opt-save-api-btn" style="margin-top:10px;">
+        <span class="opt-btn-icon">&#10003;</span>
+        <div><div class="opt-btn-label">Save API Settings</div><div class="opt-btn-sub" id="opt-api-hint">Changes take effect immediately</div></div>
+      </button>
+    </div>
+    <div class="opt-section">
+      <div class="opt-section-title">Inara &#8212; Commander Profile</div>
+      <div style="font-size:0.78em;color:var(--text-mute);margin-bottom:8px;line-height:1.5;">Syncs your CMDR profile from Inara every 5 minutes. Find your API key at <a id="inara-api-link" href="#" style="color:var(--cyan);text-decoration:none;">inara.cz &rarr; Settings &rarr; API</a>.</div>
+      <div style="margin-top:6px;">
+        <label style="font-size:0.72em;color:var(--text-dim);display:block;margin-bottom:3px;">Inara API Key</label>
+        <input class="opt-input" id="opt-inara-api-key" type="password" placeholder="&#8226;&#8226;&#8226;&#8226;&#8226;&#8226;&#8226;&#8226;&#8226;&#8226;&#8226;&#8226;&#8226;&#8226;&#8226;&#8226;" spellcheck="false" autocomplete="off"/>
+      </div>
+      <div style="margin-top:6px;">
+        <label style="font-size:0.72em;color:var(--text-dim);display:block;margin-bottom:3px;">CMDR Name Override <span style="opacity:0.5">(only if different from in-game name)</span></label>
+        <input class="opt-input" id="opt-inara-cmdr-name" type="text" placeholder="Your Inara display name" spellcheck="false"/>
+      </div>
+      <button class="opt-action-btn" id="opt-inara-save-btn" style="margin-top:10px;">
+        <span class="opt-btn-icon">&#10003;</span>
+        <div><div class="opt-btn-label">Save Inara Settings</div><div class="opt-btn-sub" id="opt-inara-save-status">Save API key and sync now</div></div>
+      </button>
+      <button class="opt-action-btn" id="opt-inara-sync-now-btn" style="margin-top:6px;">
+        <span class="opt-btn-icon">&#8635;</span>
+        <div><div class="opt-btn-label">Sync Now</div><div class="opt-btn-sub" id="opt-inara-sync-status">Manually trigger an Inara profile sync</div></div>
       </button>
     </div>
     <div class="opt-section">
@@ -132,13 +538,6 @@
         <div class="sl-row"><div class="sl-header"><span class="sl-label">Row Density</span><span class="sl-val" id="sv-density">Normal</span></div><input type="range" class="sl-input" id="sl-density" min="1" max="5" step="1" value="3"></div>
       </div>
       <div class="sl-group">
-        <div class="sl-group-title">Panel Layout</div>
-        <div class="sl-row"><div class="sl-header"><span class="sl-label">Left Panel Width</span><span class="sl-val" id="sv-left">250px</span></div><input type="range" class="sl-input" id="sl-left" min="1" max="360" step="5" value="250"></div>
-        <div class="sl-row"><div class="sl-header"><span class="sl-label">Right Panel Width</span><span class="sl-val" id="sv-right">320px</span></div><input type="range" class="sl-input" id="sl-right" min="1" max="500" step="5" value="320"></div>
-        <div class="sl-row"><div class="sl-header"><span class="sl-label">Bottom Bar Height</span><span class="sl-val" id="sv-bottom">120px</span></div><input type="range" class="sl-input" id="sl-bottom" min="1" max="240" step="5" value="120"></div>
-        <div class="sl-row"><div class="sl-header"><span class="sl-label">Log Height</span><span class="sl-val" id="sv-log">130px</span></div><input type="range" class="sl-input" id="sl-log" min="1" max="400" step="5" value="130"></div>
-      </div>
-      <div class="sl-group">
         <div class="sl-group-title">Atmosphere</div>
         <div class="sl-row"><div class="sl-header"><span class="sl-label">Brightness</span><span class="sl-val" id="sv-bright">100%</span></div><input type="range" class="sl-input" id="sl-bright" min="40" max="160" step="2" value="100"></div>
         <div class="sl-row"><div class="sl-header"><span class="sl-label">Panel Opacity</span><span class="sl-val" id="sv-opacity">100%</span></div><input type="range" class="sl-input" id="sl-opacity" min="30" max="100" step="2" value="100"></div>
@@ -154,5 +553,409 @@
 <script src="script.js"></script>
 <script src="update-modal.js"></script>
 <script src="prefs-modal.js"></script>
-</body>
+<script>
+// ═════════════════════════════════════════════════════════════════════════════
+// Profile page  —  Live Status Strip  +  Inara Sync  +  Rank Cross-reference
+//
+// Execution order guarantee:
+//   script.js loads and registers its IPC listeners first.
+//   This inline block runs second, so when our onProfileData fires the rank
+//   grid is already built by script.js's handler.
+// ═════════════════════════════════════════════════════════════════════════════
+(function () {
+  'use strict';
+
+  // ── Constants ──────────────────────────────────────────────────────────────
+  var SYNC_INTERVAL_MS = 5 * 60 * 1000;
+
+  // Inara API rankName values → rank card CSS class names
+  var INARA_TO_CARD = {
+    'combat':       'combat',
+    'trade':        'trade',
+    'explore':      'explore',
+    'cqc':          'cqc',
+    'exobiologist': 'exobio',
+    'federation':   'fed',
+    'empire':       'empire',
+  };
+
+  // ── State ──────────────────────────────────────────────────────────────────
+  var _cmdName        = '';
+  var _syncTimer      = null;
+  var _countdownTimer = null;
+  var _inaraRanks     = null;   // commanderRanksPilot array from last Inara sync
+  var _localRanksDone = false;  // true once script.js has built the rank grid
+
+  // ── DOM shortcuts ──────────────────────────────────────────────────────────
+  var elStatus     = document.getElementById('inara-status');
+  var elNoKey      = document.getElementById('inara-no-key');
+  var elBadge      = document.getElementById('inara-sync-badge');
+  var elNextSync   = document.getElementById('inara-next-sync');
+  var elRefreshBtn = document.getElementById('inara-refresh-btn');
+  var elPrefPills  = document.getElementById('inara-pref-pills');
+  var elRepPref    = document.getElementById('inara-rep-pref');
+  var elHeroMeta   = document.getElementById('inara-hero-meta');
+
+  // ── Escape HTML ────────────────────────────────────────────────────────────
+  function esc(s) {
+    return String(s || '')
+      .replace(/&/g, '&amp;').replace(/</g, '&lt;')
+      .replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+  }
+
+  // ── Status / badge helpers ─────────────────────────────────────────────────
+  function setStatus(msg, color) {
+    if (elStatus) {
+      elStatus.textContent = msg;
+      elStatus.style.color = color || 'var(--text-mute)';
+    }
+  }
+
+  function setBadge(text, bg, color) {
+    if (!elBadge) return;
+    elBadge.textContent      = text;
+    elBadge.style.background = bg    || 'rgba(46,207,207,0.12)';
+    elBadge.style.color      = color || 'var(--cyan)';
+    elBadge.style.border     = '1px solid ' + (color || 'rgba(46,207,207,0.3)');
+    elBadge.style.display    = 'inline-block';
+  }
+
+  function startCountdown(nextSyncAt, label) {
+    if (_countdownTimer) clearInterval(_countdownTimer);
+    var prefix = label || 'next sync in ';
+    function tick() {
+      if (!elNextSync) return;
+      var remaining = Math.max(0, nextSyncAt - Date.now());
+      if (remaining === 0) { elNextSync.textContent = ''; clearInterval(_countdownTimer); return; }
+      var m = Math.floor(remaining / 60000);
+      var s = Math.floor((remaining % 60000) / 1000);
+      elNextSync.textContent = prefix + (m > 0 ? m + ':' + (s < 10 ? '0' : '') + s : s + 's');
+    }
+    tick();
+    _countdownTimer = setInterval(tick, 1000);
+  }
+
+  // ════════════════════════════════════════════════════════════════════════════
+  // LIVE STATUS STRIP
+  // script.js already handles: prof-system, prof-jump (moved to strip),
+  // prof-ship-*, prof-credits, prof-mode, prof-name, prof-discovery-badge.
+  // We handle the NEW fields: fuel, hull, cargo, docked station.
+  // ════════════════════════════════════════════════════════════════════════════
+  if (window.electronAPI && window.electronAPI.onLiveData) {
+    window.electronAPI.onLiveData(function (d) {
+      var strip = document.getElementById('prof-status-strip');
+      var shouldReveal = false;
+
+      // Fuel gauge
+      if (d.fuelDisplay) {
+        var fuelEl = document.getElementById('prof-fuel-display');
+        if (fuelEl) fuelEl.textContent = d.fuelDisplay;
+        shouldReveal = true;
+      }
+      if (d.fuelPct != null) {
+        var fuelBar = document.getElementById('prof-fuel-bar');
+        if (fuelBar) fuelBar.style.width = d.fuelPct + '%';
+        shouldReveal = true;
+      }
+
+      // Hull integrity — colour-coded
+      if (d.hull != null) {
+        var hullColor = d.hull >= 70 ? 'var(--green)' : d.hull >= 40 ? 'var(--gold)' : 'var(--red)';
+        var hullVal = document.getElementById('prof-hull-val');
+        var hullBar = document.getElementById('prof-hull-bar');
+        if (hullVal) { hullVal.textContent = d.hull + '%'; hullVal.style.color = hullColor; }
+        if (hullBar) { hullBar.style.width = d.hull + '%'; hullBar.style.background = hullColor; }
+        shouldReveal = true;
+      }
+
+      // Cargo capacity
+      if (d.cargoCapacity != null) {
+        var cargoEl = document.getElementById('prof-cargo');
+        if (cargoEl) cargoEl.textContent = d.cargoCapacity + ' T';
+        shouldReveal = true;
+      }
+
+      // Docked / In Space
+      var dockedNameEl = document.getElementById('prof-docked-name');
+      var dockedTypeEl = document.getElementById('prof-docked-type');
+      if (d.dockedStation) {
+        if (dockedNameEl) dockedNameEl.textContent = d.dockedStation;
+        if (dockedTypeEl) dockedTypeEl.textContent = d.dockedStationType || '';
+      } else if (d.dockedStation === null) {
+        // Explicit undock event
+        if (dockedNameEl) dockedNameEl.textContent = 'In Space';
+        if (dockedTypeEl) dockedTypeEl.textContent = '';
+      }
+
+      // Reveal strip on first meaningful data
+      if (shouldReveal && strip) strip.style.display = 'grid';
+    });
+  }
+
+  // ════════════════════════════════════════════════════════════════════════════
+  // RANK CROSS-REFERENCE
+  // Annotates each rank card with the Inara-reported rank name and progress
+  // after both local data (rank grid built by script.js) and Inara data are ready.
+  // ════════════════════════════════════════════════════════════════════════════
+  function enrichRankCards() {
+    if (!_inaraRanks || !_inaraRanks.length) return;
+    var grid = document.getElementById('prof-ranks-grid');
+    if (!grid || !grid.children.length) return;
+
+    _inaraRanks.forEach(function (r) {
+      var cls  = INARA_TO_CARD[r.rankName];
+      if (!cls) return;
+      var card = grid.querySelector('.rank-card.' + cls);
+      if (!card) return;
+
+      // Remove stale annotation from a previous sync cycle
+      var old = card.querySelector('.inara-rank-row');
+      if (old) old.remove();
+
+      // Compare Inara value against what the local journals show
+      var localNameEl = card.querySelector('.rank-name');
+      var localName   = localNameEl ? localNameEl.textContent.trim() : '';
+      var inaraVal    = r.rankValue || '';
+      var match       = localName && inaraVal &&
+                        localName.toLowerCase() === inaraVal.toLowerCase();
+
+      // Inara reports progress as 0–1; convert to integer percent for display
+      var pct = r.rankProgress != null ? Math.round(r.rankProgress * 100) : null;
+
+      var row = document.createElement('div');
+      row.className = 'inara-rank-row';
+      row.innerHTML =
+        '<div style="display:flex;align-items:center;justify-content:space-between;' +
+        'margin-top:7px;padding-top:6px;border-top:1px solid rgba(255,255,255,0.05);">' +
+          '<span style="font-size:0.58em;color:var(--cyan2);letter-spacing:0.1em;text-transform:uppercase;">Inara</span>' +
+          '<span style="font-size:0.7em;font-family:var(--mono);color:' +
+            (match ? 'var(--green)' : 'var(--gold)') + ';"' +
+            ' title="' + (match
+              ? 'Inara confirms your local journal rank'
+              : 'Differs from local journal \u2014 journals may be ahead of Inara') +
+            '">' +
+            esc(inaraVal || '\u2014') + '\u00a0' +
+            (match ? '&#10003;' : '&#9888;') +
+          '</span>' +
+        '</div>' +
+        (pct != null
+          ? '<div style="margin-top:3px;height:2px;background:rgba(255,255,255,0.05);' +
+            'border-radius:1px;overflow:hidden;">' +
+            '<div style="height:100%;width:' + pct + '%;background:var(--cyan);opacity:0.45;' +
+            'border-radius:1px;transition:width 1s ease;"></div></div>' +
+            '<div style="font-size:0.58em;color:var(--text-mute);text-align:right;margin-top:1px;">' +
+            pct + '% (Inara)</div>'
+          : '');
+      card.appendChild(row);
+    });
+
+    // Reveal the "Inara verified" badge in the ranks section title
+    var badge = document.getElementById('ranks-inara-badge');
+    if (badge) badge.style.display = 'inline';
+  }
+
+  // Our onProfileData fires after script.js's (script.js is loaded first),
+  // so the rank grid is already populated when this runs.
+  if (window.electronAPI && window.electronAPI.onProfileData) {
+    window.electronAPI.onProfileData(function (p) {
+      if (p.identity && p.identity.name && !_cmdName) _cmdName = p.identity.name;
+      _localRanksDone = true;
+      if (_inaraRanks) enrichRankCards();
+    });
+  }
+
+  // ════════════════════════════════════════════════════════════════════════════
+  // renderInara — populates hero card, rep banner, and triggers rank enrichment
+  // ════════════════════════════════════════════════════════════════════════════
+  function renderInara(d) {
+    if (!d) return;
+
+    // ── Avatar image ──────────────────────────────────────────────────────────
+    if (d.avatarImageURL) {
+      var avatarWrap = document.getElementById('ident-avatar-wrap');
+      if (avatarWrap) {
+        avatarWrap.innerHTML =
+          '<img class="ident-avatar-img" src="' + esc(d.avatarImageURL) + '" alt="CMDR Avatar"' +
+          ' onerror="this.parentElement.innerHTML=\'&#9672;\'">';
+      }
+    }
+
+    // ── Inara profile link (inline with CMDR name) ────────────────────────────
+    var urlEl = document.getElementById('inara-url');
+    if (d.inaraURL && urlEl) {
+      urlEl.style.display = 'inline';
+      urlEl.onclick = function (e) {
+        e.preventDefault();
+        if (window.electronAPI && window.electronAPI.openExternal) {
+          window.electronAPI.openExternal(d.inaraURL);
+        }
+      };
+    }
+
+    // ── Preferred game role ───────────────────────────────────────────────────
+    var roleEl = document.getElementById('inara-role');
+    if (roleEl && d.preferredGameRole) {
+      roleEl.textContent = d.preferredGameRole;
+      if (elHeroMeta) elHeroMeta.style.display = 'flex';
+    }
+
+    // ── Squadron pill ─────────────────────────────────────────────────────────
+    if (d.commanderSquadron && d.commanderSquadron.squadronName) {
+      var sq     = d.commanderSquadron;
+      var sqPill = document.getElementById('inara-squadron-pill');
+      if (sqPill) {
+        sqPill.textContent = '\u25C8\u00a0' + sq.squadronName +
+          (sq.squadronMemberRank ? '\u00a0\u00b7\u00a0' + sq.squadronMemberRank : '');
+        sqPill.style.display = 'inline-block';
+        if (sq.inaraURL) {
+          sqPill.style.cursor = 'pointer';
+          sqPill.title = 'View squadron on Inara';
+          sqPill.onclick = function () {
+            if (window.electronAPI && window.electronAPI.openExternal) {
+              window.electronAPI.openExternal(sq.inaraURL);
+            }
+          };
+        }
+        if (elHeroMeta) elHeroMeta.style.display = 'flex';
+      }
+    }
+
+    // ── Preferred allegiance + power above the rep grid ───────────────────────
+    if (elPrefPills && elRepPref) {
+      var pills = '';
+      if (d.preferredAllegianceName) {
+        pills += '<span class="rep-pref-pill allegiance">\u2B21\u00a0' + esc(d.preferredAllegianceName) + '</span>';
+      }
+      if (d.preferredPowerName) {
+        pills += '<span class="rep-pref-pill power">\u2691\u00a0' + esc(d.preferredPowerName) + '</span>';
+      }
+      if (pills) {
+        elPrefPills.innerHTML = pills;
+        elRepPref.style.display = 'flex';
+      }
+    }
+
+    // ── Rank cross-reference ──────────────────────────────────────────────────
+    _inaraRanks = d.commanderRanksPilot || null;
+    if (_localRanksDone && _inaraRanks) {
+      // Small delay ensures any concurrent onProfileData re-render finishes first
+      setTimeout(enrichRankCards, 80);
+    }
+  }
+
+  // ════════════════════════════════════════════════════════════════════════════
+  // INARA SYNC  —  rate-limited, with retry back-off
+  // ════════════════════════════════════════════════════════════════════════════
+  function doSync(isManual) {
+    if (!window.electronAPI || !window.electronAPI.inaraSyncProfile) return;
+
+    setStatus((isManual ? 'Syncing' : 'Syncing with Inara') + '\u2026', 'var(--cyan)');
+    if (elRefreshBtn) elRefreshBtn.disabled = true;
+
+    window.electronAPI.inaraSyncProfile(_cmdName).then(function (result) {
+      if (elRefreshBtn) elRefreshBtn.disabled = false;
+      if (result.nextSyncAt) startCountdown(result.nextSyncAt);
+
+      // Still within cooldown window, no new data
+      if (result.skipped) {
+        setStatus(result.error || 'Rate-limited', 'var(--text-mute)');
+        setBadge('cooling down', 'rgba(90,90,90,0.15)', 'var(--text-mute)');
+        return;
+      }
+
+      if (!result.success) {
+        if (result.retryable) {
+          setStatus('\u26a0 ' + (result.error || 'Server unavailable'), 'var(--gold)');
+          setBadge('retrying\u2026', 'rgba(200,151,42,0.1)', 'var(--gold)');
+          if (result.nextSyncAt) startCountdown(result.nextSyncAt, 'retrying in ');
+        } else {
+          setStatus('\u26a0 ' + (result.error || 'Unknown error'), 'var(--gold)');
+          setBadge('sync failed', 'rgba(200,80,80,0.1)', '#f07070');
+          if (result.nextSyncAt) startCountdown(result.nextSyncAt);
+          if (result.error && result.error.toLowerCase().indexOf('api key') !== -1) {
+            if (elNoKey) elNoKey.style.display = '';
+          }
+        }
+        return;
+      }
+
+      // Success
+      var ts        = new Date().toLocaleTimeString();
+      var cacheNote = result.fromCache ? ' (cached)' : '';
+      setStatus('\u2713 Synced at ' + ts + cacheNote, 'var(--text-dim)');
+      setBadge(result.fromCache ? 'cached' : 'synced', 'rgba(76,175,130,0.1)', '#4caf82');
+      if (elNoKey) elNoKey.style.display = 'none';
+      if (result.warning) setStatus('\u26a0 ' + result.warning, 'var(--gold)');
+
+      renderInara(result.data);
+      scheduleSyncIn(SYNC_INTERVAL_MS);
+
+    }).catch(function (err) {
+      if (elRefreshBtn) elRefreshBtn.disabled = false;
+      setStatus('\u26a0 IPC error: ' + err.message, '#f07070');
+      setBadge('error', 'rgba(200,80,80,0.1)', '#f07070');
+    });
+  }
+
+  function scheduleSyncIn(ms) {
+    if (_syncTimer) clearTimeout(_syncTimer);
+    _syncTimer = setTimeout(function () { doSync(false); }, ms);
+  }
+
+  // ── Boot ───────────────────────────────────────────────────────────────────
+  function maybeStartSync() {
+    // Grab commander name from topbar if profile data hasn't arrived yet
+    var tbEl = document.getElementById('tb-cmdr');
+    if (tbEl && tbEl.textContent && tbEl.textContent !== '\u2014') {
+      _cmdName = tbEl.textContent.replace(/^CMDR\s*/i, '').trim();
+    }
+    if (!window.electronAPI) return;
+
+    if (window.electronAPI.inaraGetSyncStatus) {
+      window.electronAPI.inaraGetSyncStatus().then(function (status) {
+        var remaining  = Math.max(0, status.nextSyncAt - Date.now());
+        var isRetrying = (status.retryCount || 0) > 0;
+        if (remaining > 0) {
+          startCountdown(status.nextSyncAt, isRetrying ? 'retrying in ' : 'next sync in ');
+          scheduleSyncIn(remaining);
+          // If we have cached data from a prior sync, fetch it immediately for display
+          if (status.hasCached) {
+            doSync(false);
+          } else {
+            var msg = isRetrying ? 'Server unavailable \u2014 retrying\u2026' : 'Waiting for next sync window\u2026';
+            setStatus(msg, 'var(--text-mute)');
+            setBadge(isRetrying ? 'retrying\u2026' : 'cooling down',
+                     isRetrying ? 'rgba(200,151,42,0.1)' : 'rgba(90,90,90,0.15)',
+                     isRetrying ? 'var(--gold)' : 'var(--text-mute)');
+          }
+        } else {
+          doSync(false);
+        }
+      }).catch(function () { doSync(false); });
+    } else {
+      doSync(false);
+    }
+  }
+
+  // Capture commander name early, before the sync fires
+  if (window.electronAPI && window.electronAPI.onProfileData) {
+    window.electronAPI.onProfileData(function (p) {
+      if (p.identity && p.identity.name && !_cmdName) _cmdName = p.identity.name;
+    });
+  }
+
+  // Manual sync button
+  if (elRefreshBtn) {
+    elRefreshBtn.addEventListener('click', function () { doSync(true); });
+  }
+
+  // Kick off on page ready
+  if (document.readyState === 'loading') {
+    document.addEventListener('DOMContentLoaded', maybeStartSync);
+  } else {
+    maybeStartSync();
+  }
+
+}());
+</script>
 </html>

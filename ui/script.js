@@ -840,6 +840,9 @@ function openOptions() {
     el = document.getElementById('opt-edsm-cmdr');    if (el) el.value  = cfg.edsmCommanderName || '';
     el = document.getElementById('opt-edsm-key');     if (el) el.value  = cfg.edsmApiKey        || '';
     el = document.getElementById('capi-client-id');   if (el) el.value  = cfg.capiClientId      || '';
+    // Inara settings
+    el = document.getElementById('opt-inara-api-key');    if (el) el.value = cfg.inaraApiKey        || '';
+    el = document.getElementById('opt-inara-cmdr-name');  if (el) el.value = cfg.inaraCommanderName || '';
     // Network server settings
     el = document.getElementById('opt-network-enabled'); if (el) el.checked = !!cfg.networkServerEnabled;
     el = document.getElementById('opt-network-port');    if (el) el.value  = cfg.networkServerPort || 3722;
@@ -1295,3 +1298,88 @@ if (window.electronAPI && window.electronAPI.triggerProfileRefresh) {
     window.electronAPI.triggerProfileRefresh();
   }, 10 * 60 * 1000);
 }
+
+// ── Inara options panel — shared across all pages ─────────────────────────────
+// Save button: persists key + name, then triggers a sync.
+(function () {
+  // Open Inara API settings page in the system browser
+  var inaraApiLink = document.getElementById('inara-api-link');
+  if (inaraApiLink) {
+    inaraApiLink.addEventListener('click', function (e) {
+      e.preventDefault();
+      if (window.electronAPI && window.electronAPI.openExternal) {
+        window.electronAPI.openExternal('https://inara.cz/elite/settings-api/');
+      }
+    });
+  }
+
+  var inaraSaveBtn    = document.getElementById('opt-inara-save-btn');
+  var inaraSaveStatus = document.getElementById('opt-inara-save-status');
+  var inaraSyncBtn    = document.getElementById('opt-inara-sync-now-btn');
+  var inaraSyncStatus = document.getElementById('opt-inara-sync-status');
+
+  function inaraSetStatus(el, msg, color, resetMs) {
+    if (!el) return;
+    el.textContent  = msg;
+    el.style.color  = color || '';
+    if (resetMs) setTimeout(function () { el.textContent = el.dataset.default || ''; el.style.color = ''; }, resetMs);
+  }
+
+  // Preserve default sub-text so we can restore it after a timeout
+  if (inaraSaveStatus) inaraSaveStatus.dataset.default = inaraSaveStatus.textContent;
+  if (inaraSyncStatus) inaraSyncStatus.dataset.default = inaraSyncStatus.textContent;
+
+  if (inaraSaveBtn && window.electronAPI) {
+    inaraSaveBtn.addEventListener('click', function () {
+      var apiKey   = (document.getElementById('opt-inara-api-key')   || {}).value || '';
+      var cmdrName = (document.getElementById('opt-inara-cmdr-name') || {}).value || '';
+      inaraSetStatus(inaraSaveStatus, 'Saving\u2026');
+      window.electronAPI.saveConfig({ inaraApiKey: apiKey.trim(), inaraCommanderName: cmdrName.trim() })
+        .then(function () {
+          inaraSetStatus(inaraSaveStatus, '\u2713 Saved', 'var(--green)', 3000);
+          // Kick off a sync immediately after saving — fire-and-forget from the options panel
+          if (window.electronAPI.inaraSyncProfile) {
+            window.electronAPI.inaraSyncProfile(cmdrName.trim()).then(function (r) {
+              if (r && r.success) {
+                inaraSetStatus(inaraSyncStatus, '\u2713 Synced at ' + new Date().toLocaleTimeString(), 'var(--green)', 5000);
+              } else if (r && !r.skipped) {
+                inaraSetStatus(inaraSyncStatus, '\u26a0 ' + (r.error || 'Sync failed'), 'var(--gold)', 6000);
+              }
+            }).catch(function () {});
+          }
+        })
+        .catch(function (err) {
+          inaraSetStatus(inaraSaveStatus, 'Error: ' + err.message, 'var(--red)', 5000);
+        });
+    });
+  }
+
+  if (inaraSyncBtn && window.electronAPI && window.electronAPI.inaraSyncProfile) {
+    inaraSyncBtn.addEventListener('click', function () {
+      var cmdrName = (document.getElementById('opt-inara-cmdr-name') || {}).value || '';
+      inaraSetStatus(inaraSyncStatus, 'Syncing\u2026');
+      inaraSyncBtn.disabled = true;
+      window.electronAPI.inaraSyncProfile(cmdrName.trim()).then(function (r) {
+        inaraSyncBtn.disabled = false;
+        if (!r) { inaraSetStatus(inaraSyncStatus, 'No response', 'var(--red)', 4000); return; }
+        if (r.skipped) {
+          var remaining = r.nextSyncAt ? Math.max(0, Math.round((r.nextSyncAt - Date.now()) / 1000)) : null;
+          var msg = 'Rate-limited' + (remaining !== null ? ' \u2014 ' + remaining + 's remaining' : '');
+          inaraSetStatus(inaraSyncStatus, msg, 'var(--text-mute)', 5000);
+        } else if (r.success) {
+          var cache = r.fromCache ? ' (cached)' : '';
+          inaraSetStatus(inaraSyncStatus, '\u2713 Synced at ' + new Date().toLocaleTimeString() + cache, 'var(--green)', 5000);
+        } else if (r.retryable) {
+          var remaining2 = r.nextSyncAt ? Math.max(0, Math.round((r.nextSyncAt - Date.now()) / 1000)) : null;
+          var retryMsg = (r.error || 'Server unavailable') + (remaining2 !== null ? ' \u2014 retrying in ' + remaining2 + 's' : '');
+          inaraSetStatus(inaraSyncStatus, '\u26a0 ' + retryMsg, 'var(--gold)', 8000);
+        } else {
+          inaraSetStatus(inaraSyncStatus, '\u26a0 ' + (r.error || 'Failed'), 'var(--gold)', 6000);
+        }
+      }).catch(function (err) {
+        inaraSyncBtn.disabled = false;
+        inaraSetStatus(inaraSyncStatus, 'Error: ' + err.message, 'var(--red)', 5000);
+      });
+    });
+  }
+}());

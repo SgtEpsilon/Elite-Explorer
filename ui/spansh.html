@@ -906,6 +906,85 @@ tr.row-done td:first-child { opacity: 1; }
   </div>
   <div id="options-body">
     <div class="opt-section">
+      <div class="opt-section-title">Journal Scan</div>
+      <button class="opt-action-btn" id="opt-scan-btn">
+        <span class="opt-btn-icon">&#11041;</span>
+        <div><div class="opt-btn-label">Scan All Journals</div><div class="opt-btn-sub">Re-process all Elite journal files</div></div>
+      </button>
+    </div>
+    <div class="opt-section">
+      <div class="opt-section-title">Network UI Server</div>
+      <label class="opt-toggle" style="margin-bottom:8px;">
+        <input type="checkbox" id="opt-network-enabled">
+        <span class="tog-track"><span class="tog-thumb"></span></span>
+        <span class="tog-lbl">Enable network UI server</span>
+      </label>
+      <div class="opt-hint">Serves the Elite Explorer UI over HTTP so any device on your local network can access it in a browser. Restart the app after changing this setting.</div>
+      <div style="margin-top:8px;">
+        <label style="font-size:0.72em;color:var(--text-dim);display:block;margin-bottom:3px;">Port <span style="opacity:0.5">(default: 3722)</span></label>
+        <input class="opt-input" id="opt-network-port" type="number" min="1024" max="65535" placeholder="3722" spellcheck="false" style="width:120px;"/>
+      </div>
+      <div id="opt-network-urls" style="margin-top:8px;font-size:0.72em;color:var(--text-dim);display:none;"></div>
+      <button class="opt-action-btn" id="opt-network-save-btn" style="margin-top:10px;">
+        <span class="opt-btn-icon">&#10003;</span>
+        <div><div class="opt-btn-label">Save Network Settings</div><div class="opt-btn-sub" id="opt-network-hint">Restart required to apply changes</div></div>
+      </button>
+    </div>
+    <div class="opt-section">
+      <div class="opt-section-title">EDDN &#8212; Data Network</div>
+      <label class="opt-toggle" style="margin-bottom:8px;">
+        <input type="checkbox" id="opt-eddn-enabled">
+        <span class="tog-track"><span class="tog-thumb"></span></span>
+        <span class="tog-lbl">Submit events to EDDN</span>
+      </label>
+      <div class="opt-hint">Shares jump, scan &amp; dock events with the community network. Your commander name is used as the uploader ID.</div>
+      <div style="margin-top:8px;">
+        <label style="font-size:0.72em;color:var(--text-dim);display:block;margin-bottom:3px;">Commander Name (uploader ID)</label>
+        <input class="opt-input" id="opt-cmdr-name" type="text" placeholder="Your in-game commander name" spellcheck="false"/>
+      </div>
+    </div>
+    <div class="opt-section">
+      <div class="opt-section-title">EDSM &#8212; Star Map</div>
+      <label class="opt-toggle" style="margin-bottom:8px;">
+        <input type="checkbox" id="opt-edsm-enabled">
+        <span class="tog-track"><span class="tog-thumb"></span></span>
+        <span class="tog-lbl">Fetch system data from EDSM</span>
+      </label>
+      <div class="opt-hint">Displays security, allegiance, population and enables the EDSM link for each system you visit. No account required for lookups.</div>
+      <div style="margin-top:8px;">
+        <label style="font-size:0.72em;color:var(--text-dim);display:block;margin-bottom:3px;">EDSM Commander Name <span style="opacity:0.5">(optional &#8212; for flight log sync)</span></label>
+        <input class="opt-input" id="opt-edsm-cmdr" type="text" placeholder="Your EDSM commander name" spellcheck="false"/>
+      </div>
+      <div style="margin-top:6px;">
+        <label style="font-size:0.72em;color:var(--text-dim);display:block;margin-bottom:3px;">EDSM API Key <span style="opacity:0.5">(optional &#8212; from edsm.net/en/settings/api)</span></label>
+        <input class="opt-input" id="opt-edsm-key" type="password" placeholder="&#8226;&#8226;&#8226;&#8226;&#8226;&#8226;&#8226;&#8226;&#8226;&#8226;&#8226;&#8226;&#8226;&#8226;&#8226;&#8226;" spellcheck="false"/>
+      </div>
+      <button class="opt-action-btn" id="opt-save-api-btn" style="margin-top:10px;">
+        <span class="opt-btn-icon">&#10003;</span>
+        <div><div class="opt-btn-label">Save API Settings</div><div class="opt-btn-sub" id="opt-api-hint">Changes take effect immediately</div></div>
+      </button>
+    </div>
+    <div class="opt-section">
+      <div class="opt-section-title">Inara &#8212; Commander Profile</div>
+      <div style="font-size:0.78em;color:var(--text-mute);margin-bottom:8px;line-height:1.5;">Syncs your CMDR profile from Inara every 5 minutes. Find your API key at <a id="inara-api-link" href="#" style="color:var(--cyan);text-decoration:none;">inara.cz &#8594; Settings &#8594; API</a>.</div>
+      <div style="margin-top:6px;">
+        <label style="font-size:0.72em;color:var(--text-dim);display:block;margin-bottom:3px;">Inara API Key</label>
+        <input class="opt-input" id="opt-inara-api-key" type="password" placeholder="&#8226;&#8226;&#8226;&#8226;&#8226;&#8226;&#8226;&#8226;&#8226;&#8226;&#8226;&#8226;&#8226;&#8226;&#8226;&#8226;" spellcheck="false" autocomplete="off"/>
+      </div>
+      <div style="margin-top:6px;">
+        <label style="font-size:0.72em;color:var(--text-dim);display:block;margin-bottom:3px;">CMDR Name Override <span style="opacity:0.5">(only if different from in-game name)</span></label>
+        <input class="opt-input" id="opt-inara-cmdr-name" type="text" placeholder="Your Inara display name" spellcheck="false"/>
+      </div>
+      <button class="opt-action-btn" id="opt-inara-save-btn" style="margin-top:10px;">
+        <span class="opt-btn-icon">&#10003;</span>
+        <div><div class="opt-btn-label">Save Inara Settings</div><div class="opt-btn-sub" id="opt-inara-save-status">Save API key and sync now</div></div>
+      </button>
+      <button class="opt-action-btn" id="opt-inara-sync-now-btn" style="margin-top:6px;">
+        <span class="opt-btn-icon">&#8635;</span>
+        <div><div class="opt-btn-label">Sync Now</div><div class="opt-btn-sub" id="opt-inara-sync-status">Manually trigger an Inara profile sync</div></div>
+      </button>
+    </div>
+    <div class="opt-section">
       <div class="opt-section-title">Journal Folder</div>
       <div class="opt-path-row">
         <input class="opt-input" id="opt-journal-path" type="text" placeholder="Auto-detected" spellcheck="false"/>
@@ -927,15 +1006,18 @@ tr.row-done td:first-child { opacity: 1; }
       <div class="sl-group">
         <div class="sl-group-title">Scale &amp; Size</div>
         <div class="sl-row"><div class="sl-header"><span class="sl-label">UI Scale</span><span class="sl-val" id="sv-scale">100%</span></div><input type="range" class="sl-input" id="sl-scale" min="70" max="130" step="1" value="100"></div>
-        <div class="sl-row"><div class="sl-header"><span class="sl-label">Font Size</span><span class="sl-val" id="sv-font">12px</span></div><input type="range" class="sl-input" id="sl-font" min="9" max="32" step="0.5" value="12"></div>
+        <div class="sl-row"><div class="sl-header"><span class="sl-label">Font Size</span><span class="sl-val" id="sv-font">24px</span></div><input type="range" class="sl-input" id="sl-font" min="1" max="32" step="0.5" value="24"></div>
+        <div class="sl-row"><div class="sl-header"><span class="sl-label">Row Density</span><span class="sl-val" id="sv-density">Normal</span></div><input type="range" class="sl-input" id="sl-density" min="1" max="5" step="1" value="3"></div>
       </div>
       <div class="sl-group">
         <div class="sl-group-title">Atmosphere</div>
         <div class="sl-row"><div class="sl-header"><span class="sl-label">Brightness</span><span class="sl-val" id="sv-bright">100%</span></div><input type="range" class="sl-input" id="sl-bright" min="40" max="160" step="2" value="100"></div>
+        <div class="sl-row"><div class="sl-header"><span class="sl-label">Panel Opacity</span><span class="sl-val" id="sv-opacity">100%</span></div><input type="range" class="sl-input" id="sl-opacity" min="30" max="100" step="2" value="100"></div>
         <div class="sl-row"><div class="sl-header"><span class="sl-label">Scanlines</span><span class="sl-val" id="sv-scan">Low</span></div><input type="range" class="sl-input" id="sl-scan" min="0" max="5" step="1" value="1"></div>
         <div class="sl-row"><div class="sl-header"><span class="sl-label">Glow Intensity</span><span class="sl-val" id="sv-glow">100%</span></div><input type="range" class="sl-input" id="sl-glow" min="0" max="200" step="5" value="100"></div>
+        <div class="sl-row"><div class="sl-header"><span class="sl-label">Border Sharpness</span><span class="sl-val" id="sv-border">Medium</span></div><input type="range" class="sl-input" id="sl-border" min="0" max="4" step="1" value="2"></div>
       </div>
-      <button class="sl-reset" id="sl-reset-all">&#8635; Reset Display Settings</button>
+      <button class="sl-reset" id="sl-reset-all">&#8635; Reset All Display Settings</button>
     </div>
   </div>
 </div>

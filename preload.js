@@ -61,6 +61,11 @@ contextBridge.exposeInMainWorld('electronAPI', {
   capiGetProfile:    ()          => ipcRenderer.invoke('capi-get-profile'),
   capiGetMarket:     (id)        => ipcRenderer.invoke('capi-get-market',        id),
 
+  // Inara
+  inaraSyncProfile:    (name)     => ipcRenderer.invoke('inara-sync-profile',    name),
+  inaraGetSyncStatus:  ()         => ipcRenderer.invoke('inara-get-sync-status'),
+  onInaraSyncResult:   (cb)       => on('inara-sync-result', cb),
+
   // Auto-updater
   onUpdateStatus:      (cb)      => on('update-status', cb),
   checkForUpdates:     ()        => ipcRenderer.invoke('updater-check'),

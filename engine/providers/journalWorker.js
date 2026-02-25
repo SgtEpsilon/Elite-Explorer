@@ -28,6 +28,20 @@ const EMPIRE_RANKS     = ['None','Outsider','Serf','Master','Squire','Knight','L
 const FEDERATION_RANKS = ['None','Recruit','Cadet','Midshipman','Petty Officer','Chief Petty Officer','Warrant Officer','Ensign','Lieutenant','Lieutenant Commander','Post Commander','Post Captain','Rear Admiral','Vice Admiral','Admiral'];
 const EXOBIO_RANKS     = ['Directionless','Mostly Directionless','Compiler','Collector','Cataloguer','Taxonomist','Ecologist','Geneticist','Elite'];
 
+// Resolve a rank level to its display name.
+// Odyssey introduced Elite I / II / III — rank values beyond the last array
+// index (e.g. Trade:9 when the array only goes to index 8 for "Elite").
+// The old `RANKS[level] || RANKS[0]` pattern silently returned the *lowest*
+// rank name for any out-of-bounds value, which is wrong.
+const ELITE_TIERS = ['Elite I', 'Elite II', 'Elite III'];
+function getRankName(ranks, level) {
+  if (level == null || level < 0) return ranks[0];
+  if (level < ranks.length)       return ranks[level];
+  // Beyond the top of the array — map to Elite I / II / III
+  const tierIndex = level - ranks.length; // 0 → Elite I, 1 → Elite II, 2 → Elite III
+  return ELITE_TIERS[tierIndex] || ('Elite ' + (tierIndex + 1));
+}
+
 async function run() {
   const totalFiles            = files.length;
   const updatedLastProcessed  = { ...lastProcessed };
@@ -328,13 +342,13 @@ async function run() {
           if (ev === 'Rank') {
             const exobioLevel = entry.Exobiologist != null ? entry.Exobiologist : (entry.Soldier != null ? entry.Soldier : null);
             profileRanks = {
-              combat:     { level: entry.Combat     != null ? entry.Combat     : 0, name: COMBAT_RANKS[entry.Combat     != null ? entry.Combat     : 0] || COMBAT_RANKS[0] },
-              trade:      { level: entry.Trade      != null ? entry.Trade      : 0, name: TRADE_RANKS[entry.Trade       != null ? entry.Trade      : 0] || TRADE_RANKS[0]  },
-              explore:    { level: entry.Explore    != null ? entry.Explore    : 0, name: EXPLORE_RANKS[entry.Explore   != null ? entry.Explore    : 0] || EXPLORE_RANKS[0]},
-              cqc:        { level: entry.CQC        != null ? entry.CQC        : 0, name: CQC_RANKS[entry.CQC           != null ? entry.CQC        : 0] || CQC_RANKS[0]    },
-              empire:     { level: entry.Empire     != null ? entry.Empire     : 0, name: EMPIRE_RANKS[entry.Empire     != null ? entry.Empire     : 0] || EMPIRE_RANKS[0] },
-              federation: { level: entry.Federation != null ? entry.Federation : 0, name: FEDERATION_RANKS[entry.Federation != null ? entry.Federation : 0] || FEDERATION_RANKS[0] },
-              exobiology: { level: exobioLevel != null ? exobioLevel : 0, name: exobioLevel != null ? (EXOBIO_RANKS[exobioLevel] || EXOBIO_RANKS[0]) : EXOBIO_RANKS[0] },
+              combat:     { level: entry.Combat     ?? 0, name: getRankName(COMBAT_RANKS,     entry.Combat)     },
+              trade:      { level: entry.Trade      ?? 0, name: getRankName(TRADE_RANKS,      entry.Trade)      },
+              explore:    { level: entry.Explore    ?? 0, name: getRankName(EXPLORE_RANKS,    entry.Explore)    },
+              cqc:        { level: entry.CQC        ?? 0, name: getRankName(CQC_RANKS,        entry.CQC)        },
+              empire:     { level: entry.Empire     ?? 0, name: getRankName(EMPIRE_RANKS,     entry.Empire)     },
+              federation: { level: entry.Federation ?? 0, name: getRankName(FEDERATION_RANKS, entry.Federation) },
+              exobiology: { level: exobioLevel      ?? 0, name: getRankName(EXOBIO_RANKS,     exobioLevel)      },
             };
           }
 
