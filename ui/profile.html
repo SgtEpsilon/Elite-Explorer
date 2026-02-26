@@ -8,6 +8,257 @@
 <link rel="stylesheet" href="styles.css">
 <style>
 
+/* ── Profile Sub-tabs ──────────────────────────────────────────────────────── */
+#prof-subtab-bar {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  padding: 0 20px;
+  background: var(--bg2);
+  border-bottom: 1px solid var(--border);
+  flex-shrink: 0;
+}
+.prof-subtab {
+  font-family: var(--mono);
+  font-size: 0.68em;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: var(--text-mute);
+  background: transparent;
+  border: none;
+  border-bottom: 2px solid transparent;
+  padding: 10px 14px 8px;
+  cursor: pointer;
+  transition: color 0.15s, border-color 0.15s;
+}
+.prof-subtab:hover { color: var(--text-dim); }
+.prof-subtab.active { color: var(--cyan); border-bottom-color: var(--cyan); }
+
+/* ── Sub-page visibility ───────────────────────────────────────────────────── */
+.prof-subpage { display: none; }
+.prof-subpage.active { display: block; }
+
+/* ── Engineers Sub-page ────────────────────────────────────────────────────── */
+.eng-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
+  gap: 10px;
+  padding: 20px 24px;
+}
+.eng-card {
+  background: var(--panel2);
+  border: 1px solid var(--border);
+  border-radius: 3px;
+  padding: 12px 14px;
+  position: relative;
+  overflow: hidden;
+}
+.eng-card::before {
+  content: '';
+  position: absolute;
+  top: 0; left: 0; right: 0;
+  height: 2px;
+}
+.eng-card.progress-Invited::before  { background: linear-gradient(to right, var(--gold), transparent); }
+.eng-card.progress-Known::before    { background: linear-gradient(to right, var(--text-mute), transparent); }
+.eng-card.progress-Unlocked::before { background: linear-gradient(to right, var(--green), transparent); }
+.eng-card.progress-Barred::before   { background: linear-gradient(to right, var(--red), transparent); }
+.eng-name {
+  font-family: var(--mono);
+  font-size: 0.82em;
+  color: var(--text);
+  margin-bottom: 5px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.eng-status {
+  font-family: var(--mono);
+  font-size: 0.62em;
+  text-transform: uppercase;
+  letter-spacing: 0.1em;
+  margin-bottom: 7px;
+}
+.eng-status.status-Unlocked { color: var(--green); }
+.eng-status.status-Invited  { color: var(--gold); }
+.eng-status.status-Known    { color: var(--text-mute); }
+.eng-status.status-Barred   { color: var(--red); }
+.eng-rank-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 4px;
+}
+.eng-rank-num {
+  font-family: var(--display);
+  font-size: 1.3em;
+  color: var(--cyan2);
+  line-height: 1;
+}
+.eng-rank-lbl {
+  font-family: var(--mono);
+  font-size: 0.58em;
+  color: var(--text-mute);
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+}
+.eng-progress-bar {
+  height: 3px;
+  background: var(--border);
+  border-radius: 1px;
+  overflow: hidden;
+  margin-top: 4px;
+}
+.eng-progress-fill {
+  height: 100%;
+  border-radius: 1px;
+  background: var(--cyan);
+  transition: width 0.8s ease;
+}
+.eng-no-data {
+  padding: 32px 24px;
+  font-family: var(--mono);
+  font-size: 0.78em;
+  color: var(--text-mute);
+  opacity: 0.5;
+}
+
+/* ── Materials Sub-page ────────────────────────────────────────────────────── */
+/* ── Materials: category-rows × grade-columns table ─────────────────────── */
+.mat-table {
+  display: grid;
+  /* col 0 = row label, cols 1-5 = grades */
+  grid-template-columns: 90px repeat(5, 1fr);
+  border-top: 1px solid var(--border);
+}
+
+/* Grade header row (top-left corner cell + 5 grade headers) */
+.mat-th-corner {
+  background: var(--bg2);
+  border-right: 1px solid var(--border);
+  border-bottom: 2px solid var(--border2);
+}
+.mat-th-grade {
+  padding: 10px 10px 8px;
+  background: var(--bg2);
+  border-right: 1px solid var(--border);
+  border-bottom: 2px solid;
+  text-align: center;
+}
+.mat-th-grade:last-child { border-right: none; }
+.mat-th-grade.g1 { border-bottom-color: #a0b880; }
+.mat-th-grade.g2 { border-bottom-color: #7ecfcf; }
+.mat-th-grade.g3 { border-bottom-color: #d4b84a; }
+.mat-th-grade.g4 { border-bottom-color: #c080d0; }
+.mat-th-grade.g5 { border-bottom-color: #e07060; }
+.mat-th-grade-title {
+  font-family: var(--display);
+  font-size: 0.63em;
+  font-weight: 700;
+  letter-spacing: 0.15em;
+  text-transform: uppercase;
+  margin-bottom: 2px;
+}
+.mat-th-grade.g1 .mat-th-grade-title { color: #a0b880; }
+.mat-th-grade.g2 .mat-th-grade-title { color: #7ecfcf; }
+.mat-th-grade.g3 .mat-th-grade-title { color: #d4b84a; }
+.mat-th-grade.g4 .mat-th-grade-title { color: #c080d0; }
+.mat-th-grade.g5 .mat-th-grade-title { color: #e07060; }
+.mat-th-grade-max {
+  font-family: var(--mono);
+  font-size: 0.56em;
+  color: var(--text-mute);
+}
+
+/* Row label cells */
+.mat-row-label {
+  display: flex;
+  align-items: flex-start;
+  justify-content: flex-end;
+  padding: 12px 10px 0 8px;
+  border-right: 1px solid var(--border);
+  border-bottom: 1px solid var(--border);
+  background: var(--bg2);
+}
+.mat-row-label-text {
+  font-family: var(--display);
+  font-size: 0.55em;
+  font-weight: 700;
+  letter-spacing: 0.2em;
+  text-transform: uppercase;
+  writing-mode: vertical-rl;
+  transform: rotate(180deg);
+  padding-bottom: 10px;
+}
+.mat-row-label.raw          { border-left: 3px solid #a0b880; }
+.mat-row-label.raw          .mat-row-label-text { color: #a0b880; }
+.mat-row-label.manufactured { border-left: 3px solid #7ecfcf; }
+.mat-row-label.manufactured .mat-row-label-text { color: #7ecfcf; }
+.mat-row-label.encoded      { border-left: 3px solid #c080d0; }
+.mat-row-label.encoded      .mat-row-label-text { color: #c080d0; }
+
+/* Individual cells */
+.mat-cell {
+  border-right: 1px solid var(--border);
+  border-bottom: 1px solid var(--border);
+  vertical-align: top;
+}
+.mat-cell:last-child { border-right: none; }
+
+/* Material rows within a cell */
+.mat-item {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  padding: 4px 8px 4px 10px;
+  border-bottom: 1px solid var(--border);
+  position: relative;
+  overflow: hidden;
+}
+.mat-item:last-child { border-bottom: none; }
+.mat-item-fill {
+  position: absolute;
+  top: 0; left: 0; bottom: 0;
+  opacity: 0.07;
+  pointer-events: none;
+}
+.mat-name {
+  font-family: var(--mono);
+  font-size: 0.65em;
+  color: var(--text-dim);
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.mat-item-right {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  flex-shrink: 0;
+}
+.mat-count {
+  font-family: var(--display);
+  font-size: 0.8em;
+  font-weight: 700;
+  line-height: 1.1;
+}
+.mat-count-max {
+  font-family: var(--mono);
+  font-size: 0.52em;
+  color: var(--text-mute);
+  line-height: 1.2;
+}
+.mat-cell-empty {
+  padding: 16px 10px;
+  font-family: var(--mono);
+  font-size: 0.65em;
+  color: var(--text-mute);
+  opacity: 0.3;
+  text-align: center;
+}
+
 /* ── Live Status Strip ─────────────────────────────────────────────────────── */
 #prof-status-strip {
   display: none;
@@ -216,6 +467,7 @@
   <span class="tb-sys" id="tb-sys">&#8212;</span><span id="tb-discovery-star" title="First Discovery!" style="display:none;color:var(--gold);margin-left:4px;font-size:0.85em;">&#9733;</span>
   <div class="tab-nav">
     <a class="tab-btn" href="index.html">Live</a>
+    <a class="tab-btn" href="ship.html">Ship</a>
     <a class="tab-btn active" href="profile.html">Profile</a>
     <a class="tab-btn" href="history.html">History</a>
     <a class="tab-btn" href="spansh.html">Spansh</a>
@@ -236,6 +488,18 @@
 
   <!-- ── Main content ────────────────────────────────────────────────────── -->
   <div id="prof-content" style="display:none;">
+
+    <!-- ── Sub-tab navigation ───────────────────────────────────────────── -->
+    <div id="prof-subtab-bar">
+      <button class="prof-subtab active" data-subtab="overview">Overview</button>
+      <button class="prof-subtab" data-subtab="engineers">Engineers</button>
+      <button class="prof-subtab" data-subtab="materials">Materials</button>
+    </div>
+
+    <!-- ════════════════════════════════════════════════════════════════════ -->
+    <!-- OVERVIEW SUB-PAGE                                                   -->
+    <!-- ════════════════════════════════════════════════════════════════════ -->
+    <div id="prof-subpage-overview" class="prof-subpage active">
 
     <!-- ════════════════════════════════════════════════════════════════════ -->
     <!-- HERO IDENTITY CARD                                                   -->
@@ -420,6 +684,30 @@
         ">&#8635; Sync</button>
       </div>
     </div>
+
+    </div><!-- /prof-subpage-overview -->
+
+    <!-- ════════════════════════════════════════════════════════════════════ -->
+    <!-- ENGINEERS SUB-PAGE                                                  -->
+    <!-- Unlocked engineers from EngineerProgress journal events             -->
+    <!-- ════════════════════════════════════════════════════════════════════ -->
+    <div id="prof-subpage-engineers" class="prof-subpage">
+      <div class="prof-section" style="background:var(--panel);border-bottom:1px solid var(--border);">
+        <div class="prof-title">Unlocked Engineers</div>
+      </div>
+      <div id="prof-engineers-grid" class="eng-grid"></div>
+    </div><!-- /prof-subpage-engineers -->
+
+    <!-- ════════════════════════════════════════════════════════════════════ -->
+    <!-- MATERIALS SUB-PAGE                                                  -->
+    <!-- Commander material inventory from Materials journal events          -->
+    <!-- ════════════════════════════════════════════════════════════════════ -->
+    <div id="prof-subpage-materials" class="prof-subpage">
+      <div class="prof-section" style="background:var(--panel);border-bottom:1px solid var(--border);">
+        <div class="prof-title">Materials Inventory</div>
+      </div>
+      <div id="prof-materials-by-grade"></div>
+    </div><!-- /prof-subpage-materials -->
 
   </div><!-- /prof-content -->
 </div><!-- /view-profile -->
@@ -950,6 +1238,323 @@
     document.addEventListener('DOMContentLoaded', maybeStartSync);
   } else {
     maybeStartSync();
+  }
+
+}());
+</script>
+
+<script>
+// ═════════════════════════════════════════════════════════════════════════════
+// Profile Sub-tabs  —  Engineers  +  Materials
+// ═════════════════════════════════════════════════════════════════════════════
+(function () {
+  'use strict';
+
+  // ── Sub-tab switching ───────────────────────────────────────────────────────
+  var tabs     = document.querySelectorAll('.prof-subtab');
+  var subpages = document.querySelectorAll('.prof-subpage');
+
+  tabs.forEach(function (btn) {
+    btn.addEventListener('click', function () {
+      var target = btn.getAttribute('data-subtab');
+      tabs.forEach(function (t) { t.classList.remove('active'); });
+      subpages.forEach(function (p) { p.classList.remove('active'); });
+      btn.classList.add('active');
+      var page = document.getElementById('prof-subpage-' + target);
+      if (page) page.classList.add('active');
+    });
+  });
+
+  // ── HTML escape ─────────────────────────────────────────────────────────────
+  function esc(s) {
+    return String(s || '').replace(/&/g,'&amp;').replace(/</g,'&lt;')
+      .replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+  }
+
+  // ── Render Engineers ────────────────────────────────────────────────────────
+  // Static lookup: EngineerID → home system
+  // Engineer ID → home system (verified against journal EngineerProgress events + Elite Dangerous wiki)
+  var ENGINEER_SYSTEMS = {
+    // ── Ship Engineers (Core Systems) ────────────────────────────────────────
+    300100: 'Deciat',           // Felicity Farseer
+    300160: 'Khun',             // Elvira Martuuk
+    300080: 'Eurybia',          // Liz Ryder
+    300180: 'Wyrd',             // The Dweller
+    300120: 'Laksak',           // Lei Cheung
+    300260: 'Wolf 397',         // Tod "The Blaster" McQuinn
+    300060: 'Kuk',              // Selene Jean
+    300210: 'Kuwemaki',         // Hera Tani
+    300200: 'Muang',            // Broo Tarquin
+    300130: 'Sirius',           // Marco Qwent
+    300110: 'Meene',            // Ram Tah
+    300010: 'Leesti',           // Didi Vatermann
+    300140: 'Sol',              // Colonel Bris Dekker
+    300250: 'Giryak',           // Juri Ishmaak
+    300170: 'Arque',            // Professor Palin
+    300090: 'Alioth',           // Bill Turner
+    300220: 'Shinrarta Dezhra', // Lori Jameson
+    300270: 'Achenar',          // Tiana Fortune
+    300230: 'Beta-3 Tucani',    // The Sarge
+    300150: 'Tir',              // Marsha Hicks
+    300190: 'Los',              // Etienne Dorn
+    300240: 'Luchtaine',        // Mel Brandon
+    300280: 'Asura',            // Petra Olmanova
+    300320: 'Shenve',           // Chloe Sedesi
+    300070: 'Yoru',             // Zacariah Nemo
+    // ── Pilot Equipment Engineers (Core Systems) ─────────────────────────────
+    400002: 'Orishis',          // Domino Green
+    400003: 'Siris',            // Hero Ferrari
+    400001: 'Aurai',            // Jude Navarro
+    400004: 'Capoya',           // Kit Fowler
+    400009: 'Candiaei',         // Oden Geiger
+    400005: 'Shou Xing',        // Terra Velasquez
+    400008: 'Xuane',            // Uma Laszlo
+    400006: 'Jolapa',           // Wellington Beck
+    400007: 'Bayan',            // Yarden Bond
+    // ── Pilot Equipment Engineers (Colonia) ──────────────────────────────────
+    400010: 'Deriso',           // Baltanos
+    400011: 'Desy',             // Eleanor Bresa
+    400012: 'Kojeara',          // Rosa Dayette
+    400013: 'Einheriar',        // Yi Shen
+  };
+
+  function renderEngineers(engineers) {
+    var grid = document.getElementById('prof-engineers-grid');
+    if (!grid) return;
+
+    var ORDER = { Unlocked: 0, Invited: 1, Known: 2, Barred: 3 };
+    var sorted = engineers.slice().sort(function (a, b) {
+      var pa = ORDER[a.progress] != null ? ORDER[a.progress] : 99;
+      var pb = ORDER[b.progress] != null ? ORDER[b.progress] : 99;
+      if (pa !== pb) return pa - pb;
+      return (b.rank || 0) - (a.rank || 0);
+    });
+
+    if (!sorted.length) {
+      grid.innerHTML = '<div class="eng-no-data">No engineer data found in journals. Scan all journals to populate this view.</div>';
+      return;
+    }
+
+    grid.innerHTML = sorted.map(function (eng) {
+      var progressCls = 'progress-' + (eng.progress || 'Unknown');
+      var statusCls   = 'status-'   + (eng.progress || 'Unknown');
+      var rankNum     = eng.rank != null ? eng.rank : '';
+      var rankPct     = eng.rankProgress != null ? eng.rankProgress : null;
+      var system      = ENGINEER_SYSTEMS[eng.id] || '';
+      var rankBar     = rankPct != null
+        ? '<div class="eng-progress-bar"><div class="eng-progress-fill" style="width:' + rankPct + '%;"></div></div>' +
+          '<div style="font-family:var(--mono);font-size:0.58em;color:var(--text-mute);text-align:right;margin-top:2px;">' + rankPct + '% to next</div>'
+        : '';
+
+      return '<div class="eng-card ' + progressCls + '">' +
+        '<div class="eng-name" title="' + esc(eng.name) + '">' + esc(eng.name) + '</div>' +
+        (system ? '<div style="font-family:var(--mono);font-size:0.6em;color:var(--text-mute);margin-top:1px;margin-bottom:4px;">' + esc(system) + '</div>' : '') +
+        '<div class="eng-status ' + statusCls + '">' + esc(eng.progress || 'Unknown') + '</div>' +
+        (eng.rank != null
+          ? '<div class="eng-rank-row">' +
+              '<div class="eng-rank-num">G' + rankNum + '</div>' +
+              '<div class="eng-rank-lbl">Grade</div>' +
+            '</div>'
+          : '') +
+        rankBar +
+      '</div>';
+    }).join('');
+  }
+
+  // ── Material Grade & Name Lookup ────────────────────────────────────────────
+  var MATERIAL_GRADES = {
+    // RAW — Grade 1
+    carbon:1, iron:1, lead:1, nickel:1, phosphorus:1, rhenium:1, sulphur:1,
+    // RAW — Grade 2
+    arsenic:2, chromium:2, germanium:2, manganese:2, vanadium:2, zinc:2, zirconium:2,
+    // RAW — Grade 3
+    boron:3, cadmium:3, mercury:3, molybdenum:3, niobium:3, tin:3, tungsten:3,
+    // RAW — Grade 4
+    antimony:4, polonium:4, ruthenium:4, selenium:4, technetium:4, tellurium:4, yttrium:4,
+    // MANUFACTURED — Grade 1
+    basicconductors:1, chemicalstorageunits:1, compactcomposites:1, crystalshards:1,
+    gridresistors:1, heatconductionwiring:1, mechanicalscrap:1, salvagedalloys:1,
+    temperedalloys:1, wornshieldemitters:1,
+    // MANUFACTURED — Grade 2
+    chemicalprocessors:2, conductivecomponents:2, filamentcomposites:2, flawedfocuscrystals:2,
+    galvanisingalloys:2, heatdispersionplate:2, heatresistanttoughcomposite:2,
+    mechanicalequipment:2, shieldemitters:2, uncutfocuscrystals:2,
+    // MANUFACTURED — Grade 3
+    chemicaldistillery:3, conductiveceramics:3, conductiveceramic:3, electrochemicalarrays:3,
+    focuscrystals:3, heatexchangers:3, highdensitycomposites:3, mechanicalcomponents:3,
+    phasealloys:3, precipitatedalloys:3, refinedfocuscrystals:3, shieldingsensors:3,
+    unknownfragment:3,
+    // MANUFACTURED — Grade 4
+    chemicalmanipulators:4, compoundshielding:4, conductivepolymers:4, configurablecomponents:4,
+    heatvanes:4, polymercapacitors:4, protoheatradiators:4, militarygradealloys:4,
+    militarysupercapacitors:4, pharmaceuticalisolators:4, thermicalloys:4,
+    // MANUFACTURED — Grade 5
+    bioelectricchemicals:5, biotechconductors:5, corrosionresistantcargoracks:5,
+    exquisitefocuscrystals:5, exquisitecystalshards:5, improvisedcomponents:5,
+    magneticemittercoupling:5, mutatingcatalyst:5, protolightalloys:5,
+    protoradiolicalloys:5, rareexoticcrystals:5, unknownenergysource:5, unknownorganiccircuitry:5,
+    // ENCODED — Grade 1
+    legacyfirmware:1, disruptedwakeechoes:1, anomalousbulkscandata:1,
+    unusualencryptedfiles:1, unidentifiedscanarchives:1, classifiedscandata:1,
+    // ENCODED — Grade 2
+    consumerfirmware:2, fsdtelemetry:2, inconsistentshieldsoakanalysis:2,
+    encryptedfiles:2, encrytpedfiles:2, scanarchives:2, encodedscandata:2,
+    // ENCODED — Grade 3
+    industrialfirmware:3, wakesolutions:3, symmetrickeys:3, embeddedfirmware:3,
+    securityfirmwarepatch:3, scannedemissiondata:3, adaptiveencryptors:3,
+    // ENCODED — Grade 4
+    modifiedconsumerfirmware:4, hyperspacetrajectories:4, dataminedwake:4,
+    accessiblelogs:4, encryptionarchives:4, classifiedscanarchives:4,
+    // ENCODED — Grade 5
+    classifiedfirmware:5, dataminedwakeexceptions:5, adaptiveencryptorsuite:5,
+    divergentscansensors:5, modifiedembeddedfirmware:5, securityfirmware:5,
+    abnormalcompactedrelativitysupport:5,
+  };
+
+  var MATERIAL_FULL_NAMES = {
+    carbon:'Carbon', iron:'Iron', lead:'Lead', nickel:'Nickel', phosphorus:'Phosphorus',
+    rhenium:'Rhenium', sulphur:'Sulphur', arsenic:'Arsenic', chromium:'Chromium',
+    germanium:'Germanium', manganese:'Manganese', vanadium:'Vanadium', zinc:'Zinc',
+    zirconium:'Zirconium', boron:'Boron', cadmium:'Cadmium', mercury:'Mercury',
+    molybdenum:'Molybdenum', niobium:'Niobium', tin:'Tin', tungsten:'Tungsten',
+    antimony:'Antimony', polonium:'Polonium', ruthenium:'Ruthenium', selenium:'Selenium',
+    technetium:'Technetium', tellurium:'Tellurium', yttrium:'Yttrium',
+    basicconductors:'Basic Conductors', chemicalstorageunits:'Chemical Storage Units',
+    compactcomposites:'Compact Composites', crystalshards:'Crystal Shards',
+    gridresistors:'Grid Resistors', heatconductionwiring:'Heat Conduction Wiring',
+    mechanicalscrap:'Mechanical Scrap', salvagedalloys:'Salvaged Alloys',
+    temperedalloys:'Tempered Alloys', wornshieldemitters:'Worn Shield Emitters',
+    chemicalprocessors:'Chemical Processors', conductivecomponents:'Conductive Components',
+    filamentcomposites:'Filament Composites', flawedfocuscrystals:'Flawed Focus Crystals',
+    galvanisingalloys:'Galvanising Alloys', heatdispersionplate:'Heat Dispersion Plate',
+    heatresistanttoughcomposite:'Heat Resistant Composite',
+    mechanicalequipment:'Mechanical Equipment', shieldemitters:'Shield Emitters',
+    uncutfocuscrystals:'Uncut Focus Crystals', chemicaldistillery:'Chemical Distillery',
+    conductiveceramics:'Conductive Ceramics', conductiveceramic:'Conductive Ceramics',
+    electrochemicalarrays:'Electrochemical Arrays', focuscrystals:'Focus Crystals',
+    heatexchangers:'Heat Exchangers', highdensitycomposites:'High Density Composites',
+    mechanicalcomponents:'Mechanical Components', phasealloys:'Phase Alloys',
+    precipitatedalloys:'Precipitated Alloys', refinedfocuscrystals:'Refined Focus Crystals',
+    shieldingsensors:'Shielding Sensors', unknownfragment:'Unknown Fragment',
+    chemicalmanipulators:'Chemical Manipulators', compoundshielding:'Compound Shielding',
+    conductivepolymers:'Conductive Polymers', configurablecomponents:'Configurable Components',
+    heatvanes:'Heat Vanes', polymercapacitors:'Polymer Capacitors',
+    protoheatradiators:'Proto Heat Radiators', militarygradealloys:'Military Grade Alloys',
+    militarysupercapacitors:'Military Supercapacitors',
+    pharmaceuticalisolators:'Pharmaceutical Isolators', thermicalloys:'Thermic Alloys',
+    bioelectricchemicals:'Bioelectric Chemicals', biotechconductors:'Biotech Conductors',
+    corrosionresistantcargoracks:'Corrosion Resistant Cargo Racks',
+    exquisitefocuscrystals:'Exquisite Focus Crystals', exquisitecystalshards:'Exquisite Focus Crystals',
+    improvisedcomponents:'Improvised Components', magneticemittercoupling:'Magnetic Emitter Coupling',
+    mutatingcatalyst:'Mutating Catalyst', protolightalloys:'Proto Light Alloys',
+    protoradiolicalloys:'Proto Radiolic Alloys', rareexoticcrystals:'Rare Exotic Crystals',
+    unknownenergysource:'Unknown Energy Source', unknownorganiccircuitry:'Unknown Organic Circuitry',
+    legacyfirmware:'Exceptional Scrambled Emission Data',
+    disruptedwakeechoes:'Disrupted Wake Echoes', anomalousbulkscandata:'Anomalous Bulk Scan Data',
+    unusualencryptedfiles:'Unusual Encrypted Files', unidentifiedscanarchives:'Unidentified Scan Archives',
+    classifiedscandata:'Classified Scan Data', consumerfirmware:'Modified Consumer Firmware',
+    fsdtelemetry:'FSD Telemetry', inconsistentshieldsoakanalysis:'Inconsistent Shield Soak Analysis',
+    encryptedfiles:'Encrypted Files', encrytpedfiles:'Encrypted Files',
+    scanarchives:'Scan Archives', encodedscandata:'Encoded Scan Data',
+    industrialfirmware:'Cracked Industrial Firmware', wakesolutions:'Strange Wake Solutions',
+    symmetrickeys:'Open Symmetric Keys', embeddedfirmware:'Atypical Encryption Archives',
+    securityfirmwarepatch:'Security Firmware Patch', scannedemissiondata:'Tagged Encryption Codes',
+    adaptiveencryptors:'Adaptive Encryptors Capture', modifiedconsumerfirmware:'Modified Consumer Firmware',
+    hyperspacetrajectories:'Hyperspace Trajectories', dataminedwake:'Datamined Wake Exceptions',
+    accessiblelogs:'Aberrant Shield Pattern Analysis', encryptionarchives:'Atypical Encryption Archives',
+    classifiedscanarchives:'Classified Scan Archives', classifiedfirmware:'Classified Firmware Decryption',
+    dataminedwakeexceptions:'Datamined Wake Exceptions', adaptiveencryptorsuite:'Adaptive Encryptors Capture',
+    divergentscansensors:'Divergent Scan Data', modifiedembeddedfirmware:'Modified Embedded Firmware',
+    securityfirmware:'Security Firmware Patch',
+    abnormalcompactedrelativitysupport:'Abnormal Compact Relativity Support',
+  };
+
+  var GRADE_MAX   = {1:300, 2:250, 3:200, 4:150, 5:100};
+  var GRADE_COLOR = {1:'#a0b880', 2:'#7ecfcf', 3:'#d4b84a', 4:'#c080d0', 5:'#e07060'};
+  var GRADE_CLS   = {1:'g1', 2:'g2', 3:'g3', 4:'g4', 5:'g5'};
+  var CAT_DOT_CLS = {Raw:'raw', Manufactured:'manufactured', Encoded:'encoded'};
+
+  // ── Render Materials ─────────────────────────────────────────────────────────
+  function renderMaterials(materials) {
+    var el = document.getElementById('prof-materials-by-grade');
+    if (!el) return;
+
+    var CATS = ['Raw','Manufactured','Encoded'];
+    var CAT_CLS_MAP = {Raw:'raw', Manufactured:'manufactured', Encoded:'encoded'};
+
+    // Build lookup: cat → grade → [items]
+    var byGroup = {};
+    CATS.forEach(function(cat) {
+      byGroup[cat] = {1:[],2:[],3:[],4:[],5:[]};
+      (materials[cat] || []).forEach(function(m) {
+        var key   = (m.Name || '').toLowerCase().replace(/[^a-z0-9]/g,'');
+        var grade = MATERIAL_GRADES[key] || null;
+        var name  = m.Name_Localised || MATERIAL_FULL_NAMES[key] || m.Name || '?';
+        if (grade) byGroup[cat][grade].push({name:name, count:m.Count||0});
+      });
+      // Sort each cell alphabetically
+      [1,2,3,4,5].forEach(function(g) {
+        byGroup[cat][g].sort(function(a,b){ return a.name.localeCompare(b.name); });
+      });
+    });
+
+    var html = '<div class="mat-table">';
+
+    // ── Header row: corner + grade headers ──────────────────────────────────
+    html += '<div class="mat-th-corner"></div>';
+    [1,2,3,4,5].forEach(function(g) {
+      var gcls = GRADE_CLS[g];
+      html += '<div class="mat-th-grade '+gcls+'">';
+      html += '<div class="mat-th-grade-title">Grade '+g+'</div>';
+      html += '<div class="mat-th-grade-max">max '+GRADE_MAX[g]+'</div>';
+      html += '</div>';
+    });
+
+    // ── 3 data rows: one per category ───────────────────────────────────────
+    CATS.forEach(function(cat) {
+      var catCls = CAT_CLS_MAP[cat];
+
+      // Row label
+      html += '<div class="mat-row-label '+catCls+'">';
+      html += '<div class="mat-row-label-text">'+cat+'</div>';
+      html += '</div>';
+
+      // 5 cells
+      [1,2,3,4,5].forEach(function(g) {
+        var items  = byGroup[cat][g];
+        var maxVal = GRADE_MAX[g];
+        var color  = GRADE_COLOR[g];
+
+        html += '<div class="mat-cell">';
+        if (!items.length) {
+          html += '<div class="mat-cell-empty">—</div>';
+        } else {
+          items.forEach(function(m) {
+            var fillPct = Math.min(100, Math.round((m.count / maxVal) * 100));
+            html += '<div class="mat-item">';
+            html += '<div class="mat-item-fill" style="width:'+fillPct+'%;background:'+color+'"></div>';
+            html += '<div class="mat-name" title="'+esc(m.name)+'">'+esc(m.name)+'</div>';
+            html += '<div class="mat-item-right">';
+            html += '<div class="mat-count" style="color:'+color+'">'+m.count+'</div>';
+            html += '<div class="mat-count-max">/'+maxVal+'</div>';
+            html += '</div>';
+            html += '</div>';
+          });
+        }
+        html += '</div>'; // .mat-cell
+      });
+    });
+
+    html += '</div>'; // .mat-table
+    el.innerHTML = html;
+  }
+
+  // ── Listen for profile data ─────────────────────────────────────────────────
+  if (window.electronAPI && window.electronAPI.onProfileData) {
+    window.electronAPI.onProfileData(function (p) {
+      if (p.engineers) renderEngineers(p.engineers);
+      if (p.materials) renderMaterials(p.materials);
+    });
   }
 
 }());

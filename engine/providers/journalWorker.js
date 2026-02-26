@@ -61,6 +61,8 @@ async function run() {
   let profileProgress   = null;
   let profileReputation = null;
   let profileStats      = null;
+  let profileEngineers  = {};   // engineerID → engineer record
+  let profileMaterials  = null; // { Raw: [], Manufactured: [], Encoded: [] }
 
   for (let fileIndex = 0; fileIndex < files.length; fileIndex++) {
     const filePath = files[fileIndex];
@@ -259,16 +261,21 @@ async function run() {
           if (ev === 'Loadout') {
             if (!liveData) liveData = {};
             liveData.ship          = entry.Ship_Localised || entry.Ship;
+            liveData.shipRaw       = entry.Ship || '';
             liveData.shipName      = entry.ShipName  || '';
             liveData.shipIdent     = entry.ShipIdent || '';
             liveData.maxJumpRange  = entry.MaxJumpRange ? entry.MaxJumpRange.toFixed(2) + ' ly' : null;
             liveData.cargoCapacity = entry.CargoCapacity != null ? entry.CargoCapacity : (liveData.cargoCapacity ?? null);
+            liveData.unladenMass   = entry.UnladenMass   != null ? entry.UnladenMass   : null;
+            liveData.hullValue     = entry.HullValue     != null ? entry.HullValue     : null;
+            liveData.modulesValue  = entry.ModulesValue  != null ? entry.ModulesValue  : null;
+            liveData.rebuy         = entry.Rebuy         != null ? entry.Rebuy         : null;
+            liveData.modules       = entry.Modules       || [];
             if (entry.FuelCapacity != null) {
               liveData.fuelCapacity = typeof entry.FuelCapacity === 'object'
                 ? entry.FuelCapacity.Main
                 : entry.FuelCapacity;
             }
-            liveData.rebuy = entry.Rebuy ?? null;
             // Hull resets to 100% on a fresh Loadout (subsequent HullHealth events update it)
             liveData.hull = 100;
             // Emit immediately so ship switches (SRV, fighter, stored ship) update the UI in real time.
@@ -377,6 +384,41 @@ async function run() {
             // Keep the full raw Statistics object — renderer will access sub-keys directly
             profileStats = entry;
           }
+
+          // ── EngineerProgress — full array (on login) or single update ──────
+          if (ev === 'EngineerProgress') {
+            if (Array.isArray(entry.Engineers)) {
+              // Full snapshot from login — replace everything
+              profileEngineers = {};
+              entry.Engineers.forEach(eng => {
+                profileEngineers[eng.EngineerID] = {
+                  name:         eng.Engineer,
+                  id:           eng.EngineerID,
+                  progress:     eng.Progress,
+                  rank:         eng.Rank         || null,
+                  rankProgress: eng.RankProgress || null,
+                };
+              });
+            } else if (entry.Engineer && entry.EngineerID) {
+              // Single engineer update
+              profileEngineers[entry.EngineerID] = {
+                name:         entry.Engineer,
+                id:           entry.EngineerID,
+                progress:     entry.Progress,
+                rank:         entry.Rank         || null,
+                rankProgress: entry.RankProgress || null,
+              };
+            }
+          }
+
+          // ── Materials — full inventory snapshot ───────────────────────────
+          if (ev === 'Materials') {
+            profileMaterials = {
+              Raw:          entry.Raw          || [],
+              Manufactured: entry.Manufactured || [],
+              Encoded:      entry.Encoded      || [],
+            };
+          }
         }
 
       } catch {
@@ -414,6 +456,8 @@ async function run() {
         progress:   profileProgress   || {},
         reputation: profileReputation || {},
         stats:      profileStats      || {},   // raw Statistics event object
+        engineers:  Object.values(profileEngineers),
+        materials:  profileMaterials  || { Raw: [], Manufactured: [], Encoded: [] },
       }
     });
   }

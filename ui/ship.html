@@ -1,0 +1,779 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>Elite Explorer — Ship</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Rajdhani:wght@400;500;600;700&family=Share+Tech+Mono&family=Orbitron:wght@400;500;700&family=Exo+2:wght@200;300;400&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="styles.css">
+<style>
+
+/* ── Ship page base font ───────────────────────────────────────────────────── */
+#view-ship, #ship-identity, #ship-loadout {
+  font-size: 1.13em;
+}
+
+/* ── Ship page layout ──────────────────────────────────────────────────────── */
+#view-ship {
+  display: flex;
+  flex-direction: column;
+  flex: 1;
+  overflow: hidden;
+}
+
+/* ── Identity bar ──────────────────────────────────────────────────────────── */
+#ship-identity {
+  display: flex;
+  align-items: center;
+  gap: 20px;
+  padding: 14px 24px;
+  background: var(--panel);
+  border-bottom: 1px solid var(--border);
+  flex-shrink: 0;
+}
+#ship-name {
+  font-family: var(--display);
+  font-size: 1.2em;
+  font-weight: 700;
+  letter-spacing: 0.12em;
+  color: var(--cyan2);
+  text-transform: uppercase;
+}
+#ship-type {
+  font-family: var(--mono);
+  font-size: 0.72em;
+  color: var(--text-dim);
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+}
+#ship-ident {
+  font-family: var(--mono);
+  font-size: 0.7em;
+  color: var(--text-mute);
+  letter-spacing: 0.15em;
+  border: 1px solid var(--border2);
+  padding: 2px 8px;
+  border-radius: 2px;
+}
+.ship-stat-pill {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 1px;
+  padding: 4px 14px;
+  border-left: 1px solid var(--border);
+}
+.ship-stat-pill:first-of-type { margin-left: 8px; }
+.ship-stat-val {
+  font-family: var(--display);
+  font-size: 0.92em;
+  font-weight: 700;
+  color: var(--gold2);
+}
+.ship-stat-lbl {
+  font-family: var(--mono);
+  font-size: 0.62em;
+  color: var(--text-mute);
+  letter-spacing: 0.15em;
+  text-transform: uppercase;
+}
+
+/* ── No data state ─────────────────────────────────────────────────────────── */
+#ship-no-data {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  flex: 1;
+  gap: 10px;
+  color: var(--text-mute);
+  font-family: var(--mono);
+  font-size: 0.75em;
+  letter-spacing: 0.1em;
+}
+
+/* ── Loadout grid ──────────────────────────────────────────────────────────── */
+#ship-loadout {
+  flex: 1;
+  overflow-y: auto;
+  padding: 16px 20px;
+  display: none;
+}
+#ship-loadout::-webkit-scrollbar { width: 3px; }
+#ship-loadout::-webkit-scrollbar-thumb { background: var(--border2); border-radius: 2px; }
+
+.loadout-section {
+  margin-bottom: 20px;
+}
+.loadout-section-title {
+  font-family: var(--display);
+  font-size: 0.65em;
+  font-weight: 700;
+  letter-spacing: 0.28em;
+  text-transform: uppercase;
+  color: var(--gold);
+  padding-bottom: 6px;
+  margin-bottom: 8px;
+  border-bottom: 1px solid var(--border2);
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+.loadout-section-title::after {
+  content: '';
+  flex: 1;
+  height: 1px;
+  background: linear-gradient(to right, var(--border2), transparent);
+}
+
+.loadout-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(300px, 1fr));
+  gap: 6px;
+}
+
+.module-card {
+  background: var(--panel2);
+  border: 1px solid var(--border);
+  border-radius: 3px;
+  padding: 8px 12px;
+  position: relative;
+  overflow: hidden;
+}
+.module-card.is-off {
+  opacity: 0.45;
+}
+.module-card.is-engineered {
+  border-color: var(--border2);
+}
+.module-card.is-engineered::before {
+  content: '';
+  position: absolute;
+  top: 0; left: 0;
+  width: 2px;
+  height: 100%;
+  background: var(--gold);
+  opacity: 0.7;
+}
+
+.module-slot {
+  font-family: var(--mono);
+  font-size: 0.65em;
+  color: var(--text-mute);
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  margin-bottom: 3px;
+}
+.module-name {
+  font-family: var(--head);
+  font-size: 0.92em;
+  font-weight: 600;
+  color: var(--text);
+  line-height: 1.2;
+}
+.module-card.is-off .module-name {
+  color: var(--text-dim);
+}
+
+.module-engineering {
+  margin-top: 5px;
+  padding-top: 5px;
+  border-top: 1px solid var(--border);
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 4px 8px;
+}
+.eng-blueprint {
+  font-family: var(--mono);
+  font-size: 0.7em;
+  color: var(--gold);
+  letter-spacing: 0.04em;
+}
+.eng-grade {
+  font-family: var(--display);
+  font-size: 0.68em;
+  font-weight: 700;
+  color: var(--gold2);
+  letter-spacing: 0.1em;
+}
+.eng-experimental {
+  font-family: var(--mono);
+  font-size: 0.68em;
+  color: var(--cyan);
+  letter-spacing: 0.04em;
+  font-style: italic;
+}
+
+.module-off-badge {
+  font-family: var(--mono);
+  font-size: 0.52em;
+  color: var(--red);
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  float: right;
+  margin-top: 2px;
+}
+
+/* ── Ship page tabs (Loadout / Settings) ───────────────────────────────────── */
+#ship-tabs {
+  display: none;
+  align-items: center;
+  gap: 0;
+  padding: 0 20px;
+  background: var(--panel);
+  border-bottom: 1px solid var(--border);
+  flex-shrink: 0;
+}
+.ship-tab-btn {
+  font-family: var(--display);
+  font-size: 0.62em;
+  font-weight: 700;
+  letter-spacing: 0.18em;
+  text-transform: uppercase;
+  color: var(--text-dim);
+  background: none;
+  border: none;
+  border-bottom: 2px solid transparent;
+  padding: 10px 18px;
+  cursor: pointer;
+  transition: color .15s, border-color .15s;
+}
+.ship-tab-btn:hover { color: var(--text); }
+.ship-tab-btn.active { color: var(--cyan2); border-bottom-color: var(--cyan2); }
+
+/* ── Build export panel ─────────────────────────────────────────────────────── */
+#ship-settings {
+  flex: 1;
+  overflow-y: auto;
+  padding: 24px 28px;
+  display: none;
+}
+#ship-settings::-webkit-scrollbar { width: 3px; }
+#ship-settings::-webkit-scrollbar-thumb { background: var(--border2); border-radius: 2px; }
+
+.settings-section-title {
+  font-family: var(--display);
+  font-size: 0.65em;
+  font-weight: 700;
+  letter-spacing: 0.28em;
+  text-transform: uppercase;
+  color: var(--gold);
+  padding-bottom: 8px;
+  margin-bottom: 16px;
+  border-bottom: 1px solid var(--border2);
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+.settings-section-title::after {
+  content: '';
+  flex: 1;
+  height: 1px;
+  background: linear-gradient(to right, var(--border2), transparent);
+}
+
+.export-builder-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(260px, 1fr));
+  gap: 16px;
+  margin-bottom: 28px;
+}
+
+.export-builder-card {
+  background: var(--panel2);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  padding: 18px 20px;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  position: relative;
+  overflow: hidden;
+}
+.export-builder-card::before {
+  content: '';
+  position: absolute;
+  top: 0; left: 0;
+  width: 100%; height: 2px;
+}
+.export-builder-card.coriolis::before { background: linear-gradient(to right, #2a7fff, transparent); }
+.export-builder-card.edsy::before    { background: linear-gradient(to right, #e86030, transparent); }
+
+.export-builder-name {
+  font-family: var(--display);
+  font-size: 0.85em;
+  font-weight: 700;
+  letter-spacing: 0.1em;
+  color: var(--text);
+}
+.export-builder-card.coriolis .export-builder-name { color: #7eb8f7; }
+.export-builder-card.edsy    .export-builder-name { color: #e8844a; }
+
+.export-builder-desc {
+  font-family: var(--mono);
+  font-size: 0.62em;
+  color: var(--text-dim);
+  line-height: 1.55;
+  letter-spacing: 0.02em;
+}
+
+.export-builder-btn {
+  font-family: var(--display);
+  font-size: 0.65em;
+  font-weight: 700;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  padding: 8px 16px;
+  border-radius: 4px;
+  border: 1px solid var(--border2);
+  cursor: pointer;
+  background: var(--bg);
+  color: var(--text-dim);
+  transition: background .15s, color .15s, border-color .15s;
+  align-self: flex-start;
+}
+.export-builder-btn:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+.export-builder-card.coriolis .export-builder-btn:not(:disabled):hover {
+  background: rgba(42,127,255,0.12);
+  border-color: #2a7fff;
+  color: #7eb8f7;
+}
+.export-builder-card.edsy .export-builder-btn:not(:disabled):hover {
+  background: rgba(232,96,48,0.12);
+  border-color: #e86030;
+  color: #e8844a;
+}
+
+.export-status {
+  font-family: var(--mono);
+  font-size: 0.6em;
+  color: var(--text-mute);
+  min-height: 1.4em;
+  letter-spacing: 0.04em;
+}
+
+.export-no-loadout {
+  font-family: var(--mono);
+  font-size: 0.72em;
+  color: var(--text-mute);
+  letter-spacing: 0.06em;
+  padding: 18px 0;
+  text-align: center;
+  display: none;
+}
+
+</style>
+</head>
+<body>
+
+<div id="topbar">
+  <span class="tb-logo">&#9672; Explorer</span>
+  <div class="tb-sep"></div>
+  <span class="tb-cmdr" id="tb-cmdr">&#8212;</span>
+  <div class="tb-sep"></div>
+  <span class="tb-sys" id="tb-sys">&#8212;</span>
+  <div class="tab-nav">
+    <a class="tab-btn" href="index.html">Live</a>
+    <a class="tab-btn active" href="ship.html">Ship</a>
+    <a class="tab-btn" href="profile.html">Profile</a>
+    <a class="tab-btn" href="history.html">History</a>
+    <a class="tab-btn" href="spansh.html">Spansh</a>
+  </div>
+  <span class="tb-credits" id="tb-credits"></span>
+  <button id="options-btn" title="Options">&#9881;</button>
+</div>
+
+<div id="app-wrapper" style="display:flex;flex-direction:column;height:calc(100vh - 44px);">
+<div id="view-ship">
+
+  <!-- Identity bar -->
+  <div id="ship-identity" style="display:none;">
+    <div>
+      <div id="ship-name">—</div>
+      <div style="display:flex;align-items:center;gap:10px;margin-top:3px;">
+        <div id="ship-type"></div>
+        <div id="ship-ident"></div>
+      </div>
+    </div>
+    <div id="ship-stats" style="display:flex;margin-left:auto;gap:0;">
+      <div class="ship-stat-pill">
+        <div class="ship-stat-val" id="stat-jump">—</div>
+        <div class="ship-stat-lbl">Max Jump</div>
+      </div>
+      <div class="ship-stat-pill">
+        <div class="ship-stat-val" id="stat-cargo">—</div>
+        <div class="ship-stat-lbl">Cargo (t)</div>
+      </div>
+      <div class="ship-stat-pill">
+        <div class="ship-stat-val" id="stat-fuel">—</div>
+        <div class="ship-stat-lbl">Fuel (t)</div>
+      </div>
+      <div class="ship-stat-pill">
+        <div class="ship-stat-val" id="stat-mass">—</div>
+        <div class="ship-stat-lbl">Mass (t)</div>
+      </div>
+      <div class="ship-stat-pill">
+        <div class="ship-stat-val" id="stat-rebuy">—</div>
+        <div class="ship-stat-lbl">Rebuy</div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Tab switcher (shown once loadout is available) -->
+  <div id="ship-tabs">
+    <button class="ship-tab-btn active" id="tab-loadout-btn">Loadout</button>
+    <button class="ship-tab-btn" id="tab-settings-btn">&#9881; Settings</button>
+  </div>
+
+  <!-- No data placeholder -->
+  <div id="ship-no-data">
+    <div style="font-size:2em;opacity:0.2;">&#9670;</div>
+    <div>Waiting for loadout data&hellip;</div>
+    <div style="font-size:0.85em;opacity:0.5;">Load into the game to populate this page</div>
+  </div>
+
+  <!-- Loadout -->
+  <div id="ship-loadout"></div>
+
+  <!-- Settings / Export panel -->
+  <div id="ship-settings">
+
+    <div class="settings-section-title">Build Export</div>
+
+    <div id="export-no-loadout" class="export-no-loadout">
+      &#9670; No loadout data yet &mdash; load into the game first.
+    </div>
+
+    <div class="export-builder-grid">
+
+      <!-- Coriolis -->
+      <div class="export-builder-card coriolis">
+        <div class="export-builder-name">&#9651; Coriolis.io</div>
+        <div class="export-builder-desc">
+          Exports your current ship build to Coriolis, a popular browser-based loadout analyser.
+          Opens the build in a new window using your live journal data.
+        </div>
+        <button class="export-builder-btn" id="btn-export-coriolis" disabled>
+          Open in Coriolis &rarr;
+        </button>
+        <div class="export-status" id="status-coriolis"></div>
+      </div>
+
+      <!-- EDSY -->
+      <div class="export-builder-card edsy">
+        <div class="export-builder-name">&#9670; ED&nbsp;Shipyard (EDSY)</div>
+        <div class="export-builder-desc">
+          Exports your current ship build to ED Shipyard, a detailed outfitting simulator.
+          Opens the build in a new window using your live journal data.
+        </div>
+        <button class="export-builder-btn" id="btn-export-edsy" disabled>
+          Open in EDSY &rarr;
+        </button>
+        <div class="export-status" id="status-edsy"></div>
+      </div>
+
+    </div>
+
+  </div>
+
+</div>
+</div>
+
+<script src="script.js"></script>
+<script src="update-modal.js"></script>
+<script src="prefs-modal.js"></script>
+<script>
+(function () {
+  'use strict';
+
+  // ── Slot → human-readable label ──────────────────────────────────────────────
+  var SLOT_LABELS = {
+    'Armour':              'Armour',
+    'PowerPlant':          'Power Plant',
+    'MainEngines':         'Thrusters',
+    'FrameShiftDrive':     'Frame Shift Drive',
+    'LifeSupport':         'Life Support',
+    'PowerDistributor':    'Power Distributor',
+    'Radar':               'Sensors',
+    'FuelTank':            'Fuel Tank',
+    'CargoHatch':          'Cargo Hatch',
+    'PlanetaryApproachSuite': 'Planetary Approach Suite',
+    'ShipCockpit':         'Ship Cockpit',
+    'VesselVoice':         'Voice Pack',
+  };
+
+  // Slots to skip entirely (cosmetic / UI only)
+  var SKIP_SLOTS = new Set([
+    'Decal1','Decal2','Decal3','Decal4',
+    'ShipName0','ShipName1','ShipID0','ShipID1',
+    'Bobble01','Bobble02','Bobble03','Bobble04','Bobble05','Bobble06','Bobble07','Bobble08',
+    'PaintJob',
+    'ShipCockpit',
+    'VesselVoice',
+  ]);
+
+  // Section ordering
+  var SECTION_ORDER = ['Hardpoints','Core','Optional','Utility','Other'];
+
+  function slotSection(slot) {
+    if (/Hardpoint/i.test(slot))       return 'Hardpoints';
+    if (/Armour|PowerPlant|MainEngines|FrameShiftDrive|LifeSupport|PowerDistributor|Radar|FuelTank/.test(slot)) return 'Core';
+    if (/^Slot\d+_Size\d+/i.test(slot) || /^Cargo\d+/i.test(slot)) return 'Optional';
+    if (/Tiny|Utility/i.test(slot))    return 'Utility';
+    return 'Other';
+  }
+
+  function slotLabel(slot) {
+    if (SLOT_LABELS[slot]) return SLOT_LABELS[slot];
+    // TinyHardpointN → Utility Hardpoint N
+    var tiny = slot.match(/^TinyHardpoint(\d+)$/);
+    if (tiny) return 'Utility Hardpoint ' + tiny[1];
+    // MediumHardpointN etc
+    var hp = slot.match(/^(Small|Medium|Large|Huge)Hardpoint(\d+)$/i);
+    if (hp) return hp[1] + ' Hardpoint ' + hp[2];
+    // SlotNN_SizeN → Optional Slot NN (Size N)
+    var opt = slot.match(/^(?:Slot|Cargo)(\d+)_Size(\d+)$/i);
+    if (opt) return 'Optional Slot ' + parseInt(opt[1]) + ' (Size ' + opt[2] + ')';
+    var cargo = slot.match(/^Cargo(\d+)$/i);
+    if (cargo) return 'Cargo Slot ' + parseInt(cargo[1]);
+    return slot;
+  }
+
+  function itemName(raw) {
+    if (!raw) return '?';
+    // Strip prefixes like hpt_, int_, etc.
+    var s = raw.replace(/^(hpt_|int_|ext_)/i, '');
+    // Split on underscores, drop class/size/grade tokens, capitalise
+    var parts = s.split('_').map(function(p) {
+      // skip things like size0, class5, grade1, etc.
+      if (/^(size|class|grade)\d+$/i.test(p)) return null;
+      if (/^[a-z]\d+$/.test(p)) return null; // e.g. "a", "b1"
+      return p.charAt(0).toUpperCase() + p.slice(1);
+    }).filter(Boolean);
+    return parts.join(' ');
+  }
+
+  function formatCredits(n) {
+    if (n == null) return '—';
+    if (n >= 1e9) return (n / 1e9).toFixed(1) + 'b';
+    if (n >= 1e6) return (n / 1e6).toFixed(1) + 'm';
+    if (n >= 1e3) return (n / 1e3).toFixed(0) + 'k';
+    return n.toString();
+  }
+
+  function blueprintName(raw) {
+    if (!raw) return '';
+    return raw.replace(/_/g, ' ').replace(/([A-Z])/g, ' $1').trim()
+      .replace(/\s+/g, ' ')
+      .split(' ').map(function(w){ return w.charAt(0).toUpperCase() + w.slice(1); }).join(' ');
+  }
+
+  function esc(s) {
+    return String(s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+  }
+
+  function renderLoadout(data) {
+    var modules = data.modules || [];
+    if (!modules.length) return;
+
+    // Show identity bar, hide placeholder, show tabs
+    document.getElementById('ship-no-data').style.display  = 'none';
+    document.getElementById('ship-identity').style.display = 'flex';
+    document.getElementById('ship-loadout').style.display  = 'block';
+    shipTabsEl.style.display = 'flex';
+
+    // Enable export buttons with current data
+    enableExportButtons(data);
+
+    // Identity
+    document.getElementById('ship-name').textContent  = data.shipName || data.ship || '—';
+    document.getElementById('ship-type').textContent  = data.ship     || '';
+    var ident = data.shipIdent || '';
+    var identEl = document.getElementById('ship-ident');
+    identEl.textContent  = ident;
+    identEl.style.display = ident ? '' : 'none';
+
+    // Stats
+    document.getElementById('stat-jump').textContent  = data.maxJumpRange  || '—';
+    document.getElementById('stat-cargo').textContent = data.cargoCapacity != null ? data.cargoCapacity : '—';
+    document.getElementById('stat-fuel').textContent  = data.fuelCapacity  != null ? Math.round(data.fuelCapacity) : '—';
+    document.getElementById('stat-mass').textContent  = data.unladenMass   != null ? Math.round(data.unladenMass)  : '—';
+    document.getElementById('stat-rebuy').textContent = formatCredits(data.rebuy);
+
+    // Group modules into sections
+    var sections = {};
+    SECTION_ORDER.forEach(function(s){ sections[s] = []; });
+
+    modules.forEach(function(m) {
+      if (SKIP_SLOTS.has(m.Slot)) return;
+      var sec = slotSection(m.Slot);
+      sections[sec].push(m);
+    });
+
+    var html = '';
+    SECTION_ORDER.forEach(function(secName) {
+      var mods = sections[secName];
+      if (!mods.length) return;
+
+      html += '<div class="loadout-section">';
+      html += '<div class="loadout-section-title">' + esc(secName) + '</div>';
+      html += '<div class="loadout-grid">';
+
+      mods.forEach(function(m) {
+        var engineered = !!m.Engineering;
+        var off        = !m.On;
+        var cls        = 'module-card' + (off ? ' is-off' : '') + (engineered ? ' is-engineered' : '');
+
+        html += '<div class="' + cls + '">';
+
+        // Off badge
+        if (off) html += '<span class="module-off-badge">Off</span>';
+
+        html += '<div class="module-slot">' + esc(slotLabel(m.Slot)) + '</div>';
+        html += '<div class="module-name">' + esc(itemName(m.Item)) + '</div>';
+
+        if (engineered) {
+          var eng  = m.Engineering;
+          var bp   = eng.BlueprintName || '';
+          var lvl  = eng.Level || '';
+          var xp   = eng.ExperimentalEffect_Localised || eng.ExperimentalEffect || '';
+          html += '<div class="module-engineering">';
+          html += '<span class="eng-blueprint">' + esc(blueprintName(bp)) + '</span>';
+          if (lvl) html += '<span class="eng-grade">G' + lvl + '</span>';
+          if (xp)  html += '<span class="eng-experimental">&#9656; ' + esc(xp) + '</span>';
+          html += '</div>';
+        }
+
+        html += '</div>';
+      });
+
+      html += '</div></div>';
+    });
+
+    document.getElementById('ship-loadout').innerHTML = html;
+  }
+
+  // ── Tab switching ─────────────────────────────────────────────────────────
+  var tabLoadoutBtn  = document.getElementById('tab-loadout-btn');
+  var tabSettingsBtn = document.getElementById('tab-settings-btn');
+  var shipLoadoutEl  = document.getElementById('ship-loadout');
+  var shipSettingsEl = document.getElementById('ship-settings');
+  var shipTabsEl     = document.getElementById('ship-tabs');
+
+  function showTab(name) {
+    if (name === 'loadout') {
+      tabLoadoutBtn.classList.add('active');
+      tabSettingsBtn.classList.remove('active');
+      shipLoadoutEl.style.display  = 'block';
+      shipSettingsEl.style.display = 'none';
+    } else {
+      tabSettingsBtn.classList.add('active');
+      tabLoadoutBtn.classList.remove('active');
+      shipLoadoutEl.style.display  = 'none';
+      shipSettingsEl.style.display = 'block';
+    }
+  }
+  tabLoadoutBtn.addEventListener('click', function () { showTab('loadout'); });
+  tabSettingsBtn.addEventListener('click', function () { showTab('settings'); });
+
+  // ── Build export ──────────────────────────────────────────────────────────
+  var _lastLoadoutEvent = null; // raw journal Loadout event data
+
+  var btnCoriolis  = document.getElementById('btn-export-coriolis');
+  var btnEdsy      = document.getElementById('btn-export-edsy');
+  var statusCoriolis = document.getElementById('status-coriolis');
+  var statusEdsy     = document.getElementById('status-edsy');
+  var noLoadoutMsg   = document.getElementById('export-no-loadout');
+
+  function setExportStatus(el, msg, ok) {
+    el.textContent  = msg;
+    el.style.color  = ok ? 'var(--cyan)' : 'var(--text-mute)';
+    if (msg) setTimeout(function () { el.textContent = ''; el.style.color = ''; }, 5000);
+  }
+
+  /**
+   * Build a minimal journal-style Loadout payload that Coriolis / EDSY
+   * can consume via their ?journal= import endpoints.
+   */
+  function buildJournalPayload(data) {
+    // Reconstruct the Loadout journal event from the live data object
+    return JSON.stringify({
+      event:        'Loadout',
+      Ship:         data.shipRaw || data.ship || '',
+      ShipName:     data.shipName  || '',
+      ShipIdent:    data.shipIdent || '',
+      MaxJumpRange: parseFloat(data.maxJumpRange) || 0,
+      CargoCapacity:data.cargoCapacity || 0,
+      UnladenMass:  data.unladenMass   || 0,
+      FuelCapacity: { Main: data.fuelCapacity || 0 },
+      HullValue:    data.hullValue     || 0,
+      ModulesValue: data.modulesValue  || 0,
+      Rebuy:        data.rebuy         || 0,
+      Modules:      data.modules       || [],
+    });
+  }
+
+  function exportToCoriolis() {
+    if (!_lastLoadoutEvent) return;
+    try {
+      var payload = buildJournalPayload(_lastLoadoutEvent);
+      var encoded = encodeURIComponent(payload);
+      var url     = 'https://coriolis.io/import?journal=' + encoded;
+      if (window.electronAPI && window.electronAPI.openExternal) {
+        window.electronAPI.openExternal(url);
+      } else {
+        window.open(url, '_blank');
+      }
+      setExportStatus(statusCoriolis, '\u2713 Opened in Coriolis', true);
+    } catch (e) {
+      setExportStatus(statusCoriolis, 'Error: ' + e.message, false);
+    }
+  }
+
+  function exportToEdsy() {
+    if (!_lastLoadoutEvent) return;
+    try {
+      var payload = buildJournalPayload(_lastLoadoutEvent);
+      var encoded = encodeURIComponent(payload);
+      var url     = 'https://edsy.org/#/I=' + encoded;
+      if (window.electronAPI && window.electronAPI.openExternal) {
+        window.electronAPI.openExternal(url);
+      } else {
+        window.open(url, '_blank');
+      }
+      setExportStatus(statusEdsy, '\u2713 Opened in EDSY', true);
+    } catch (e) {
+      setExportStatus(statusEdsy, 'Error: ' + e.message, false);
+    }
+  }
+
+  btnCoriolis.addEventListener('click', exportToCoriolis);
+  btnEdsy.addEventListener('click', exportToEdsy);
+
+  function enableExportButtons(data) {
+    _lastLoadoutEvent        = data;
+    btnCoriolis.disabled     = false;
+    btnEdsy.disabled         = false;
+    noLoadoutMsg.style.display = 'none';
+  }
+
+  // ── Listen for live data ────────────────────────────────────────────────────
+  if (window.electronAPI && window.electronAPI.onLiveData) {
+    window.electronAPI.onLiveData(function(data) {
+      if (data.modules && data.modules.length) {
+        renderLoadout(data);
+      }
+      // Keep topbar in sync
+      if (data.name)   { var el = document.getElementById('tb-cmdr'); if (el) el.textContent = 'CMDR ' + data.name; }
+      if (data.credits){ var el = document.getElementById('tb-credits'); if (el) el.textContent = data.credits.toLocaleString() + ' CR'; }
+    });
+  }
+
+}());
+</script>
+</body>
+</html>
