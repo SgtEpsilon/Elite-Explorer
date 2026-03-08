@@ -63,6 +63,15 @@ async function fetchSystemBodies(systemName) {
   return await res.json();
 }
 
+async function fetchSystemStations(systemName) {
+  const res = await fetch(
+    `${BASE_URL}/api-system-v1/stations?systemName=${encodeURIComponent(systemName)}`,
+    { signal: AbortSignal.timeout(10000) }
+  );
+  if (!res.ok) throw new Error('HTTP ' + res.status);
+  return await res.json();
+}
+
 // ── Main lookup — triggered on every system entry ─────────────────────────────
 
 async function lookupSystem(systemName, timestamp) {
@@ -80,12 +89,13 @@ async function lookupSystem(systemName, timestamp) {
 
   try {
     // Bodies always fetch. System info only when EDSM integration is on.
-    const tasks = [fetchSystemBodies(systemName)];
+    const tasks = [fetchSystemBodies(systemName), fetchSystemStations(systemName)];
     if (edsmOn) tasks.push(fetchSystemInfo(systemName));
 
-    const results  = await Promise.allSettled(tasks);
-    const bodiesRaw = results[0];
-    const infoRaw   = edsmOn ? results[1] : null;
+    const results      = await Promise.allSettled(tasks);
+    const bodiesRaw    = results[0];
+    const stationsRaw  = results[1];
+    const infoRaw      = edsmOn ? results[2] : null;
 
     // ── System info → edsm-system ──────────────────────────────────────────
     if (edsmOn) {
@@ -120,10 +130,13 @@ async function lookupSystem(systemName, timestamp) {
 
     // ── Bodies → edsm-bodies ───────────────────────────────────────────────
     if (bodiesRaw.status === 'fulfilled' && bodiesRaw.value && Array.isArray(bodiesRaw.value.bodies)) {
-      const payload = { system: systemName, bodies: bodiesRaw.value.bodies };
+      const stations = (stationsRaw.status === 'fulfilled' && stationsRaw.value && Array.isArray(stationsRaw.value.stations))
+        ? stationsRaw.value.stations
+        : [];
+      const payload = { system: systemName, bodies: bodiesRaw.value.bodies, stations };
       _cachedBodies = payload;
       send('edsm-bodies', payload);
-      logger.debug('EDSM', `Bodies fetched for ${systemName}`, { count: bodiesRaw.value.bodies.length });
+      logger.debug('EDSM', `Bodies fetched for ${systemName}`, { count: bodiesRaw.value.bodies.length, stations: stations.length });
     } else {
       logger.warn('EDSM', `Bodies fetch failed for ${systemName}`, bodiesRaw.reason?.message || 'empty response');
     }

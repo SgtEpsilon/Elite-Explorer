@@ -16,6 +16,17 @@ function repLabel(v){ if (v >= 90) return 'Allied'; if (v >= 50) return 'Friendl
 function ts() { return new Date().toTimeString().slice(0,8); }
 function set(id, v) { const el = document.getElementById(id); if (el) el.textContent = (v != null ? v : '\u2014'); }
 
+function toggleStations() {
+  _showStations = !_showStations;
+  var btn = document.getElementById('btn-toggle-stations');
+  if (btn) {
+    btn.style.background  = _showStations ? 'rgba(46,207,207,0.1)'  : 'transparent';
+    btn.style.color       = _showStations ? 'var(--cyan)'            : 'var(--text-mute)';
+    btn.style.borderColor = _showStations ? 'rgba(46,207,207,0.3)'  : 'var(--border2)';
+  }
+  renderBodies(_currentSystem);
+}
+
 // ─── LOGGING (live page only) ──────────────────────────────────────
 const LOG_MAX_ENTRIES = 200;
 let logCount = 0;
@@ -40,7 +51,9 @@ function log(msg, type = 'info') {
 var _journalBodies = {};   // bodyName → journal Scan entry
 var _journalSignals = {};  // bodyName → [signal strings]
 var _edsmBodies     = [];  // array of EDSM body objects
+var _edsmStations   = [];  // array of EDSM station objects
 var _currentSystem  = null;
+var _showStations   = true; // toggle: show stations/settlements in bodies table
 
 // Map journal scan data → icon type
 function bodyIconType(b) {
@@ -335,8 +348,63 @@ function renderBodies(system) {
     );
   });
 
+  // ── Station / Settlement rows ────────────────────────────────────────────
+  if (_showStations && _edsmStations.length) {
+    _edsmStations.forEach(function(st) {
+      var stType = st.type || 'Station';
+      // Classify: settlement vs station
+      var isSettlement = /settlement|surface|planetary|installation/i.test(stType);
+      var isCarrier    = /fleet carrier/i.test(stType);
+      var isMegaship   = /megaship|dockable/i.test(stType);
+      var iconCls      = isSettlement ? 'settlement' : isCarrier ? 'carrier' : 'station';
+      var rowCls       = 'body-station' + (isSettlement ? ' body-settlement' : '');
+
+      var distDisplay = st.distanceToArrival != null ? fmtLS(st.distanceToArrival) : '—';
+
+      // Services as small tags
+      var services = st.otherServices || [];
+      var serviceHtml = '';
+      if (st.haveMarket)   serviceHtml += '<span class="info-tag poi">Market</span>';
+      if (st.haveShipyard) serviceHtml += '<span class="info-tag poi">Shipyard</span>';
+      if (st.haveOutfitting) serviceHtml += '<span class="info-tag poi">Outfitting</span>';
+      if (services.indexOf('Black Market') !== -1) serviceHtml += '<span class="info-tag alien">B.Market</span>';
+      if (services.indexOf('Material Trader') !== -1) serviceHtml += '<span class="info-tag geo">Materials</span>';
+      if (services.indexOf('Technology Broker') !== -1) serviceHtml += '<span class="info-tag geo">Tech Broker</span>';
+      if (services.indexOf('Interstellar Factors Contact') !== -1) serviceHtml += '<span class="info-tag human">I.Factors</span>';
+
+      var factionHtml = st.controllingFaction && st.controllingFaction.name
+        ? '<div style="font-size:0.75em;color:var(--text-mute);margin-top:1px">' + st.controllingFaction.name + '</div>'
+        : '';
+
+      rows.push(
+        '<tr class="' + rowCls + '">' +
+          '<td style="text-align:center;padding:4px;">' +
+            '<div style="display:flex;justify-content:center;">' +
+              '<div class="body-icon ' + iconCls + '"></div>' +
+            '</div>' +
+          '</td>' +
+          '<td>' +
+            '<div class="body-name-cell">' +
+              '<span style="font-size:0.9em;font-weight:400;color:var(--text)">' + (st.name || '?') + '</span>' +
+            '</div>' +
+            factionHtml +
+          '</td>' +
+          '<td class="body-class" style="color:var(--text-dim)">' + stType + '</td>' +
+          '<td style="font-size:0.75em;color:var(--text-dim);white-space:nowrap">' + distDisplay + '</td>' +
+          '<td>' + (serviceHtml ? '<div style="margin-top:2px">' + serviceHtml + '</div>' : '') + '</td>' +
+          '<td class="val-cell">—</td>' +
+          '<td class="val-cell muted" style="font-size:0.75em">—</td>' +
+        '</tr>'
+      );
+    });
+  }
+
   tbody.innerHTML = rows.join('');
-  set('body-count', bodies.length + ' bod' + (bodies.length !== 1 ? 'ies' : 'y'));
+  var stationCount = _showStations ? _edsmStations.length : 0;
+  var bodyTotal    = bodies.length;
+  var countLabel   = bodyTotal + ' bod' + (bodyTotal !== 1 ? 'ies' : 'y');
+  if (stationCount) countLabel += ' · ' + stationCount + ' station' + (stationCount !== 1 ? 's' : '');
+  set('body-count', countLabel);
   set('sum-stars',   stars);
   set('sum-planets', planets);
   set('sum-moons',   moons);
@@ -665,6 +733,7 @@ if (window.electronAPI) {
       _journalBodies  = {};
       _journalSignals = {};
       _edsmBodies     = [];
+      _edsmStations   = [];
       _scanEntries    = {};
       renderBodiesDebounced(data.system);
       renderScans();
@@ -704,8 +773,9 @@ if (window.electronAPI) {
 
       // If the system changed, flush stale EDSM bodies and scan entries
       if (incomingSystem && incomingSystem !== _currentSystem) {
-        _edsmBodies  = [];
-        _scanEntries = {};
+        _edsmBodies   = [];
+        _edsmStations = [];
+        _scanEntries  = {};
       }
 
       _currentSystem  = incomingSystem;
@@ -743,9 +813,10 @@ if (window.electronAPI) {
       // If _currentSystem wasn't known yet, set it now from the EDSM response.
       if (data.system && !_currentSystem) _currentSystem = data.system;
 
-      _edsmBodies = data.bodies || [];
+      _edsmBodies   = data.bodies   || [];
+      _edsmStations = data.stations || [];
       renderBodiesDebounced(data.system || _currentSystem);
-      log('EDSM: ' + _edsmBodies.length + ' bodies for ' + (data.system || _currentSystem || '?'), 'info');
+      log('EDSM: ' + _edsmBodies.length + ' bodies, ' + _edsmStations.length + ' stations for ' + (data.system || _currentSystem || '?'), 'info');
     });
   }
 
@@ -837,140 +908,6 @@ if (window.electronAPI) {
 
 async function refreshStats() {
   try { var res = await fetch('http://localhost:3721/stats'); var d = await res.json(); log('DB scans: ' + d.scans, 'info'); } catch {}
-}
-
-// ─── MISSIONS ─────────────────────────────────────────────────────
-var _missions = {};  // missionID → mission object
-var _missionsActiveTab = 'active';
-
-var MISSION_TYPE_MAP = [
-  { match: /massacre|assassin|kill|destroy/i,       type: 'Combat',     color: 'var(--red, #e05252)' },
-  { match: /delivery|transport|smuggle/i,            type: 'Delivery',   color: 'var(--cyan)' },
-  { match: /collect|mine|source|recover|salvage/i,  type: 'Collection', color: 'var(--gold)' },
-  { match: /scan|survey|explore/i,                  type: 'Scan',       color: 'var(--cyan)' },
-  { match: /courier/i,                               type: 'Courier',    color: 'var(--cyan)' },
-  { match: /passenger/i,                             type: 'Passenger',  color: 'var(--green, #4caf7d)' },
-  { match: /rescue/i,                                type: 'Rescue',     color: 'var(--green, #4caf7d)' },
-];
-
-function missionType(name) {
-  if (!name) return { type: 'Other', color: 'var(--text-dim)' };
-  for (var i = 0; i < MISSION_TYPE_MAP.length; i++) {
-    if (MISSION_TYPE_MAP[i].match.test(name)) return MISSION_TYPE_MAP[i];
-  }
-  return { type: 'Other', color: 'var(--text-dim)' };
-}
-
-function fmtExpiry(iso) {
-  if (!iso) return null;
-  var ms    = new Date(iso).getTime() - Date.now();
-  if (ms <= 0) return { label: 'Expired', urgent: true };
-  var hours = Math.floor(ms / 3600000);
-  var mins  = Math.floor((ms % 3600000) / 60000);
-  if (hours < 1)  return { label: mins + 'm left', urgent: true };
-  if (hours < 6)  return { label: hours + 'h ' + mins + 'm left', urgent: true };
-  if (hours < 24) return { label: hours + 'h left', urgent: false };
-  return { label: Math.floor(hours / 24) + 'd left', urgent: false };
-}
-
-function influenceDots(inf) {
-  if (!inf) return '';
-  var n = typeof inf === 'string' ? inf.length : (inf || 0);
-  return '<span style="color:var(--green,#4caf7d);letter-spacing:1px;">' + '▲'.repeat(Math.min(n, 5)) + '</span>';
-}
-
-function renderMissions() {
-  var missions = Object.values(_missions);
-  var active   = missions.filter(function(m) { return m.status === 'Active'; })
-                         .sort(function(a, b) {
-                           // soonest expiry first
-                           if (!a.expiry && !b.expiry) return 0;
-                           if (!a.expiry) return 1;
-                           if (!b.expiry) return -1;
-                           return new Date(a.expiry) - new Date(b.expiry);
-                         });
-  var past     = missions.filter(function(m) { return m.status !== 'Active'; })
-                         .sort(function(a, b) {
-                           return new Date(b.doneTimestamp || 0) - new Date(a.doneTimestamp || 0);
-                         });
-
-  // Update badges
-  var badgeA = document.getElementById('missions-badge-active');
-  var badgeP = document.getElementById('missions-badge-past');
-  if (badgeA) badgeA.textContent = active.length;
-  if (badgeP) badgeP.textContent = past.length;
-
-  renderMissionList('missions-active-list', active);
-  renderMissionList('missions-past-list',   past);
-}
-
-function renderMissionList(containerId, list) {
-  var el = document.getElementById(containerId);
-  if (!el) return;
-
-  if (!list.length) {
-    el.innerHTML = '<div class="empty-state" style="height:60px;"><div class="msg">No missions</div></div>';
-    return;
-  }
-
-  el.innerHTML = list.map(function(m) {
-    var t       = missionType(m.internalName || m.name);
-    var expiry  = fmtExpiry(m.expiry);
-    var statusColor = m.status === 'Complete'  ? 'var(--green,#4caf7d)'
-                    : m.status === 'Failed'    ? 'var(--red,#e05252)'
-                    : m.status === 'Abandoned' ? 'var(--text-dim)'
-                    : 'var(--cyan)';  // Active
-
-    return '<div class="mission-row" onclick="this.classList.toggle(\'expanded\')">' +
-      '<div class="mission-row-main">' +
-        '<div class="mission-dot" style="background:' + t.color + '"></div>' +
-        '<div class="mission-info">' +
-          '<div class="mission-name">' + (m.name || 'Unknown Mission') + '</div>' +
-          '<div class="mission-meta">' +
-            (m.faction ? '<span class="mission-faction">' + m.faction + '</span>' : '') +
-            '<span class="mission-type-tag" style="color:' + t.color + ';border-color:' + t.color + '">' + t.type + '</span>' +
-          '</div>' +
-        '</div>' +
-        '<div class="mission-right">' +
-          '<span class="mission-status" style="color:' + statusColor + '">' + m.status + '</span>' +
-          (expiry ? '<span class="mission-expiry' + (expiry.urgent ? ' urgent' : '') + '">' + expiry.label + '</span>' : '') +
-          (m.reward ? '<span class="mission-reward">' + fmtCr(m.reward) + '</span>' : '') +
-        '</div>' +
-      '</div>' +
-      '<div class="mission-detail">' +
-        (m.destinationSystem  ? '<div class="mission-detail-row"><span class="mdk">Destination</span><span class="mdv">' + (m.destinationStation ? m.destinationStation + ' · ' : '') + m.destinationSystem + '</span></div>' : '') +
-        (m.commodity          ? '<div class="mission-detail-row"><span class="mdk">Cargo</span><span class="mdv">' + m.commodity + (m.count ? ' × ' + m.count : '') + '</span></div>' : '') +
-        (m.targetFaction      ? '<div class="mission-detail-row"><span class="mdk">Target</span><span class="mdv">' + m.targetFaction + (m.targetType ? ' (' + m.targetType + ')' : '') + '</span></div>' : '') +
-        (m.influence          ? '<div class="mission-detail-row"><span class="mdk">Influence</span><span class="mdv">' + influenceDots(m.influence) + '</span></div>' : '') +
-        (m.expiry             ? '<div class="mission-detail-row"><span class="mdk">Expires</span><span class="mdv">' + new Date(m.expiry).toLocaleString() + '</span></div>' : '') +
-        (m.acceptedTimestamp  ? '<div class="mission-detail-row"><span class="mdk">Accepted</span><span class="mdv">' + new Date(m.acceptedTimestamp).toLocaleString() + '</span></div>' : '') +
-      '</div>' +
-    '</div>';
-  }).join('');
-}
-
-// Sub-tab switching
-document.addEventListener('click', function(e) {
-  var btn = e.target.closest('.missions-tab');
-  if (!btn) return;
-  var tab = btn.dataset.mtab;
-  _missionsActiveTab = tab;
-  document.querySelectorAll('.missions-tab').forEach(function(b) { b.classList.toggle('active', b.dataset.mtab === tab); });
-  var activeList = document.getElementById('missions-active-list');
-  var pastList   = document.getElementById('missions-past-list');
-  if (activeList) activeList.style.display = tab === 'active' ? '' : 'none';
-  if (pastList)   pastList.style.display   = tab === 'past'   ? '' : 'none';
-});
-
-// IPC listener
-if (window.electronAPI && window.electronAPI.onMissionsData) {
-  window.electronAPI.onMissionsData(function(data) {
-    if (!data || !data.missions) return;
-    _missions = data.missions;
-    renderMissions();
-    var active = Object.values(_missions).filter(function(m) { return m.status === 'Active'; }).length;
-    log('Missions: ' + active + ' active', 'info');
-  });
 }
 
 // ─── OPTIONS PANEL ────────────────────────────────────────────────
@@ -1464,8 +1401,7 @@ var PANEL_MAP = {
   'tog-scan':     'panel-scan',
   'tog-summary':  'panel-summary',
   'tog-progress': 'panel-progress',
-  'tog-log':      'panel-log',
-  'tog-missions': 'panel-missions',
+  'tog-log':      'panel-log'
 };
 Object.entries(PANEL_MAP).forEach(function(kv) {
   var cb    = document.getElementById(kv[0]);

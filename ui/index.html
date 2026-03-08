@@ -103,6 +103,9 @@
         <div class="panel-header">
           <span class="label">System Bodies</span>
           <div class="accent-line"></div>
+          <button id="btn-toggle-stations" title="Show/hide stations &amp; settlements"
+                  style="font-family:var(--mono);font-size:0.6667em;letter-spacing:0.08em;text-transform:uppercase;background:rgba(46,207,207,0.1);color:var(--cyan);border:1px solid rgba(46,207,207,0.3);padding:2px 7px;cursor:pointer;transition:all 0.15s;margin-right:6px;"
+                  onclick="toggleStations()">&#9670; Stations</button>
           <span style="font-family:var(--mono);font-size:0.75em;color:var(--text-mute)" id="body-count">0 bodies</span>
         </div>
         <div class="panel-body" style="padding:0;">
@@ -159,22 +162,6 @@
               <tr><td colspan="4"><div class="empty-state" style="height:60px;"><div class="msg">No scans yet</div></div></td></tr>
             </tbody>
           </table>
-        </div>
-      </div>
-
-      <!-- MISSIONS PANEL -->
-      <div class="panel" id="panel-missions">
-        <div class="panel-header">
-          <span class="label">Missions</span>
-          <div class="accent-line"></div>
-          <div class="missions-tab-strip">
-            <button class="missions-tab active" data-mtab="active">Active <span class="missions-badge" id="missions-badge-active">0</span></button>
-            <button class="missions-tab" data-mtab="past">Past <span class="missions-badge past" id="missions-badge-past">0</span></button>
-          </div>
-        </div>
-        <div class="panel-body" style="padding:0;">
-          <div id="missions-active-list" class="missions-list"></div>
-          <div id="missions-past-list"   class="missions-list" style="display:none;"></div>
         </div>
       </div>
 
@@ -320,7 +307,6 @@
         <label class="opt-toggle"><input type="checkbox" id="tog-summary" checked><span class="tog-track"><span class="tog-thumb"></span></span><span class="tog-lbl">Scan Summary</span></label>
         <label class="opt-toggle"><input type="checkbox" id="tog-progress" checked><span class="tog-track"><span class="tog-thumb"></span></span><span class="tog-lbl">Journal Progress</span></label>
         <label class="opt-toggle"><input type="checkbox" id="tog-log" checked><span class="tog-track"><span class="tog-thumb"></span></span><span class="tog-lbl">Application Log</span></label>
-        <label class="opt-toggle"><input type="checkbox" id="tog-missions" checked><span class="tog-track"><span class="tog-thumb"></span></span><span class="tog-lbl">Missions</span></label>
       </div>
     </div>
   </div>

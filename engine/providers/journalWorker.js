@@ -55,9 +55,6 @@ async function run() {
   let liveBodySystem = null; // system name these bodies belong to
   let liveSignals    = {};   // bodyName → array of signal strings (bio, geo, stations etc)
 
-  // Live missions accumulator — keyed by MissionID so updates overwrite cleanly.
-  let liveMissions = {};  // missionID → mission object
-
   // Profile data accumulator (identity, ranks, rep, stats)
   let profileIdentity   = null;
   let profileRanks      = null;
@@ -334,74 +331,6 @@ async function run() {
             liveData.dockedFaction     = null;
           }
 
-          // ── MISSIONS ──────────────────────────────────────────────────────
-          if (ev === 'MissionAccepted') {
-            liveMissions[entry.MissionID] = {
-              id:                  entry.MissionID,
-              name:                entry.LocalisedName || entry.Name || 'Unknown Mission',
-              internalName:        entry.Name || '',
-              status:              'Active',
-              faction:             entry.Faction         || null,
-              targetFaction:       entry.TargetFaction   || null,
-              influence:           entry.Influence       || null,
-              reputation:          entry.Reputation      || null,
-              reward:              entry.Reward          || null,
-              commodity:           entry.Commodity_Localised || entry.Commodity || null,
-              count:               entry.Count           || null,
-              target:              entry.Target          || null,
-              targetType:          entry.TargetType_Localised || entry.TargetType || null,
-              destinationSystem:   entry.DestinationSystem  || null,
-              destinationStation:  entry.DestinationStation || null,
-              newEndeavour:        entry.NewEndeavour    || false,
-              expiry:              entry.Expiry          || null,  // ISO string
-              acceptedTimestamp:   entry.timestamp       || null,
-            };
-            parentPort.postMessage({ type: 'missions-data', missions: liveMissions });
-          }
-
-          if (ev === 'MissionCompleted') {
-            if (liveMissions[entry.MissionID]) {
-              liveMissions[entry.MissionID].status        = 'Complete';
-              liveMissions[entry.MissionID].reward        = entry.Reward ?? liveMissions[entry.MissionID].reward;
-              liveMissions[entry.MissionID].doneTimestamp = entry.timestamp || null;
-            } else {
-              // Completed a mission we didn't see accepted (e.g. loaded mid-session)
-              liveMissions[entry.MissionID] = {
-                id: entry.MissionID,
-                name: entry.LocalisedName || entry.Name || 'Mission',
-                internalName: entry.Name || '',
-                status: 'Complete',
-                reward: entry.Reward || null,
-                doneTimestamp: entry.timestamp || null,
-              };
-            }
-            parentPort.postMessage({ type: 'missions-data', missions: liveMissions });
-          }
-
-          if (ev === 'MissionFailed') {
-            if (liveMissions[entry.MissionID]) {
-              liveMissions[entry.MissionID].status        = 'Failed';
-              liveMissions[entry.MissionID].doneTimestamp = entry.timestamp || null;
-            } else {
-              liveMissions[entry.MissionID] = {
-                id: entry.MissionID,
-                name: entry.Name || 'Mission',
-                internalName: entry.Name || '',
-                status: 'Failed',
-                doneTimestamp: entry.timestamp || null,
-              };
-            }
-            parentPort.postMessage({ type: 'missions-data', missions: liveMissions });
-          }
-
-          if (ev === 'MissionAbandoned') {
-            if (liveMissions[entry.MissionID]) {
-              liveMissions[entry.MissionID].status        = 'Abandoned';
-              liveMissions[entry.MissionID].doneTimestamp = entry.timestamp || null;
-            }
-            parentPort.postMessage({ type: 'missions-data', missions: liveMissions });
-          }
-
         }
 
         // ── PROFILE DATA ──────────────────────────────────────────────
@@ -515,11 +444,6 @@ async function run() {
       liveData.fuelDisplay = liveData.fuelTotal.toFixed(1) + ' / ' + liveData.fuelCapacity;
     }
     parentPort.postMessage({ type: 'live-data', data: liveData });
-  }
-
-  // ── Emit missions-data ────────────────────────────────────────────────────
-  if (doLive && Object.keys(liveMissions).length > 0) {
-    parentPort.postMessage({ type: 'missions-data', missions: liveMissions });
   }
 
   // ── Emit profile-data ─────────────────────────────────────────────────────
