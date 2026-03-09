@@ -486,9 +486,7 @@
 <script src="script.js"></script>
 <script src="update-modal.js"></script>
 <script src="prefs-modal.js"></script>
-<!-- LZString: required for EDSY journal export compression -->
-<script src="https://cdn.jsdelivr.net/npm/lz-string@1.5.0/libs/lz-string.min.js"></script>
-<!-- pako: required for Coriolis journal export (gzip deflate) -->
+<!-- pako: required for Coriolis (deflate) and EDSY (gzip) journal export -->
 <script src="https://cdn.jsdelivr.net/npm/pako@2.1.0/dist/pako.min.js"></script>
 <script>
 (function () {
@@ -737,13 +735,20 @@
   }
 
   /**
-   * Compress payload for EDSY using LZString.
+   * Compress payload for EDSY using pako gzip → URL-safe base64 (no padding).
+   * EDSY's importData() calls: pako.inflate(b64Decode(b64text), {to:'string'})
+   * where b64Decode reverses - -> + and _ -> / before atob().
+   * So we must gzip the payload and encode as URL-safe base64 with no trailing =.
    */
   function compressForEdsy(payload) {
-    if (typeof LZString !== 'undefined') {
-      return LZString.compressToBase64(payload);
+    var bytes   = new TextEncoder().encode(payload);
+    var gzipped = pako.gzip(bytes);
+    var binary  = '';
+    for (var i = 0; i < gzipped.length; i++) {
+      binary += String.fromCharCode(gzipped[i]);
     }
-    return encodeURIComponent(payload);
+    // URL-safe base64, no padding (matching EDSY's b64Encode)
+    return btoa(binary).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/g, '');
   }
 
   function exportToCoriolis() {
