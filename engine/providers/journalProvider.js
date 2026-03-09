@@ -170,7 +170,10 @@ async function readProfileData(journalPath) {
   }
 
   logger.debug('JOURNAL', `Profile scan: checking ${batch.length} file(s)`, { found: [...found].join(', ') || 'none' });
-  await runWorker(batch, { mode: 'profile' });
+  // Reverse so the worker processes oldest→newest: each event type overwrites
+  // the previous, meaning the most-recent Statistics (and LoadGame, Rank, etc.)
+  // is always the final value emitted in the profile-data payload.
+  await runWorker(batch.reverse(), { mode: 'profile' });
 }
 
 // ── Exported "Scan All Journals" (Options button) ─────────────────────────────
