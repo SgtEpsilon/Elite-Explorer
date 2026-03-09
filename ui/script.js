@@ -910,6 +910,138 @@ async function refreshStats() {
   try { var res = await fetch('http://localhost:3721/stats'); var d = await res.json(); log('DB scans: ' + d.scans, 'info'); } catch {}
 }
 
+// ─── MISSIONS ─────────────────────────────────────────────────────
+var _missions = {};  // missionID → mission object
+var _missionsActiveTab = 'active';
+
+var MISSION_TYPE_MAP = [
+  { match: /massacre|assassin|kill|destroy/i,       type: 'Combat',     color: 'var(--red, #e05252)' },
+  { match: /delivery|transport|smuggle/i,            type: 'Delivery',   color: 'var(--cyan)' },
+  { match: /collect|mine|source|recover|salvage/i,  type: 'Collection', color: 'var(--gold)' },
+  { match: /scan|survey|explore/i,                  type: 'Scan',       color: 'var(--cyan)' },
+  { match: /courier/i,                               type: 'Courier',    color: 'var(--cyan)' },
+  { match: /passenger/i,                             type: 'Passenger',  color: 'var(--green, #4caf7d)' },
+  { match: /rescue/i,                                type: 'Rescue',     color: 'var(--green, #4caf7d)' },
+];
+
+function missionType(name) {
+  if (!name) return { type: 'Other', color: 'var(--text-dim)' };
+  for (var i = 0; i < MISSION_TYPE_MAP.length; i++) {
+    if (MISSION_TYPE_MAP[i].match.test(name)) return MISSION_TYPE_MAP[i];
+  }
+  return { type: 'Other', color: 'var(--text-dim)' };
+}
+
+function fmtExpiry(iso) {
+  if (!iso) return null;
+  var ms    = new Date(iso).getTime() - Date.now();
+  if (ms <= 0) return { label: 'Expired', urgent: true };
+  var hours = Math.floor(ms / 3600000);
+  var mins  = Math.floor((ms % 3600000) / 60000);
+  if (hours < 1)  return { label: mins + 'm left', urgent: true };
+  if (hours < 6)  return { label: hours + 'h ' + mins + 'm left', urgent: true };
+  if (hours < 24) return { label: hours + 'h left', urgent: false };
+  return { label: Math.floor(hours / 24) + 'd left', urgent: false };
+}
+
+function influenceDots(inf) {
+  if (!inf) return '';
+  var n = typeof inf === 'string' ? inf.length : (inf || 0);
+  return '<span style="color:var(--green,#4caf7d);letter-spacing:1px;">' + '▲'.repeat(Math.min(n, 5)) + '</span>';
+}
+
+function renderMissions() {
+  var missions = Object.values(_missions);
+  var active   = missions.filter(function(m) { return m.status === 'Active'; })
+                         .sort(function(a, b) {
+                           if (!a.expiry && !b.expiry) return 0;
+                           if (!a.expiry) return 1;
+                           if (!b.expiry) return -1;
+                           return new Date(a.expiry) - new Date(b.expiry);
+                         });
+  var past     = missions.filter(function(m) { return m.status !== 'Active'; })
+                         .sort(function(a, b) {
+                           return new Date(b.doneTimestamp || 0) - new Date(a.doneTimestamp || 0);
+                         });
+
+  var badgeA = document.getElementById('missions-badge-active');
+  var badgeP = document.getElementById('missions-badge-past');
+  if (badgeA) badgeA.textContent = active.length;
+  if (badgeP) badgeP.textContent = past.length;
+
+  renderMissionList('missions-active-list', active);
+  renderMissionList('missions-past-list',   past);
+}
+
+function renderMissionList(containerId, list) {
+  var el = document.getElementById(containerId);
+  if (!el) return;
+
+  if (!list.length) {
+    el.innerHTML = '<div class="empty-state" style="height:60px;"><div class="msg">No missions</div></div>';
+    return;
+  }
+
+  el.innerHTML = list.map(function(m) {
+    var t       = missionType(m.internalName || m.name);
+    var expiry  = fmtExpiry(m.expiry);
+    var statusColor = m.status === 'Complete'  ? 'var(--green,#4caf7d)'
+                    : m.status === 'Failed'    ? 'var(--red,#e05252)'
+                    : m.status === 'Abandoned' ? 'var(--text-dim)'
+                    : 'var(--cyan)';
+
+    return '<div class="mission-row" onclick="this.classList.toggle(\'expanded\')">' +
+      '<div class="mission-row-main">' +
+        '<div class="mission-dot" style="background:' + t.color + '"></div>' +
+        '<div class="mission-info">' +
+          '<div class="mission-name">' + (m.name || 'Unknown Mission') + '</div>' +
+          '<div class="mission-meta">' +
+            (m.faction ? '<span class="mission-faction">' + m.faction + '</span>' : '') +
+            '<span class="mission-type-tag" style="color:' + t.color + ';border-color:' + t.color + '">' + t.type + '</span>' +
+          '</div>' +
+        '</div>' +
+        '<div class="mission-right">' +
+          '<span class="mission-status" style="color:' + statusColor + '">' + m.status + '</span>' +
+          (expiry ? '<span class="mission-expiry' + (expiry.urgent ? ' urgent' : '') + '">' + expiry.label + '</span>' : '') +
+          (m.reward ? '<span class="mission-reward">' + fmtCr(m.reward) + '</span>' : '') +
+        '</div>' +
+      '</div>' +
+      '<div class="mission-detail">' +
+        (m.destinationSystem  ? '<div class="mission-detail-row"><span class="mdk">Destination</span><span class="mdv">' + (m.destinationStation ? m.destinationStation + ' · ' : '') + m.destinationSystem + '</span></div>' : '') +
+        (m.commodity          ? '<div class="mission-detail-row"><span class="mdk">Cargo</span><span class="mdv">' + m.commodity + (m.count ? ' × ' + m.count : '') + '</span></div>' : '') +
+        (m.targetFaction      ? '<div class="mission-detail-row"><span class="mdk">Target</span><span class="mdv">' + m.targetFaction + (m.targetType ? ' (' + m.targetType + ')' : '') + '</span></div>' : '') +
+        (m.influence          ? '<div class="mission-detail-row"><span class="mdk">Influence</span><span class="mdv">' + influenceDots(m.influence) + '</span></div>' : '') +
+        (m.expiry             ? '<div class="mission-detail-row"><span class="mdk">Expires</span><span class="mdv">' + new Date(m.expiry).toLocaleString() + '</span></div>' : '') +
+        (m.acceptedTimestamp  ? '<div class="mission-detail-row"><span class="mdk">Accepted</span><span class="mdv">' + new Date(m.acceptedTimestamp).toLocaleString() + '</span></div>' : '') +
+      '</div>' +
+    '</div>';
+  }).join('');
+}
+
+// Sub-tab switching
+document.addEventListener('click', function(e) {
+  var btn = e.target.closest('.missions-tab');
+  if (!btn) return;
+  var tab = btn.dataset.mtab;
+  _missionsActiveTab = tab;
+  document.querySelectorAll('.missions-tab').forEach(function(b) { b.classList.toggle('active', b.dataset.mtab === tab); });
+  var activeList = document.getElementById('missions-active-list');
+  var pastList   = document.getElementById('missions-past-list');
+  if (activeList) activeList.style.display = tab === 'active' ? '' : 'none';
+  if (pastList)   pastList.style.display   = tab === 'past'   ? '' : 'none';
+});
+
+// IPC listener
+if (window.electronAPI && window.electronAPI.onMissionsData) {
+  window.electronAPI.onMissionsData(function(data) {
+    if (!data || !data.missions) return;
+    _missions = data.missions;
+    renderMissions();
+    var active = Object.values(_missions).filter(function(m) { return m.status === 'Active'; }).length;
+    log('Missions: ' + active + ' active', 'info');
+  });
+}
+
 // ─── OPTIONS PANEL ────────────────────────────────────────────────
 function capiUpdateUI(status) {
   // status: { hasClientId, isLoggedIn, tokenValid, tokenExpiry } from capiGetStatus()
@@ -1401,15 +1533,28 @@ var PANEL_MAP = {
   'tog-scan':     'panel-scan',
   'tog-summary':  'panel-summary',
   'tog-progress': 'panel-progress',
-  'tog-log':      'panel-log'
+  'tog-log':      'panel-log',
+  'tog-missions': 'panel-missions',
 };
 Object.entries(PANEL_MAP).forEach(function(kv) {
   var cb    = document.getElementById(kv[0]);
   var panel = document.getElementById(kv[1]);
   if (!cb || !panel) return;
   cb.addEventListener('change', function() {
-    panel.style.visibility = cb.checked ? '' : 'hidden';
-    panel.style.opacity    = cb.checked ? '' : '0';
+    panel.style.display = cb.checked ? '' : 'none';
+
+    // The col-log-spacer sits above panel-log and exists purely to push the log
+    // to the bottom. When the log is hidden there's nothing to push, so hide it.
+    if (kv[1] === 'panel-log') {
+      var spacer = document.querySelector('.col-log-spacer');
+      if (spacer) spacer.style.display = cb.checked ? '' : 'none';
+    }
+
+    // When panel-commander is hidden, let panel-summary expand to fill the column.
+    if (kv[1] === 'panel-commander') {
+      var summary = document.getElementById('panel-summary');
+      if (summary) summary.style.flex = cb.checked ? '' : '1';
+    }
   });
 });
 

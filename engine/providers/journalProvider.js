@@ -24,15 +24,17 @@ function setMainWindow(win) { mainWindow = win; }
 // ── Replay cache — keeps the last payload of each type so any page that loads
 // after the initial scan still gets populated data immediately. ──────────────
 const _cache = {
-  liveData:    null,   // last live-data payload
-  profileData: null,   // last profile-data payload
-  bodiesData:  null,   // last bodies-data payload
+  liveData:     null,   // last live-data payload
+  profileData:  null,   // last profile-data payload
+  bodiesData:   null,   // last bodies-data payload
+  missionsData: null,   // last missions-data payload
 };
 
 function replayToPage() {
-  if (_cache.liveData)    send('live-data',    _cache.liveData);
-  if (_cache.profileData) send('profile-data', _cache.profileData);
-  if (_cache.bodiesData)  send('bodies-data',  _cache.bodiesData);
+  if (_cache.liveData)     send('live-data',     _cache.liveData);
+  if (_cache.profileData)  send('profile-data',  _cache.profileData);
+  if (_cache.bodiesData)   send('bodies-data',   _cache.bodiesData);
+  if (_cache.missionsData) send('missions-data', _cache.missionsData);
 }
 
 function send(channel, data) {
@@ -94,6 +96,11 @@ function runWorker(files, { mode = 'all', useLastProcessed = false, updateLastPr
           _cache.bodiesData = { system: msg.system, bodies: msg.bodies, signals: msg.signals };
           send('bodies-data', { system: msg.system, bodies: msg.bodies, signals: msg.signals });
           eventBus.emit('journal.bodies', { system: msg.system, bodies: msg.bodies, signals: msg.signals });
+          break;
+
+        case 'missions-data':
+          _cache.missionsData = { missions: msg.missions };
+          send('missions-data', { missions: msg.missions });
           break;
 
         case 'live-data':

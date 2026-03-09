@@ -486,6 +486,8 @@
 <script src="script.js"></script>
 <script src="update-modal.js"></script>
 <script src="prefs-modal.js"></script>
+<!-- LZString: required for Coriolis and EDSY journal export compression -->
+<script src="https://cdn.jsdelivr.net/npm/lz-string@1.5.0/libs/lz-string.min.js"></script>
 <script>
 (function () {
   'use strict';
@@ -696,20 +698,20 @@
   }
 
   /**
-   * Build a minimal journal-style Loadout payload that Coriolis / EDSY
-   * can consume via their ?journal= import endpoints.
+   * Build the raw journal Loadout object that Coriolis and EDSY expect.
+   * Both tools accept the full journal Loadout event compressed with
+   * LZString.compressToBase64 — NOT plain encodeURIComponent.
    */
   function buildJournalPayload(data) {
-    // Reconstruct the Loadout journal event from the live data object
     return JSON.stringify({
       event:        'Loadout',
       Ship:         data.shipRaw || data.ship || '',
       ShipName:     data.shipName  || '',
       ShipIdent:    data.shipIdent || '',
-      MaxJumpRange: parseFloat(data.maxJumpRange) || 0,
+      MaxJumpRange: data.maxJumpRangeRaw || parseFloat(data.maxJumpRange) || 0,
       CargoCapacity:data.cargoCapacity || 0,
       UnladenMass:  data.unladenMass   || 0,
-      FuelCapacity: { Main: data.fuelCapacity || 0 },
+      FuelCapacity: { Main: data.fuelCapacity || 0, Reserve: 0 },
       HullValue:    data.hullValue     || 0,
       ModulesValue: data.modulesValue  || 0,
       Rebuy:        data.rebuy         || 0,
@@ -717,12 +719,20 @@
     });
   }
 
+  function compressForExport(payload) {
+    if (typeof LZString !== 'undefined') {
+      return LZString.compressToBase64(payload);
+    }
+    // Fallback: plain URI encoding (won't work for large loadouts but better than crashing)
+    return encodeURIComponent(payload);
+  }
+
   function exportToCoriolis() {
     if (!_lastLoadoutEvent) return;
     try {
-      var payload = buildJournalPayload(_lastLoadoutEvent);
-      var encoded = encodeURIComponent(payload);
-      var url     = 'https://coriolis.io/import?journal=' + encoded;
+      var payload  = buildJournalPayload(_lastLoadoutEvent);
+      var encoded  = compressForExport(payload);
+      var url      = 'https://coriolis.io/import?journal=' + encoded;
       if (window.electronAPI && window.electronAPI.openExternal) {
         window.electronAPI.openExternal(url);
       } else {
@@ -737,9 +747,9 @@
   function exportToEdsy() {
     if (!_lastLoadoutEvent) return;
     try {
-      var payload = buildJournalPayload(_lastLoadoutEvent);
-      var encoded = encodeURIComponent(payload);
-      var url     = 'https://edsy.org/#/I=' + encoded;
+      var payload  = buildJournalPayload(_lastLoadoutEvent);
+      var encoded  = compressForExport(payload);
+      var url      = 'https://edsy.org/#/I=' + encoded;
       if (window.electronAPI && window.electronAPI.openExternal) {
         window.electronAPI.openExternal(url);
       } else {
@@ -764,12 +774,35 @@
   // ── Listen for live data ────────────────────────────────────────────────────
   if (window.electronAPI && window.electronAPI.onLiveData) {
     window.electronAPI.onLiveData(function(data) {
+      // Always update identity and stats — keeps page accurate after ship
+      // switches, repairs, fuel changes, and hull damage without a full reload.
+      if (data.ship || data.shipName) {
+        var nameEl = document.getElementById('ship-name');
+        if (nameEl) nameEl.textContent = data.shipName || data.ship || '—';
+        var typeEl = document.getElementById('ship-type');
+        if (typeEl) typeEl.textContent = data.ship || '';
+        var identEl = document.getElementById('ship-ident');
+        if (identEl) {
+          identEl.textContent   = data.shipIdent || '';
+          identEl.style.display = data.shipIdent ? '' : 'none';
+        }
+      }
+      var setS = function(id, v) { var el = document.getElementById(id); if (el && v != null) el.textContent = v; };
+      setS('stat-jump',  data.maxJumpRange);
+      setS('stat-cargo', data.cargoCapacity);
+      if (data.fuelCapacity != null) setS('stat-fuel',  Math.round(data.fuelCapacity));
+      if (data.unladenMass  != null) setS('stat-mass',  Math.round(data.unladenMass));
+      if (data.rebuy        != null) setS('stat-rebuy', formatCredits(data.rebuy));
+      if (data.hull         != null) setS('stat-hull',  data.hull + '%');
+
+      // Full loadout render only when modules are present
       if (data.modules && data.modules.length) {
         renderLoadout(data);
       }
+
       // Keep topbar in sync
-      if (data.name)   { var el = document.getElementById('tb-cmdr'); if (el) el.textContent = 'CMDR ' + data.name; }
-      if (data.credits){ var el = document.getElementById('tb-credits'); if (el) el.textContent = data.credits.toLocaleString() + ' CR'; }
+      if (data.name)    { var el = document.getElementById('tb-cmdr');    if (el) el.textContent = 'CMDR ' + data.name; }
+      if (data.credits) { var el = document.getElementById('tb-credits'); if (el) el.textContent = data.credits.toLocaleString() + ' CR'; }
     });
   }
 

@@ -55,6 +55,9 @@ async function run() {
   let liveBodySystem = null; // system name these bodies belong to
   let liveSignals    = {};   // bodyName → array of signal strings (bio, geo, stations etc)
 
+  // Live missions accumulator — keyed by MissionID so updates overwrite cleanly.
+  let liveMissions = {};  // missionID → mission object
+
   // Profile data accumulator (identity, ranks, rep, stats)
   let profileIdentity   = null;
   let profileRanks      = null;
@@ -101,11 +104,11 @@ async function run() {
         }
 
         // ── Location / system changes ─────────────────────────────────
-        if (ev === 'Location' || ev === 'FSDJump') {
-          parentPort.postMessage({
-            type: 'event', event: 'journal.location',
-            data: { system: entry.StarSystem, timestamp: entry.timestamp, coords: entry.StarPos || null }
-          });
+        // Buffer the latest location — only emitted once at end-of-file so
+        // replaying a full journal doesn't trigger one EDSM lookup per jump.
+        if ((ev === 'Location' || ev === 'FSDJump') && doLive) {
+          liveData = liveData || {};
+          liveData._pendingLocation = { system: entry.StarSystem, timestamp: entry.timestamp, coords: entry.StarPos || null };
         }
 
         // ── Raw event forwarding for EDDN relay (live watcher only) ──
@@ -264,7 +267,8 @@ async function run() {
             liveData.shipRaw       = entry.Ship || '';
             liveData.shipName      = entry.ShipName  || '';
             liveData.shipIdent     = entry.ShipIdent || '';
-            liveData.maxJumpRange  = entry.MaxJumpRange ? entry.MaxJumpRange.toFixed(2) + ' ly' : null;
+            liveData.maxJumpRange    = entry.MaxJumpRange ? entry.MaxJumpRange.toFixed(2) + ' ly' : null;
+            liveData.maxJumpRangeRaw = entry.MaxJumpRange || 0;
             liveData.cargoCapacity = entry.CargoCapacity != null ? entry.CargoCapacity : (liveData.cargoCapacity ?? null);
             liveData.unladenMass   = entry.UnladenMass   != null ? entry.UnladenMass   : null;
             liveData.hullValue     = entry.HullValue     != null ? entry.HullValue     : null;
@@ -329,6 +333,73 @@ async function run() {
             liveData.dockedStation     = null;
             liveData.dockedStationType = null;
             liveData.dockedFaction     = null;
+          }
+
+          // ── MISSIONS ──────────────────────────────────────────────────────
+          if (ev === 'MissionAccepted') {
+            liveMissions[entry.MissionID] = {
+              id:                  entry.MissionID,
+              name:                entry.LocalisedName || entry.Name || 'Unknown Mission',
+              internalName:        entry.Name || '',
+              status:              'Active',
+              faction:             entry.Faction         || null,
+              targetFaction:       entry.TargetFaction   || null,
+              influence:           entry.Influence       || null,
+              reputation:          entry.Reputation      || null,
+              reward:              entry.Reward          || null,
+              commodity:           entry.Commodity_Localised || entry.Commodity || null,
+              count:               entry.Count           || null,
+              target:              entry.Target          || null,
+              targetType:          entry.TargetType_Localised || entry.TargetType || null,
+              destinationSystem:   entry.DestinationSystem  || null,
+              destinationStation:  entry.DestinationStation || null,
+              newEndeavour:        entry.NewEndeavour    || false,
+              expiry:              entry.Expiry          || null,  // ISO string
+              acceptedTimestamp:   entry.timestamp       || null,
+            };
+            parentPort.postMessage({ type: 'missions-data', missions: liveMissions });
+          }
+
+          if (ev === 'MissionCompleted') {
+            if (liveMissions[entry.MissionID]) {
+              liveMissions[entry.MissionID].status        = 'Complete';
+              liveMissions[entry.MissionID].reward        = entry.Reward ?? liveMissions[entry.MissionID].reward;
+              liveMissions[entry.MissionID].doneTimestamp = entry.timestamp || null;
+            } else {
+              liveMissions[entry.MissionID] = {
+                id: entry.MissionID,
+                name: entry.LocalisedName || entry.Name || 'Mission',
+                internalName: entry.Name || '',
+                status: 'Complete',
+                reward: entry.Reward || null,
+                doneTimestamp: entry.timestamp || null,
+              };
+            }
+            parentPort.postMessage({ type: 'missions-data', missions: liveMissions });
+          }
+
+          if (ev === 'MissionFailed') {
+            if (liveMissions[entry.MissionID]) {
+              liveMissions[entry.MissionID].status        = 'Failed';
+              liveMissions[entry.MissionID].doneTimestamp = entry.timestamp || null;
+            } else {
+              liveMissions[entry.MissionID] = {
+                id: entry.MissionID,
+                name: entry.Name || 'Mission',
+                internalName: entry.Name || '',
+                status: 'Failed',
+                doneTimestamp: entry.timestamp || null,
+              };
+            }
+            parentPort.postMessage({ type: 'missions-data', missions: liveMissions });
+          }
+
+          if (ev === 'MissionAbandoned') {
+            if (liveMissions[entry.MissionID]) {
+              liveMissions[entry.MissionID].status        = 'Abandoned';
+              liveMissions[entry.MissionID].doneTimestamp = entry.timestamp || null;
+            }
+            parentPort.postMessage({ type: 'missions-data', missions: liveMissions });
           }
 
         }
@@ -443,7 +514,18 @@ async function run() {
       liveData.fuelPct     = Math.round((liveData.fuelTotal / liveData.fuelCapacity) * 100);
       liveData.fuelDisplay = liveData.fuelTotal.toFixed(1) + ' / ' + liveData.fuelCapacity;
     }
+    // Emit the most recent location exactly once — buffered above to avoid one
+    // EDSM fetch per FSDJump when replaying a full journal file on startup.
+    if (liveData._pendingLocation) {
+      parentPort.postMessage({ type: 'event', event: 'journal.location', data: liveData._pendingLocation });
+      delete liveData._pendingLocation;
+    }
     parentPort.postMessage({ type: 'live-data', data: liveData });
+  }
+
+  // ── Emit missions-data ────────────────────────────────────────────────────
+  if (doLive && Object.keys(liveMissions).length > 0) {
+    parentPort.postMessage({ type: 'missions-data', missions: liveMissions });
   }
 
   // ── Emit profile-data ─────────────────────────────────────────────────────
