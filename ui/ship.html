@@ -486,8 +486,10 @@
 <script src="script.js"></script>
 <script src="update-modal.js"></script>
 <script src="prefs-modal.js"></script>
-<!-- LZString: required for Coriolis and EDSY journal export compression -->
+<!-- LZString: required for EDSY journal export compression -->
 <script src="https://cdn.jsdelivr.net/npm/lz-string@1.5.0/libs/lz-string.min.js"></script>
+<!-- pako: required for Coriolis journal export (gzip deflate) -->
+<script src="https://cdn.jsdelivr.net/npm/pako@2.1.0/dist/pako.min.js"></script>
 <script>
 (function () {
   'use strict';
@@ -699,8 +701,6 @@
 
   /**
    * Build the raw journal Loadout object that Coriolis and EDSY expect.
-   * Both tools accept the full journal Loadout event compressed with
-   * LZString.compressToBase64 — NOT plain encodeURIComponent.
    */
   function buildJournalPayload(data) {
     return JSON.stringify({
@@ -719,11 +719,30 @@
     });
   }
 
-  function compressForExport(payload) {
+  /**
+   * Compress payload for Coriolis using pako (gzip deflate → URL-safe base64).
+   * Coriolis Router.js decodes query params with decodeURIComponent, then
+   * Coriolis.jsx inflates with pako, and fromUrlSafe() swaps - back to / and _ back to +.
+   * So we must produce URL-safe base64: replace + with - and / with _.
+   */
+  function compressForCoriolis(payload) {
+    var bytes    = new TextEncoder().encode(payload);
+    var deflated = pako.deflate(bytes);
+    var binary   = '';
+    for (var i = 0; i < deflated.length; i++) {
+      binary += String.fromCharCode(deflated[i]);
+    }
+    // Convert to URL-safe base64 (Coriolis fromUrlSafe reverses - -> / and _ -> +)
+    return btoa(binary).replace(/\+/g, '-').replace(/\//g, '_');
+  }
+
+  /**
+   * Compress payload for EDSY using LZString.
+   */
+  function compressForEdsy(payload) {
     if (typeof LZString !== 'undefined') {
       return LZString.compressToBase64(payload);
     }
-    // Fallback: plain URI encoding (won't work for large loadouts but better than crashing)
     return encodeURIComponent(payload);
   }
 
@@ -731,8 +750,10 @@
     if (!_lastLoadoutEvent) return;
     try {
       var payload  = buildJournalPayload(_lastLoadoutEvent);
-      var encoded  = compressForExport(payload);
-      var url      = 'https://coriolis.io/import?journal=' + encoded;
+      var encoded  = compressForCoriolis(payload);
+      // Coriolis uses /import/:data route (path segment, not ?journal= query string)
+      // Coriolis accepts both /import?data= and /import/:data; ?data= is what EDMC uses
+      var url      = 'https://coriolis.io/import?data=' + encoded;
       if (window.electronAPI && window.electronAPI.openExternal) {
         window.electronAPI.openExternal(url);
       } else {
@@ -748,7 +769,7 @@
     if (!_lastLoadoutEvent) return;
     try {
       var payload  = buildJournalPayload(_lastLoadoutEvent);
-      var encoded  = compressForExport(payload);
+      var encoded  = compressForEdsy(payload);
       var url      = 'https://edsy.org/#/I=' + encoded;
       if (window.electronAPI && window.electronAPI.openExternal) {
         window.electronAPI.openExternal(url);
