@@ -917,7 +917,7 @@ document.querySelectorAll('.opt-theme-swatch').forEach(function(el) {
 applyTheme(localStorage.getItem('ee-theme') || 'default');
 
 // ─── DISPLAY SLIDERS ──────────────────────────────────────────────────────────
-var SLIDER_DEFAULTS = { scale:100, font:12, density:3, left:220, right:320, bottom:120, bright:100, opacity:100, scan:1, glow:100, border:2 };
+var SLIDER_DEFAULTS = { scale:100, font:14, density:3, left:220, right:320, bottom:120, bright:100, opacity:100, scan:1, glow:100, border:2 };
 var DENSITY_LABELS  = ['Compact','Tight','Normal','Relaxed','Spacious'];
 var SCAN_LABELS     = ['Off','Low','Medium','High','Intense','Max'];
 var BORDER_LABELS   = ['None','Faint','Medium','Bold','Heavy'];

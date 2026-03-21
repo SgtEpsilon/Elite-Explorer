@@ -91,7 +91,7 @@
         '<div id="prefs-log-status" style="font-size:0.82em;color:#4a6a8a;min-height:1.2em;margin-bottom:4px;"></div>',
 
         // Log viewer
-        '<div id="prefs-log-viewer" style="display:none;max-height:260px;overflow-y:auto;background:#030a14;border:1px solid #0d1e36;border-radius:8px;font-family:\'Share Tech Mono\',monospace;font-size:0.72em;line-height:1.6;">',
+        '<div id="prefs-log-viewer" style="display:none;max-height:260px;overflow-y:auto;background:#030a14;border:1px solid #0d1e36;border-radius:8px;font-family:var(--mono);font-size:0.72em;line-height:1.6;">',
         '</div>',
       '</div>',
 

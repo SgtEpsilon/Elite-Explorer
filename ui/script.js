@@ -1371,7 +1371,7 @@ document.querySelectorAll('.opt-theme-swatch').forEach(function(el) {
 applyTheme(localStorage.getItem('ee-theme') || 'default');
 
 // ─── DISPLAY SLIDERS ──────────────────────────────────────────────
-var SLIDER_DEFAULTS = { scale:100, font:18, density:3, left:250, right:320, bright:100, opacity:100, scan:1, glow:100, border:2 };
+var SLIDER_DEFAULTS = { scale:100, font:14, density:3, left:250, right:320, bright:100, opacity:100, scan:1, glow:100, border:2 };
 var DENSITY_LABELS  = ['Compact','Tight','Normal','Relaxed','Spacious'];
 var SCAN_LABELS     = ['Off','Low','Medium','High','Intense','Max'];
 var BORDER_LABELS   = ['None','Faint','Medium','Bold','Heavy'];
@@ -1526,37 +1526,151 @@ if (resetBtn) resetBtn.addEventListener('click', function() {
 
 loadDisplaySettings();
 
-// ─── PANEL TOGGLES (live page only) ───────────────────────────────
-var PANEL_MAP = {
-  'tog-commander':'panel-commander',
-  'tog-system':   'panel-system',
-  'tog-scan':     'panel-scan',
-  'tog-summary':  'panel-summary',
-  'tog-progress': 'panel-progress',
-  'tog-log':      'panel-log',
-  'tog-missions': 'panel-missions',
-};
-Object.entries(PANEL_MAP).forEach(function(kv) {
-  var cb    = document.getElementById(kv[0]);
-  var panel = document.getElementById(kv[1]);
-  if (!cb || !panel) return;
-  cb.addEventListener('change', function() {
-    panel.style.display = cb.checked ? '' : 'none';
+// ─── LIVE LAYOUT: toggleable panes, reflow, persistence (index.html) ─
+(function () {
+  var viewLive = document.getElementById('view-live');
+  if (!viewLive) return;
 
-    // The col-log-spacer sits above panel-log and exists purely to push the log
-    // to the bottom. When the log is hidden there's nothing to push, so hide it.
-    if (kv[1] === 'panel-log') {
-      var spacer = document.querySelector('.col-log-spacer');
-      if (spacer) spacer.style.display = cb.checked ? '' : 'none';
+  var LIVE_PANEL_KEYS = ['commander', 'summary', 'system', 'progress', 'scan', 'missions', 'log'];
+  var LIVE_PANEL_ID = {
+    commander: 'panel-commander',
+    summary: 'panel-summary',
+    system: 'panel-system',
+    progress: 'panel-progress',
+    scan: 'panel-scan',
+    missions: 'panel-missions',
+    log: 'panel-log',
+  };
+  var LIVE_PANEL_TOG = {
+    commander: 'tog-commander',
+    summary: 'tog-summary',
+    system: 'tog-system',
+    progress: 'tog-progress',
+    scan: 'tog-scan',
+    missions: 'tog-missions',
+    log: 'tog-log',
+  };
+  var LIVE_PANEL_LABELS = {
+    commander: 'Commander',
+    summary: 'Scan Summary',
+    system: 'System Bodies',
+    progress: 'Journal Scan',
+    scan: 'Scan Values',
+    missions: 'Missions',
+    log: 'Application Log',
+  };
+  var LIVE_COL_LAYOUT = [
+    { col: 'live-col-left', restore: 'live-col-left-restore', keys: ['commander', 'summary'] },
+    { col: 'live-col-mid', restore: 'live-col-mid-restore', keys: ['system', 'progress'] },
+    { col: 'live-col-right', restore: 'live-col-right-restore', keys: ['scan', 'missions', 'log'] },
+  ];
+
+  function panelEl(key) {
+    return document.getElementById(LIVE_PANEL_ID[key]);
+  }
+
+  function isLivePanelVisible(key) {
+    var el = panelEl(key);
+    return !!(el && !el.classList.contains('live-pane-hidden'));
+  }
+
+  function saveLivePanelPrefs() {
+    var o = {};
+    LIVE_PANEL_KEYS.forEach(function (k) { o[k] = isLivePanelVisible(k); });
+    try { localStorage.setItem('ee-live-panels', JSON.stringify(o)); } catch (e) {}
+  }
+
+  function setLivePanelVisible(key, visible, opts) {
+    opts = opts || {};
+    var el = panelEl(key);
+    if (!el) return;
+    el.classList.toggle('live-pane-hidden', !visible);
+    var cb = document.getElementById(LIVE_PANEL_TOG[key]);
+    if (cb) cb.checked = visible;
+    if (!opts.skipSave) saveLivePanelPrefs();
+    if (!opts.skipReflow) reflowLiveLayout();
+  }
+
+  function reflowLiveLayout() {
+    LIVE_COL_LAYOUT.forEach(function (block) {
+      var colEl = document.getElementById(block.col);
+      var restoreEl = document.getElementById(block.restore);
+      if (!colEl || !restoreEl) return;
+      var visibleEls = [];
+      var hiddenKeys = [];
+      block.keys.forEach(function (k) {
+        var el = panelEl(k);
+        if (!el) return;
+        el.classList.remove('live-pane-grow');
+        if (el.classList.contains('live-pane-hidden')) hiddenKeys.push(k);
+        else visibleEls.push(el);
+      });
+      if (visibleEls.length === 1) visibleEls[0].classList.add('live-pane-grow');
+      colEl.classList.toggle('live-col-empty', visibleEls.length === 0);
+      restoreEl.innerHTML = '';
+      if (hiddenKeys.length) {
+        restoreEl.style.display = 'flex';
+        hiddenKeys.forEach(function (k) {
+          var b = document.createElement('button');
+          b.type = 'button';
+          b.className = 'live-restore-btn';
+          b.setAttribute('data-live-panel', k);
+          b.textContent = '\u002B ' + LIVE_PANEL_LABELS[k];
+          restoreEl.appendChild(b);
+        });
+      } else restoreEl.style.display = 'none';
+    });
+
+    var L = document.getElementById('live-col-left');
+    var M = document.getElementById('live-col-mid');
+    var R = document.getElementById('live-col-right');
+    var lVis = L && !L.classList.contains('live-col-empty');
+    var mVis = M && !M.classList.contains('live-col-empty');
+    var rVis = R && !R.classList.contains('live-col-empty');
+    viewLive.classList.remove(
+      'live-grid-lmr', 'live-grid-lm', 'live-grid-lr', 'live-grid-mr',
+      'live-grid-l', 'live-grid-m', 'live-grid-r'
+    );
+    if (lVis && mVis && rVis) viewLive.classList.add('live-grid-lmr');
+    else if (lVis && mVis) viewLive.classList.add('live-grid-lm');
+    else if (lVis && rVis) viewLive.classList.add('live-grid-lr');
+    else if (mVis && rVis) viewLive.classList.add('live-grid-mr');
+    else if (lVis) viewLive.classList.add('live-grid-l');
+    else if (mVis) viewLive.classList.add('live-grid-m');
+    else if (rVis) viewLive.classList.add('live-grid-r');
+  }
+
+  viewLive.addEventListener('click', function (e) {
+    var t = e.target.closest('.live-pane-toggle');
+    if (t && t.getAttribute('data-live-panel')) {
+      var k = t.getAttribute('data-live-panel');
+      if (LIVE_PANEL_KEYS.indexOf(k) >= 0) setLivePanelVisible(k, !isLivePanelVisible(k));
+      return;
     }
-
-    // When panel-commander is hidden, let panel-summary expand to fill the column.
-    if (kv[1] === 'panel-commander') {
-      var summary = document.getElementById('panel-summary');
-      if (summary) summary.style.flex = cb.checked ? '' : '1';
+    var r = e.target.closest('.live-restore-btn');
+    if (r && r.getAttribute('data-live-panel')) {
+      var k2 = r.getAttribute('data-live-panel');
+      if (LIVE_PANEL_KEYS.indexOf(k2) >= 0) setLivePanelVisible(k2, true);
     }
   });
-});
+
+  LIVE_PANEL_KEYS.forEach(function (k) {
+    var cb = document.getElementById(LIVE_PANEL_TOG[k]);
+    var el = panelEl(k);
+    if (!cb || !el) return;
+    cb.addEventListener('change', function () {
+      setLivePanelVisible(k, cb.checked);
+    });
+  });
+
+  var saved = {};
+  try { saved = JSON.parse(localStorage.getItem('ee-live-panels') || '{}'); } catch (e) {}
+  LIVE_PANEL_KEYS.forEach(function (k) {
+    var vis = saved[k] !== false;
+    setLivePanelVisible(k, vis, { skipSave: true, skipReflow: true });
+  });
+  reflowLiveLayout();
+}());
 
 // ─── BOOT ─────────────────────────────────────────────────────────
 populateBodies();

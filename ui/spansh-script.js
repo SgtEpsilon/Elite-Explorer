@@ -1495,7 +1495,7 @@ document.querySelectorAll('.opt-theme-swatch').forEach(function(el) {
 applyTheme(localStorage.getItem('ee-theme') || 'default');
 
 // ─── DISPLAY SLIDERS (abbreviated — scale, font, bright, scan, glow) ──
-var SLIDER_DEFAULTS = { scale:100, font:12, bright:100, scan:1, glow:100 };
+var SLIDER_DEFAULTS = { scale:100, font:14, bright:100, scan:1, glow:100 };
 var SCAN_LABELS     = ['Off','Low','Medium','High','Intense','Max'];
 var scanlineStyle   = document.createElement('style');
 scanlineStyle.id    = 'dynamic-scanlines';

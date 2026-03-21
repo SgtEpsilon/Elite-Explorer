@@ -28,15 +28,17 @@
 
 <div id="app-wrapper" style="display:flex;flex-direction:column;height:calc(100vh - 44px);">
 
-  <div id="view-live" class="active">
+  <div id="view-live" class="active live-grid-lmr">
 
     <!-- LEFT COLUMN: Commander (scrollable) + Scan Summary (locked bottom) -->
     <div class="live-col" id="live-col-left">
+    <div class="live-col-stack">
 
-      <div class="panel" id="panel-commander">
+      <div class="panel live-pane live-pane--tall" id="panel-commander" data-live-panel="commander">
         <div class="panel-header">
           <span class="label">Commander</span>
           <div class="accent-line"></div>
+          <button type="button" class="live-pane-toggle" data-live-panel="commander" title="Show or hide this panel">&#8722;</button>
         </div>
         <div class="panel-body">
           <div class="stat-group">
@@ -77,10 +79,11 @@
         </div>
       </div>
 
-      <div class="panel" id="panel-summary">
+      <div class="panel live-pane live-pane--short" id="panel-summary" data-live-panel="summary">
         <div class="panel-header">
           <span class="label">Scan Summary</span>
           <div class="accent-line"></div>
+          <button type="button" class="live-pane-toggle" data-live-panel="summary" title="Show or hide this panel">&#8722;</button>
         </div>
         <div class="panel-body">
           <div class="summary-grid">
@@ -92,12 +95,15 @@
         </div>
       </div>
 
+    </div>
+    <div class="live-col-restore" id="live-col-left-restore" aria-label="Restore hidden panels"></div>
     </div><!-- /live-col-left -->
 
-    <!-- MIDDLE COLUMN: System Bodies (scrollable) + Journal Scan (locked bottom) + Log spacer -->
+    <!-- MIDDLE COLUMN: System Bodies (scrollable) + Journal Scan (strip) -->
     <div class="live-col" id="live-col-mid">
+    <div class="live-col-stack">
 
-      <div class="panel" id="panel-system">
+      <div class="panel live-pane live-pane--tall" id="panel-system" data-live-panel="system">
         <div class="panel-header">
           <span class="label">System Bodies</span>
           <div class="accent-line"></div>
@@ -105,6 +111,7 @@
                   style="font-family:var(--mono);font-size:0.6667em;letter-spacing:0.08em;text-transform:uppercase;background:rgba(46,207,207,0.1);color:var(--cyan);border:1px solid rgba(46,207,207,0.3);padding:2px 7px;cursor:pointer;transition:all 0.15s;margin-right:6px;"
                   onclick="toggleStations()">&#9670; Stations</button>
           <span style="font-family:var(--mono);font-size:0.75em;color:var(--text-mute)" id="body-count">0 bodies</span>
+          <button type="button" class="live-pane-toggle" data-live-panel="system" title="Show or hide this panel">&#8722;</button>
         </div>
         <div class="panel-body" style="padding:0;">
           <table class="bodies-table">
@@ -126,25 +133,29 @@
         </div>
       </div>
 
-      <div id="panel-progress">
+      <div id="panel-progress" class="live-pane live-pane--strip" data-live-panel="progress">
         <div class="panel-header" style="padding:6px 10px;">
           <span class="label">Journal Scan</span><div class="accent-line"></div>
           <span style="font-family:var(--mono);font-size:0.75em;color:var(--text-mute)" id="progress-pct">&#8212;</span>
           <span style="font-family:var(--mono);font-size:0.7em;color:var(--text-mute);margin-left:6px;" id="progress-info">Ready</span>
+          <button type="button" class="live-pane-toggle" data-live-panel="progress" title="Show or hide this panel">&#8722;</button>
         </div>
         <div class="progress-track"><div class="progress-fill" id="progress-bar"></div></div>
         <div id="progress-detail" style="display:none;"></div>
       </div>
 
-      <div class="col-log-spacer"></div>
-
+    </div>
+    <div class="live-col-restore" id="live-col-mid-restore" aria-label="Restore hidden panels"></div>
     </div><!-- /live-col-mid -->
 
-    <!-- RIGHT COLUMN: Scan Values (scrollable) + Application Log (locked bottom) -->
+    <!-- RIGHT COLUMN: Scan Values + Missions + Application Log -->
     <div class="live-col" id="live-col-right">
+    <div class="live-col-stack">
 
-      <div class="panel" id="panel-scan">
-        <div class="panel-header"><span class="label">Scan Values</span><div class="accent-line"></div></div>
+      <div class="panel live-pane live-pane--mid" id="panel-scan" data-live-panel="scan">
+        <div class="panel-header"><span class="label">Scan Values</span><div class="accent-line"></div>
+          <button type="button" class="live-pane-toggle" data-live-panel="scan" title="Show or hide this panel">&#8722;</button>
+        </div>
         <div class="scan-total-bar"><span class="scan-total-label">EST. TOTAL</span><span class="scan-total-val" id="scan-total">0 cr</span></div>
         <div class="panel-body" style="padding:0;">
           <table class="scan-table">
@@ -164,7 +175,7 @@
       </div>
 
       <!-- MISSIONS PANEL -->
-      <div class="panel" id="panel-missions">
+      <div class="panel live-pane live-pane--mid" id="panel-missions" data-live-panel="missions">
         <div class="panel-header">
           <span class="label">Missions</span>
           <div class="accent-line"></div>
@@ -172,6 +183,7 @@
             <button class="missions-tab active" data-mtab="active">Active <span class="missions-badge" id="missions-badge-active">0</span></button>
             <button class="missions-tab" data-mtab="past">Past <span class="missions-badge past" id="missions-badge-past">0</span></button>
           </div>
+          <button type="button" class="live-pane-toggle" data-live-panel="missions" title="Show or hide this panel">&#8722;</button>
         </div>
         <div class="panel-body" style="padding:0;">
           <div id="missions-active-list" class="missions-list"></div>
@@ -179,15 +191,18 @@
         </div>
       </div>
 
-      <div class="panel" id="panel-log">
+      <div class="panel live-pane live-pane--footer" id="panel-log" data-live-panel="log">
         <div class="panel-header">
           <span class="label">Application Log</span>
           <div class="accent-line"></div>
           <span id="log-count" style="font-family:var(--mono);font-size:0.75em;color:var(--text-mute)">0 entries</span>
+          <button type="button" class="live-pane-toggle" data-live-panel="log" title="Show or hide this panel">&#8722;</button>
         </div>
         <div id="log-entries"></div>
       </div>
 
+    </div>
+    <div class="live-col-restore" id="live-col-right-restore" aria-label="Restore hidden panels"></div>
     </div><!-- /live-col-right -->
 
   </div><!-- /view-live -->
@@ -299,7 +314,7 @@
       <div class="sl-group">
         <div class="sl-group-title">Scale &amp; Size</div>
         <div class="sl-row"><div class="sl-header"><span class="sl-label">UI Scale</span><span class="sl-val" id="sv-scale">100%</span></div><input type="range" class="sl-input" id="sl-scale" min="70" max="130" step="1" value="100"></div>
-        <div class="sl-row"><div class="sl-header"><span class="sl-label">Font Size</span><span class="sl-val" id="sv-font">24px</span></div><input type="range" class="sl-input" id="sl-font" min="1" max="32" step="0.5" value="24"></div>
+        <div class="sl-row"><div class="sl-header"><span class="sl-label">Font Size</span><span class="sl-val" id="sv-font">14px</span></div><input type="range" class="sl-input" id="sl-font" min="1" max="32" step="0.5" value="14"></div>
         <div class="sl-row"><div class="sl-header"><span class="sl-label">Row Density</span><span class="sl-val" id="sv-density">Normal</span></div><input type="range" class="sl-input" id="sl-density" min="1" max="5" step="1" value="3"></div>
       </div>
       <div class="sl-group">
