@@ -26,7 +26,12 @@
   <button id="options-btn" title="Options">&#9881;</button>
 </div>
 
-<div id="app-wrapper" style="display:flex;flex-direction:column;height:calc(100vh - 44px);">
+<div id="live-alert-fuel" class="live-alert-strip" role="status" aria-live="polite" hidden>
+  <span class="live-alert-strip__icon">&#9888;</span>
+  <span class="live-alert-strip__text">Low fuel — main tank below threshold</span>
+</div>
+
+<div id="app-wrapper">
 
   <div id="view-live" class="active live-grid-lmr">
 
@@ -66,7 +71,7 @@
             <div class="stat-row"><span class="stat-key">Fuel</span><span class="stat-val" id="ship-fuel">&#8212;</span></div>
             <div class="fuel-bar-wrap"><div class="fuel-bar-fill" id="fuel-bar" style="width:0%"></div></div>
             <div class="stat-row" style="margin-top:2px;"><span class="stat-key" style="color:var(--text-mute);font-size:0.85em">Reserve</span><span class="stat-val" id="ship-fuel-reserve" style="font-size:0.85em;color:var(--text-mute)">&#8212;</span></div>
-            <div class="stat-row" style="margin-top:4px;"><span class="stat-key">Hull</span><span class="stat-val green" id="ship-hull">&#8212;</span></div>
+            <div class="stat-row" id="ship-hull-row" style="margin-top:4px;"><span class="stat-key">Hull</span><span class="stat-val green" id="ship-hull">&#8212;</span></div>
             <div class="stat-row"><span class="stat-key">Rebuy</span><span class="stat-val red" id="ship-rebuy">&#8212;</span></div>
           </div>
           <div class="stat-group">
@@ -300,6 +305,18 @@
         <button class="opt-icon-btn" id="opt-open-btn" title="Open in Explorer">&#8599;</button>
       </div>
       <div class="opt-hint" id="opt-path-hint">Leave blank to use the default path for your OS</div>
+    </div>
+    <div class="opt-section">
+      <div class="opt-section-title">Ship alerts</div>
+      <div class="opt-hint" style="margin-bottom:10px;">Warnings on the Live tab and in the application log. Set to <strong>0</strong> to disable.</div>
+      <label style="font-size:0.72em;color:var(--text-dim);display:block;margin-bottom:3px;">Fuel low (main tank %)</label>
+      <input class="opt-input" id="opt-fuel-alert-pct" type="number" min="0" max="100" step="1" value="25" spellcheck="false" style="width:100px;margin-bottom:8px;"/>
+      <label style="font-size:0.72em;color:var(--text-dim);display:block;margin-bottom:3px;">Hull low (% integrity)</label>
+      <input class="opt-input" id="opt-hull-alert-pct" type="number" min="0" max="100" step="1" value="70" spellcheck="false" style="width:100px;margin-bottom:10px;"/>
+      <button class="opt-action-btn" id="opt-ship-alerts-save-btn" type="button">
+        <span class="opt-btn-icon">&#10003;</span>
+        <div><div class="opt-btn-label">Save ship alerts</div><div class="opt-btn-sub" id="opt-ship-alerts-hint">Applies immediately</div></div>
+      </button>
     </div>
     <div class="opt-section">
       <div class="opt-section-title">Theme</div>

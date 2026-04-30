@@ -458,8 +458,124 @@ function populateScans() {
   renderScans();
 }
 
+// ─── SHIP ALERTS (fuel strip + hull highlight + log) ───────────────
+var _shipAlertCfg = { fuelPct: 25, hullPct: 70 };
+var _prevHullForAlert = null;
+var _fuelBelowLogged = false;
+
+function clampShipAlertPct(v, fallback) {
+  var n = parseInt(v, 10);
+  if (isNaN(n)) return fallback;
+  return Math.max(0, Math.min(100, n));
+}
+
+function syncShipAlertCfgFromObject(cfg) {
+  if (!cfg || typeof cfg !== 'object') return;
+  _shipAlertCfg.fuelPct = cfg.fuelAlertThresholdPct != null
+    ? clampShipAlertPct(cfg.fuelAlertThresholdPct, 25)
+    : 25;
+  _shipAlertCfg.hullPct = cfg.hullAlertThresholdPct != null
+    ? clampShipAlertPct(cfg.hullAlertThresholdPct, 70)
+    : 70;
+}
+
+function refreshShipAlertCfg() {
+  if (!window.electronAPI || !window.electronAPI.getConfig) return;
+  window.electronAPI.getConfig().then(function(cfg) {
+    syncShipAlertCfgFromObject(cfg);
+    var fi = document.getElementById('opt-fuel-alert-pct');
+    var hi = document.getElementById('opt-hull-alert-pct');
+    if (fi) fi.value = String(_shipAlertCfg.fuelPct);
+    if (hi) hi.value = String(_shipAlertCfg.hullPct);
+  }).catch(function() {});
+}
+
+function getLiveChromeOffsetPx() {
+  var h = 44;
+  var fuelStrip = document.getElementById('live-alert-fuel');
+  if (fuelStrip && !fuelStrip.hidden) h += fuelStrip.offsetHeight || 0;
+  return h;
+}
+
+/** Re-apply UI scale after fuel alert strip height changes (Live layout). */
+function reapplyLiveScaleFromSettings() {
+  var inp = document.getElementById('sl-scale');
+  if (!inp) return;
+  applyDisplay('scale', parseFloat(inp.value));
+}
+
+function applyShipAlerts(d) {
+  if (!document.getElementById('ship-hull')) return;
+  var ft = _shipAlertCfg.fuelPct;
+  var ht = _shipAlertCfg.hullPct;
+  var fuelStrip = document.getElementById('live-alert-fuel');
+  var fuelStripWasHidden = fuelStrip ? fuelStrip.hidden : true;
+
+  if (d.fuelPct != null && ft > 0) {
+    var fuelLow = d.fuelPct < ft;
+    if (fuelStrip) {
+      fuelStrip.hidden = !fuelLow;
+      fuelStrip.classList.toggle('live-alert-strip--active', fuelLow);
+      var txt = fuelStrip.querySelector('.live-alert-strip__text');
+      if (txt && fuelLow) {
+        txt.textContent = 'Low fuel — ' + Math.round(d.fuelPct) + '% (threshold ' + ft + '%)';
+      }
+    }
+    if (fuelLow) {
+      if (!_fuelBelowLogged) {
+        log('Fuel below ' + ft + '% (' + Math.round(d.fuelPct) + '% main tank)', 'warn');
+        _fuelBelowLogged = true;
+      }
+    } else {
+      _fuelBelowLogged = false;
+    }
+  } else {
+    if (fuelStrip) {
+      fuelStrip.hidden = true;
+      fuelStrip.classList.remove('live-alert-strip--active');
+    }
+    _fuelBelowLogged = false;
+  }
+
+  if (d.hull != null && ht > 0) {
+    var hullEl = document.getElementById('ship-hull');
+    var hullRow = document.getElementById('ship-hull-row');
+    var below = d.hull < ht;
+    if (hullRow) hullRow.classList.toggle('stat-row--hull-alert', below);
+    if (hullEl) {
+      hullEl.textContent = d.hull + '%';
+      if (below) {
+        hullEl.className = 'stat-val red ship-hull-below-threshold';
+      } else {
+        hullEl.className = 'stat-val ' + (d.hull >= 70 ? 'green' : d.hull >= 40 ? 'gold' : 'red');
+      }
+    }
+    if (_prevHullForAlert != null && _prevHullForAlert >= ht && d.hull < ht) {
+      log('Hull integrity below ' + ht + '% (' + d.hull + '%)', 'warn');
+    }
+    _prevHullForAlert = d.hull;
+  } else {
+    var hullRow2 = document.getElementById('ship-hull-row');
+    if (hullRow2) hullRow2.classList.remove('stat-row--hull-alert');
+    if (d.hull != null) {
+      var hullEl2 = document.getElementById('ship-hull');
+      if (hullEl2) {
+        hullEl2.textContent = d.hull + '%';
+        hullEl2.className = 'stat-val ' + (d.hull >= 70 ? 'green' : d.hull >= 40 ? 'gold' : 'red');
+      }
+      _prevHullForAlert = d.hull;
+    } else {
+      _prevHullForAlert = null;
+    }
+  }
+
+  if (fuelStrip && fuelStripWasHidden !== fuelStrip.hidden) reapplyLiveScaleFromSettings();
+}
+
 // ─── ELECTRON IPC ─────────────────────────────────────────────────
 if (window.electronAPI) {
+
+  refreshShipAlertCfg();
 
   // ── LIVE DATA → index.html ─────────────────────────────────────
   // Ship state, fuel, location, docking — sourced from the latest journal only.
@@ -502,14 +618,7 @@ if (window.electronAPI) {
           : 'var(--red, #e05252)';
     }
 
-    // Hull — colour-coded: green ≥70%, gold 40–69%, red <40%
-    if (d.hull != null) {
-      var hullEl = document.getElementById('ship-hull');
-      if (hullEl) {
-        hullEl.textContent = d.hull + '%';
-        hullEl.className   = 'stat-val ' + (d.hull >= 70 ? 'green' : d.hull >= 40 ? 'gold' : 'red');
-      }
-    }
+    applyShipAlerts(d);
 
     set('station-name',    d.dockedStation     || '\u2014');
     set('station-type',    d.dockedStationType || '\u2014');
@@ -1111,6 +1220,9 @@ function openOptions() {
     // Network server settings
     el = document.getElementById('opt-network-enabled'); if (el) el.checked = !!cfg.networkServerEnabled;
     el = document.getElementById('opt-network-port');    if (el) el.value  = cfg.networkServerPort || 3722;
+    el = document.getElementById('opt-fuel-alert-pct'); if (el) el.value = cfg.fuelAlertThresholdPct != null ? cfg.fuelAlertThresholdPct : 25;
+    el = document.getElementById('opt-hull-alert-pct'); if (el) el.value = cfg.hullAlertThresholdPct != null ? cfg.hullAlertThresholdPct : 70;
+    syncShipAlertCfgFromObject(cfg);
     // Fetch live network info and render clickable URLs
     if (window.electronAPI.getNetworkInfo) {
       window.electronAPI.getNetworkInfo().then(function(info) {
@@ -1182,6 +1294,29 @@ if (openBtn) openBtn.addEventListener('click', async function() {
   if (!window.electronAPI) return;
   try { await window.electronAPI.openJournalFolder(document.getElementById('opt-journal-path').value.trim() || null); }
   catch { log('Could not open folder', 'warn'); }
+});
+
+var shipAlertsSaveBtn = document.getElementById('opt-ship-alerts-save-btn');
+if (shipAlertsSaveBtn) shipAlertsSaveBtn.addEventListener('click', async function() {
+  if (!window.electronAPI) return;
+  var fuelRaw = ((document.getElementById('opt-fuel-alert-pct') || {}).value || '').trim();
+  var hullRaw = ((document.getElementById('opt-hull-alert-pct') || {}).value || '').trim();
+  var fuelAlertThresholdPct = clampShipAlertPct(fuelRaw, 25);
+  var hullAlertThresholdPct = clampShipAlertPct(hullRaw, 70);
+  try {
+    await window.electronAPI.saveConfig({ fuelAlertThresholdPct, hullAlertThresholdPct });
+    _shipAlertCfg.fuelPct = fuelAlertThresholdPct;
+    _shipAlertCfg.hullPct = hullAlertThresholdPct;
+    var hint = document.getElementById('opt-ship-alerts-hint');
+    if (hint) {
+      hint.textContent = 'Saved \u2714';
+      hint.style.color = 'var(--green)';
+      setTimeout(function() { hint.textContent = 'Applies immediately'; hint.style.color = ''; }, 2000);
+    }
+    log('Ship alert thresholds saved', 'good');
+  } catch (e) {
+    log('Failed to save ship alerts', 'error');
+  }
 });
 
 var journalPath = document.getElementById('opt-journal-path');
@@ -1390,25 +1525,28 @@ function applyDisplay(key, v) {
   switch (key) {
     case 'scale':
       if (wrap) {
+        var chromePx = getLiveChromeOffsetPx();
         wrap.style.transform       = 'scale(' + (v/100) + ')';
         wrap.style.transformOrigin = 'top left';
         wrap.style.width           = Math.round(10000/v) + '%';
-        wrap.style.height          = 'calc(' + Math.round(10000/v) + 'vh - ' + Math.round(44*100/v) + 'px)';
+        wrap.style.height          = 'calc(' + Math.round(10000/v) + 'vh - ' + Math.round(chromePx*100/v) + 'px)';
       }
       break;
     case 'font':
       document.documentElement.style.fontSize = v + 'px';
       break;
-    case 'density':
-      var pad = [2,3,4,6,8][v-1] + 'px';
+    case 'density': {
+      var di = Math.max(0, Math.min(4, Math.round(v) - 1));
+      var pad = [2,3,4,6,8][di] + 'px';
       root.style.setProperty('--row-pad', pad);
       var ds = document.getElementById('density-style') || document.createElement('style');
       ds.id = 'density-style';
       ds.textContent = '.stat-row { padding-top:' + pad + '; padding-bottom:' + pad + '; }' +
                        '.mini-stat { padding-top:' + pad + '; padding-bottom:' + pad + '; }' +
-                       '.panel-body { padding:' + [6,8,10,14,18][v-1] + 'px; }';
+                       '.panel-body { padding:' + [6,8,10,14,18][di] + 'px; }';
       document.head.appendChild(ds);
       break;
+    }
     case 'left':   root.style.setProperty('--left-w',   v + 'px'); break;
     case 'right':  root.style.setProperty('--right-w',  v + 'px'); break;
     case 'bright':

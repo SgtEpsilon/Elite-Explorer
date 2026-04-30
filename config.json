@@ -12,5 +12,7 @@
   "inaraEnabled": true,
   "updateChannel": "stable",
   "networkServerEnabled": false,
-  "networkServerPort": 3722
+  "networkServerPort": 3722,
+  "fuelAlertThresholdPct": 25,
+  "hullAlertThresholdPct": 70
 }
