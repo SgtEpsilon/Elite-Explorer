@@ -490,20 +490,6 @@ function refreshShipAlertCfg() {
   }).catch(function() {});
 }
 
-function getLiveChromeOffsetPx() {
-  var h = 44;
-  var fuelStrip = document.getElementById('live-alert-fuel');
-  if (fuelStrip && !fuelStrip.hidden) h += fuelStrip.offsetHeight || 0;
-  return h;
-}
-
-/** Re-apply UI scale after fuel alert strip height changes (Live layout). */
-function reapplyLiveScaleFromSettings() {
-  var inp = document.getElementById('sl-scale');
-  if (!inp) return;
-  applyDisplay('scale', parseFloat(inp.value));
-}
-
 function applyShipAlerts(d) {
   if (!document.getElementById('ship-hull')) return;
   var ft = _shipAlertCfg.fuelPct;
@@ -569,7 +555,6 @@ function applyShipAlerts(d) {
     }
   }
 
-  if (fuelStrip && fuelStripWasHidden !== fuelStrip.hidden) reapplyLiveScaleFromSettings();
 }
 
 // ─── ELECTRON IPC ─────────────────────────────────────────────────
@@ -1487,182 +1472,9 @@ if (edsmSyncBtnMain) edsmSyncBtnMain.addEventListener('click', async function() 
   }
 });
 
-// ─── THEMES ───────────────────────────────────────────────────────
-var THEMES = {
-  default: { '--gold':'#c8972a','--gold2':'#e8b840','--gold-dim':'#7a5a10','--gold-glow':'rgba(200,151,42,0.15)','--cyan':'#2ecfcf','--cyan2':'#5ee8e8','--cyan-dim':'rgba(46,207,207,0.1)' },
-  red:     { '--gold':'#e05252','--gold2':'#f07070','--gold-dim':'#a03030','--gold-glow':'rgba(224,82,82,0.15)', '--cyan':'#cf7a3e','--cyan2':'#e89060','--cyan-dim':'rgba(207,122,62,0.1)' },
-  green:   { '--gold':'#4caf7d','--gold2':'#70d090','--gold-dim':'#2a7a50','--gold-glow':'rgba(76,175,125,0.15)','--cyan':'#a0cf3e','--cyan2':'#c0e060','--cyan-dim':'rgba(160,207,62,0.1)' },
-  purple:  { '--gold':'#a855f7','--gold2':'#c080ff','--gold-dim':'#7a30c0','--gold-glow':'rgba(168,85,247,0.15)','--cyan':'#cf3ecf','--cyan2':'#e060e0','--cyan-dim':'rgba(207,62,207,0.1)' },
-};
-function applyTheme(name) {
-  var t = THEMES[name] || THEMES.default;
-  Object.entries(t).forEach(function(kv) { document.documentElement.style.setProperty(kv[0], kv[1]); });
-  document.querySelectorAll('.opt-theme-swatch').forEach(function(el) { el.classList.toggle('active', el.dataset.theme === name); });
-  localStorage.setItem('ee-theme', name);
-}
-document.querySelectorAll('.opt-theme-swatch').forEach(function(el) {
-  el.addEventListener('click', function() { applyTheme(el.dataset.theme); });
-});
-applyTheme(localStorage.getItem('ee-theme') || 'default');
-
-// ─── DISPLAY SLIDERS ──────────────────────────────────────────────
-var SLIDER_DEFAULTS = { scale:100, font:14, density:3, left:250, right:320, bright:100, opacity:100, scan:1, glow:100, border:2 };
-var DENSITY_LABELS  = ['Compact','Tight','Normal','Relaxed','Spacious'];
-var SCAN_LABELS     = ['Off','Low','Medium','High','Intense','Max'];
-var BORDER_LABELS   = ['None','Faint','Medium','Bold','Heavy'];
-
-var scanlineStyle = document.createElement('style');
-scanlineStyle.id = 'dynamic-scanlines';
-document.head.appendChild(scanlineStyle);
-
-var panelOpacityStyle = document.createElement('style');
-panelOpacityStyle.id = 'dynamic-opacity';
-document.head.appendChild(panelOpacityStyle);
-
-function applyDisplay(key, v) {
-  var root = document.documentElement;
-  var wrap = document.getElementById('app-wrapper');
-  switch (key) {
-    case 'scale':
-      if (wrap) {
-        var chromePx = getLiveChromeOffsetPx();
-        wrap.style.transform       = 'scale(' + (v/100) + ')';
-        wrap.style.transformOrigin = 'top left';
-        wrap.style.width           = Math.round(10000/v) + '%';
-        wrap.style.height          = 'calc(' + Math.round(10000/v) + 'vh - ' + Math.round(chromePx*100/v) + 'px)';
-      }
-      break;
-    case 'font':
-      document.documentElement.style.fontSize = v + 'px';
-      break;
-    case 'density': {
-      var di = Math.max(0, Math.min(4, Math.round(v) - 1));
-      var pad = [2,3,4,6,8][di] + 'px';
-      root.style.setProperty('--row-pad', pad);
-      var ds = document.getElementById('density-style') || document.createElement('style');
-      ds.id = 'density-style';
-      ds.textContent = '.stat-row { padding-top:' + pad + '; padding-bottom:' + pad + '; }' +
-                       '.mini-stat { padding-top:' + pad + '; padding-bottom:' + pad + '; }' +
-                       '.panel-body { padding:' + [6,8,10,14,18][di] + 'px; }';
-      document.head.appendChild(ds);
-      break;
-    }
-    case 'left':   root.style.setProperty('--left-w',   v + 'px'); break;
-    case 'right':  root.style.setProperty('--right-w',  v + 'px'); break;
-    case 'bright':
-      if (wrap) wrap.style.filter = 'brightness(' + (v/100) + ') saturate(' + (0.8 + (v/100)*0.4) + ')';
-      break;
-    case 'opacity':
-      panelOpacityStyle.textContent =
-        '.panel, #panel-summary, #panel-progress { background: rgba(9,14,24,' + (v/100) + ') !important; }' +
-        '#options-panel { background: rgba(9,14,24,' + Math.min(1, v/100+0.1) + ') !important; }';
-      break;
-    case 'scan':
-      if (v === 0) {
-        scanlineStyle.textContent = 'body::after { display:none; }';
-      } else {
-        var opacity = [0.02, 0.04, 0.07, 0.11, 0.16][v-1];
-        var gap     = [4, 4, 3, 3, 2][v-1];
-        scanlineStyle.textContent =
-          'body::after { background: repeating-linear-gradient(0deg, transparent, transparent ' + (gap-1) + 'px, rgba(0,0,0,' + opacity + ') ' + (gap-1) + 'px, rgba(0,0,0,' + opacity + ') ' + gap + 'px) !important; }';
-      }
-      break;
-    case 'glow':
-      var g = v / 100;
-      root.style.setProperty('--gold-glow', 'rgba(200,151,42,' + (0.15*g) + ')');
-      var gs = document.getElementById('glow-style') || document.createElement('style');
-      gs.id = 'glow-style';
-      gs.textContent =
-        '.tb-logo { text-shadow: 0 0 ' + Math.round(16*g) + 'px var(--gold-glow) !important; }' +
-        '.scan-total-val { text-shadow: 0 0 ' + Math.round(8*g) + 'px var(--gold-glow) !important; }' +
-        '.body-icon.star { box-shadow: 0 0 ' + Math.round(8*g) + 'px rgba(245,166,35,' + (0.5*g) + ') !important; }' +
-        '.body-icon.hmc  { box-shadow: 0 0 ' + Math.round(6*g) + 'px rgba(42,90,138,' + (0.4*g) + ') !important; }' +
-        '.mapped-icon.yes { box-shadow: 0 0 ' + Math.round(4*g) + 'px var(--green) !important; }';
-      document.head.appendChild(gs);
-      break;
-    case 'border':
-      var bw = [0, 0.5, 1, 1.5, 2][v];
-      root.style.setProperty('--border-w', bw + 'px');
-      var bs = document.getElementById('border-style') || document.createElement('style');
-      bs.id = 'border-style';
-      bs.textContent =
-        '.panel, .rank-card, .rep-card, .stat-block { border-width:' + bw + 'px !important; }' +
-        '#topbar, .panel-header { border-bottom-width:' + bw + 'px !important; }' +
-        '.stat-group-title { border-bottom-width:' + bw + 'px !important; }';
-      document.head.appendChild(bs);
-      break;
-  }
-}
-
-function sliderFill(input) {
-  var min = parseFloat(input.min), max = parseFloat(input.max), v = parseFloat(input.value);
-  input.style.setProperty('--fill', Math.round(((v - min) / (max - min)) * 100) + '%');
-}
-
-function updateSliderUI(key, v) {
-  var valEl = document.getElementById('sv-' + key);
-  if (!valEl) return;
-  switch (key) {
-    case 'scale':   valEl.textContent = Math.round(v) + '%'; break;
-    case 'font':    valEl.textContent = v + 'px'; break;
-    case 'density': valEl.textContent = DENSITY_LABELS[v-1] || v; break;
-    case 'left':
-    case 'right':
-    case 'bottom':
-    case 'log':    valEl.textContent = v + 'px'; break;
-    case 'bright':
-    case 'opacity':
-    case 'glow':    valEl.textContent = v + '%'; break;
-    case 'scan':    valEl.textContent = SCAN_LABELS[v] || v; break;
-    case 'border':  valEl.textContent = BORDER_LABELS[v] || v; break;
-  }
-}
-
-function loadDisplaySettings() {
-  var saved = {};
-  try { saved = JSON.parse(localStorage.getItem('ee-display') || '{}'); } catch {}
-  Object.keys(SLIDER_DEFAULTS).forEach(function(key) {
-    var v   = saved[key] != null ? saved[key] : SLIDER_DEFAULTS[key];
-    var inp = document.getElementById('sl-' + key);
-    if (inp) { inp.value = v; sliderFill(inp); }
-    updateSliderUI(key, v);
-    applyDisplay(key, v);
-  });
-}
-
-function saveDisplaySettings() {
-  var data = {};
-  Object.keys(SLIDER_DEFAULTS).forEach(function(key) {
-    var inp = document.getElementById('sl-' + key);
-    if (inp) data[key] = parseFloat(inp.value);
-  });
-  localStorage.setItem('ee-display', JSON.stringify(data));
-}
-
-Object.keys(SLIDER_DEFAULTS).forEach(function(key) {
-  var inp = document.getElementById('sl-' + key);
-  if (!inp) return;
-  inp.addEventListener('input', function() {
-    var v = parseFloat(inp.value);
-    sliderFill(inp);
-    updateSliderUI(key, v);
-    applyDisplay(key, v);
-    saveDisplaySettings();
-  });
-});
-
-var resetBtn = document.getElementById('sl-reset-all');
-if (resetBtn) resetBtn.addEventListener('click', function() {
-  Object.keys(SLIDER_DEFAULTS).forEach(function(key) {
-    var inp = document.getElementById('sl-' + key);
-    if (inp) { inp.value = SLIDER_DEFAULTS[key]; sliderFill(inp); }
-    updateSliderUI(key, SLIDER_DEFAULTS[key]);
-    applyDisplay(key, SLIDER_DEFAULTS[key]);
-  });
-  localStorage.removeItem('ee-display');
-});
-
-loadDisplaySettings();
+// Theme swatches and display sliders (font/density/brightness/opacity/
+// scanlines/glow/border) are handled by display-settings.js, shared by
+// every page — see that file for the single implementation.
 
 // ─── LIVE LAYOUT: toggleable panes, reflow, persistence (index.html) ─
 (function () {
