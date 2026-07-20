@@ -1,0 +1,141 @@
+name: Release
+
+# ─────────────────────────────────────────────────────────────────────────────
+# HOW TO PUBLISH A RELEASE (this is the whole process — no terminal needed):
+#
+#   1. Bump "version" in package.json.
+#        - Stable release  -> plain version, e.g.  0.2.0
+#        - Beta release    -> must contain "-beta", e.g.  0.2.0-beta.1
+#      Commit and push that change to main.
+#
+#   2. Go to this repo on GitHub -> Actions tab -> "Release" (left sidebar)
+#      -> "Run workflow" button (top right) -> pick "stable" or "beta" from
+#      the dropdown -> green "Run workflow" button.
+#
+#   3. Wait for all jobs to go green (a few minutes). Go to the Releases page,
+#      check the draft that was created, then click "Publish release".
+#
+# You never touch git tags by hand. The workflow creates the tag itself, and
+# will REFUSE to run (with a clear error) if:
+#   - the version in package.json doesn't match the channel you picked
+#   - that version has already been released before
+# ─────────────────────────────────────────────────────────────────────────────
+
+on:
+  workflow_dispatch:
+    inputs:
+      channel:
+        description: 'Which channel to publish'
+        required: true
+        type: choice
+        options:
+          - stable
+          - beta
+
+permissions:
+  contents: write
+
+jobs:
+  # ── Step 1: validate everything BEFORE any build runs, and create the tag ──
+  prepare:
+    runs-on: ubuntu-latest
+    outputs:
+      tag: ${{ steps.compute.outputs.tag }}
+      version: ${{ steps.compute.outputs.version }}
+    steps:
+      - name: Check out repo
+        uses: actions/checkout@v4
+
+      - name: Read version from package.json
+        id: compute
+        run: |
+          VERSION=$(node -p "require('./package.json').version")
+          TAG="v$VERSION"
+          echo "Detected package.json version: $VERSION"
+          echo "version=$VERSION" >> "$GITHUB_OUTPUT"
+          echo "tag=$TAG" >> "$GITHUB_OUTPUT"
+
+      - name: Validate version matches the chosen channel
+        run: |
+          VERSION="${{ steps.compute.outputs.version }}"
+          CHANNEL="${{ inputs.channel }}"
+
+          if [ "$CHANNEL" = "beta" ]; then
+            if [[ "$VERSION" != *-beta* ]]; then
+              echo "::error::You picked 'beta' but package.json version is '$VERSION', which has no '-beta' in it. Change it to something like ${VERSION}-beta.1, commit, push, and run this workflow again."
+              exit 1
+            fi
+          else
+            if [[ "$VERSION" == *-* ]]; then
+              echo "::error::You picked 'stable' but package.json version is '$VERSION', which looks like a prerelease (contains a hyphen). Remove the -beta.x part for a stable release, commit, push, and try again."
+              exit 1
+            fi
+          fi
+
+      - name: Make sure this version hasn't already been released
+        run: |
+          TAG="${{ steps.compute.outputs.tag }}"
+          if git ls-remote --exit-code --tags origin "refs/tags/$TAG" > /dev/null 2>&1; then
+            echo "::error::Tag $TAG already exists — this version was already published. Bump the version in package.json, commit, push, and run this workflow again."
+            exit 1
+          fi
+
+      - name: Create and push the release tag
+        run: |
+          TAG="${{ steps.compute.outputs.tag }}"
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git tag "$TAG"
+          git push origin "$TAG"
+
+  # ── Step 2: build on all three platforms and publish to the draft release ──
+  build:
+    needs: prepare
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [windows-latest, macos-latest, ubuntu-latest]
+
+    runs-on: ${{ matrix.os }}
+
+    steps:
+      - name: Check out repo at the release tag
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ needs.prepare.outputs.tag }}
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Publish (stable)
+        if: ${{ inputs.channel == 'stable' }}
+        run: npx electron-builder --publish always
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Publish (beta)
+        if: ${{ inputs.channel == 'beta' }}
+        run: npx electron-builder --publish always --config electron-builder.beta.json
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+  # ── Step 3: tell you exactly where to go next ───────────────────────────────
+  summary:
+    needs: [prepare, build]
+    runs-on: ubuntu-latest
+    steps:
+      - name: Print next steps
+        run: |
+          echo "## Release build complete :rocket:" >> "$GITHUB_STEP_SUMMARY"
+          echo "" >> "$GITHUB_STEP_SUMMARY"
+          echo "Channel: **${{ inputs.channel }}**" >> "$GITHUB_STEP_SUMMARY"
+          echo "Version: **${{ needs.prepare.outputs.version }}**" >> "$GITHUB_STEP_SUMMARY"
+          echo "" >> "$GITHUB_STEP_SUMMARY"
+          echo "A draft release was created on the Releases page." >> "$GITHUB_STEP_SUMMARY"
+          echo "Go review it, then click **Publish release** to make it live." >> "$GITHUB_STEP_SUMMARY"
