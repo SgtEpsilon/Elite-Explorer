@@ -28,6 +28,20 @@ const EMPIRE_RANKS     = ['None','Outsider','Serf','Master','Squire','Knight','L
 const FEDERATION_RANKS = ['None','Recruit','Cadet','Midshipman','Petty Officer','Chief Petty Officer','Warrant Officer','Ensign','Lieutenant','Lieutenant Commander','Post Commander','Post Captain','Rear Admiral','Vice Admiral','Admiral'];
 const EXOBIO_RANKS     = ['Directionless','Mostly Directionless','Compiler','Collector','Cataloguer','Taxonomist','Ecologist','Geneticist','Elite'];
 
+// Resolve a rank level to its display name.
+// Odyssey introduced Elite I / II / III — rank values beyond the last array
+// index (e.g. Trade:9 when the array only goes to index 8 for "Elite").
+// The old `RANKS[level] || RANKS[0]` pattern silently returned the *lowest*
+// rank name for any out-of-bounds value, which is wrong.
+const ELITE_TIERS = ['Elite I', 'Elite II', 'Elite III'];
+function getRankName(ranks, level) {
+  if (level == null || level < 0) return ranks[0];
+  if (level < ranks.length)       return ranks[level];
+  // Beyond the top of the array — map to Elite I / II / III
+  const tierIndex = level - ranks.length; // 0 → Elite I, 1 → Elite II, 2 → Elite III
+  return ELITE_TIERS[tierIndex] || ('Elite ' + (tierIndex + 1));
+}
+
 async function run() {
   const totalFiles            = files.length;
   const updatedLastProcessed  = { ...lastProcessed };
@@ -41,12 +55,17 @@ async function run() {
   let liveBodySystem = null; // system name these bodies belong to
   let liveSignals    = {};   // bodyName → array of signal strings (bio, geo, stations etc)
 
+  // Live missions accumulator — keyed by MissionID so updates overwrite cleanly.
+  let liveMissions = {};  // missionID → mission object
+
   // Profile data accumulator (identity, ranks, rep, stats)
   let profileIdentity   = null;
   let profileRanks      = null;
   let profileProgress   = null;
   let profileReputation = null;
   let profileStats      = null;
+  let profileEngineers  = {};   // engineerID → engineer record
+  let profileMaterials  = null; // { Raw: [], Manufactured: [], Encoded: [] }
 
   for (let fileIndex = 0; fileIndex < files.length; fileIndex++) {
     const filePath = files[fileIndex];
@@ -85,11 +104,11 @@ async function run() {
         }
 
         // ── Location / system changes ─────────────────────────────────
-        if (ev === 'Location' || ev === 'FSDJump') {
-          parentPort.postMessage({
-            type: 'event', event: 'journal.location',
-            data: { system: entry.StarSystem, timestamp: entry.timestamp, coords: entry.StarPos || null }
-          });
+        // Buffer the latest location — only emitted once at end-of-file so
+        // replaying a full journal doesn't trigger one EDSM lookup per jump.
+        if ((ev === 'Location' || ev === 'FSDJump') && doLive) {
+          liveData = liveData || {};
+          liveData._pendingLocation = { system: entry.StarSystem, timestamp: entry.timestamp, coords: entry.StarPos || null };
         }
 
         // ── Raw event forwarding for EDDN relay (live watcher only) ──
@@ -245,16 +264,22 @@ async function run() {
           if (ev === 'Loadout') {
             if (!liveData) liveData = {};
             liveData.ship          = entry.Ship_Localised || entry.Ship;
+            liveData.shipRaw       = entry.Ship || '';
             liveData.shipName      = entry.ShipName  || '';
             liveData.shipIdent     = entry.ShipIdent || '';
-            liveData.maxJumpRange  = entry.MaxJumpRange ? entry.MaxJumpRange.toFixed(2) + ' ly' : null;
+            liveData.maxJumpRange    = entry.MaxJumpRange ? entry.MaxJumpRange.toFixed(2) + ' ly' : null;
+            liveData.maxJumpRangeRaw = entry.MaxJumpRange || 0;
             liveData.cargoCapacity = entry.CargoCapacity != null ? entry.CargoCapacity : (liveData.cargoCapacity ?? null);
+            liveData.unladenMass   = entry.UnladenMass   != null ? entry.UnladenMass   : null;
+            liveData.hullValue     = entry.HullValue     != null ? entry.HullValue     : null;
+            liveData.modulesValue  = entry.ModulesValue  != null ? entry.ModulesValue  : null;
+            liveData.rebuy         = entry.Rebuy         != null ? entry.Rebuy         : null;
+            liveData.modules       = entry.Modules       || [];
             if (entry.FuelCapacity != null) {
               liveData.fuelCapacity = typeof entry.FuelCapacity === 'object'
                 ? entry.FuelCapacity.Main
                 : entry.FuelCapacity;
             }
-            liveData.rebuy = entry.Rebuy ?? null;
             // Hull resets to 100% on a fresh Loadout (subsequent HullHealth events update it)
             liveData.hull = 100;
             // Emit immediately so ship switches (SRV, fighter, stored ship) update the UI in real time.
@@ -310,6 +335,73 @@ async function run() {
             liveData.dockedFaction     = null;
           }
 
+          // ── MISSIONS ──────────────────────────────────────────────────────
+          if (ev === 'MissionAccepted') {
+            liveMissions[entry.MissionID] = {
+              id:                  entry.MissionID,
+              name:                entry.LocalisedName || entry.Name || 'Unknown Mission',
+              internalName:        entry.Name || '',
+              status:              'Active',
+              faction:             entry.Faction         || null,
+              targetFaction:       entry.TargetFaction   || null,
+              influence:           entry.Influence       || null,
+              reputation:          entry.Reputation      || null,
+              reward:              entry.Reward          || null,
+              commodity:           entry.Commodity_Localised || entry.Commodity || null,
+              count:               entry.Count           || null,
+              target:              entry.Target          || null,
+              targetType:          entry.TargetType_Localised || entry.TargetType || null,
+              destinationSystem:   entry.DestinationSystem  || null,
+              destinationStation:  entry.DestinationStation || null,
+              newEndeavour:        entry.NewEndeavour    || false,
+              expiry:              entry.Expiry          || null,  // ISO string
+              acceptedTimestamp:   entry.timestamp       || null,
+            };
+            parentPort.postMessage({ type: 'missions-data', missions: liveMissions });
+          }
+
+          if (ev === 'MissionCompleted') {
+            if (liveMissions[entry.MissionID]) {
+              liveMissions[entry.MissionID].status        = 'Complete';
+              liveMissions[entry.MissionID].reward        = entry.Reward ?? liveMissions[entry.MissionID].reward;
+              liveMissions[entry.MissionID].doneTimestamp = entry.timestamp || null;
+            } else {
+              liveMissions[entry.MissionID] = {
+                id: entry.MissionID,
+                name: entry.LocalisedName || entry.Name || 'Mission',
+                internalName: entry.Name || '',
+                status: 'Complete',
+                reward: entry.Reward || null,
+                doneTimestamp: entry.timestamp || null,
+              };
+            }
+            parentPort.postMessage({ type: 'missions-data', missions: liveMissions });
+          }
+
+          if (ev === 'MissionFailed') {
+            if (liveMissions[entry.MissionID]) {
+              liveMissions[entry.MissionID].status        = 'Failed';
+              liveMissions[entry.MissionID].doneTimestamp = entry.timestamp || null;
+            } else {
+              liveMissions[entry.MissionID] = {
+                id: entry.MissionID,
+                name: entry.Name || 'Mission',
+                internalName: entry.Name || '',
+                status: 'Failed',
+                doneTimestamp: entry.timestamp || null,
+              };
+            }
+            parentPort.postMessage({ type: 'missions-data', missions: liveMissions });
+          }
+
+          if (ev === 'MissionAbandoned') {
+            if (liveMissions[entry.MissionID]) {
+              liveMissions[entry.MissionID].status        = 'Abandoned';
+              liveMissions[entry.MissionID].doneTimestamp = entry.timestamp || null;
+            }
+            parentPort.postMessage({ type: 'missions-data', missions: liveMissions });
+          }
+
         }
 
         // ── PROFILE DATA ──────────────────────────────────────────────
@@ -328,13 +420,13 @@ async function run() {
           if (ev === 'Rank') {
             const exobioLevel = entry.Exobiologist != null ? entry.Exobiologist : (entry.Soldier != null ? entry.Soldier : null);
             profileRanks = {
-              combat:     { level: entry.Combat     != null ? entry.Combat     : 0, name: COMBAT_RANKS[entry.Combat     != null ? entry.Combat     : 0] || COMBAT_RANKS[0] },
-              trade:      { level: entry.Trade      != null ? entry.Trade      : 0, name: TRADE_RANKS[entry.Trade       != null ? entry.Trade      : 0] || TRADE_RANKS[0]  },
-              explore:    { level: entry.Explore    != null ? entry.Explore    : 0, name: EXPLORE_RANKS[entry.Explore   != null ? entry.Explore    : 0] || EXPLORE_RANKS[0]},
-              cqc:        { level: entry.CQC        != null ? entry.CQC        : 0, name: CQC_RANKS[entry.CQC           != null ? entry.CQC        : 0] || CQC_RANKS[0]    },
-              empire:     { level: entry.Empire     != null ? entry.Empire     : 0, name: EMPIRE_RANKS[entry.Empire     != null ? entry.Empire     : 0] || EMPIRE_RANKS[0] },
-              federation: { level: entry.Federation != null ? entry.Federation : 0, name: FEDERATION_RANKS[entry.Federation != null ? entry.Federation : 0] || FEDERATION_RANKS[0] },
-              exobiology: { level: exobioLevel != null ? exobioLevel : 0, name: exobioLevel != null ? (EXOBIO_RANKS[exobioLevel] || EXOBIO_RANKS[0]) : EXOBIO_RANKS[0] },
+              combat:     { level: entry.Combat     ?? 0, name: getRankName(COMBAT_RANKS,     entry.Combat)     },
+              trade:      { level: entry.Trade      ?? 0, name: getRankName(TRADE_RANKS,      entry.Trade)      },
+              explore:    { level: entry.Explore    ?? 0, name: getRankName(EXPLORE_RANKS,    entry.Explore)    },
+              cqc:        { level: entry.CQC        ?? 0, name: getRankName(CQC_RANKS,        entry.CQC)        },
+              empire:     { level: entry.Empire     ?? 0, name: getRankName(EMPIRE_RANKS,     entry.Empire)     },
+              federation: { level: entry.Federation ?? 0, name: getRankName(FEDERATION_RANKS, entry.Federation) },
+              exobiology: { level: exobioLevel      ?? 0, name: getRankName(EXOBIO_RANKS,     exobioLevel)      },
             };
           }
 
@@ -363,6 +455,41 @@ async function run() {
             // Keep the full raw Statistics object — renderer will access sub-keys directly
             profileStats = entry;
           }
+
+          // ── EngineerProgress — full array (on login) or single update ──────
+          if (ev === 'EngineerProgress') {
+            if (Array.isArray(entry.Engineers)) {
+              // Full snapshot from login — replace everything
+              profileEngineers = {};
+              entry.Engineers.forEach(eng => {
+                profileEngineers[eng.EngineerID] = {
+                  name:         eng.Engineer,
+                  id:           eng.EngineerID,
+                  progress:     eng.Progress,
+                  rank:         eng.Rank         || null,
+                  rankProgress: eng.RankProgress || null,
+                };
+              });
+            } else if (entry.Engineer && entry.EngineerID) {
+              // Single engineer update
+              profileEngineers[entry.EngineerID] = {
+                name:         entry.Engineer,
+                id:           entry.EngineerID,
+                progress:     entry.Progress,
+                rank:         entry.Rank         || null,
+                rankProgress: entry.RankProgress || null,
+              };
+            }
+          }
+
+          // ── Materials — full inventory snapshot ───────────────────────────
+          if (ev === 'Materials') {
+            profileMaterials = {
+              Raw:          entry.Raw          || [],
+              Manufactured: entry.Manufactured || [],
+              Encoded:      entry.Encoded      || [],
+            };
+          }
         }
 
       } catch {
@@ -387,7 +514,18 @@ async function run() {
       liveData.fuelPct     = Math.round((liveData.fuelTotal / liveData.fuelCapacity) * 100);
       liveData.fuelDisplay = liveData.fuelTotal.toFixed(1) + ' / ' + liveData.fuelCapacity;
     }
+    // Emit the most recent location exactly once — buffered above to avoid one
+    // EDSM fetch per FSDJump when replaying a full journal file on startup.
+    if (liveData._pendingLocation) {
+      parentPort.postMessage({ type: 'event', event: 'journal.location', data: liveData._pendingLocation });
+      delete liveData._pendingLocation;
+    }
     parentPort.postMessage({ type: 'live-data', data: liveData });
+  }
+
+  // ── Emit missions-data ────────────────────────────────────────────────────
+  if (doLive && Object.keys(liveMissions).length > 0) {
+    parentPort.postMessage({ type: 'missions-data', missions: liveMissions });
   }
 
   // ── Emit profile-data ─────────────────────────────────────────────────────
@@ -400,6 +538,8 @@ async function run() {
         progress:   profileProgress   || {},
         reputation: profileReputation || {},
         stats:      profileStats      || {},   // raw Statistics event object
+        engineers:  Object.values(profileEngineers),
+        materials:  profileMaterials  || { Raw: [], Manufactured: [], Encoded: [] },
       }
     });
   }

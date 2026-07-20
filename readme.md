@@ -279,6 +279,27 @@ npm run build:mac    # macOS DMG
 npm run build:linux  # AppImage + deb
 ```
 
+### Publishing a Release
+
+`build/icon.png` and the `publish` block in `package.json` are already wired up for GitHub Releases via `electron-builder`. `electron-builder.beta.json` overrides the publish target to a prerelease on the `beta` channel.
+
+The `beta.yml` / `latest.yml` manifest that `electron-updater` reads to check for updates is **generated automatically** by electron-builder during a publish — it is not something you write by hand.
+
+Locally (requires a GitHub personal access token with `repo` scope in `GH_TOKEN`):
+
+```bash
+export GH_TOKEN=ghp_xxxxxxxxxxxx
+npm run publish:stable   # tags a normal release, uploads latest.yml
+npm run publish:beta     # tags a prerelease, uploads beta.yml
+```
+
+Note electron-builder can only produce a given platform's installer on that platform — a Windows `.exe`/NSIS installer needs to be built on Windows, and a macOS `.dmg` needs to be built on macOS. `.github/workflows/release.yml` handles this with a CI matrix: push a tag and it builds all three platforms and publishes them together.
+
+```bash
+git tag v0.2.0 && git push origin v0.2.0            # stable release
+git tag v0.2.0-beta.1 && git push origin v0.2.0-beta.1  # beta prerelease
+```
+
 ### Submitting a Pull Request
 
 When your changes are ready:

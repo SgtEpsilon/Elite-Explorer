@@ -24,7 +24,7 @@ const fs          = require('fs');
 const BASE_URL = 'https://www.edsm.net';
 
 let mainWindow     = null;
-let _lastLookupKey = null;   // "systemName|timestamp" — unique per system entry
+let _lastLookupKey = null;   // last system name looked up — prevents re-fetching same system
 let _cachedSystem  = null;   // last edsm-system payload
 let _cachedBodies  = null;   // last edsm-bodies payload
 
@@ -63,29 +63,39 @@ async function fetchSystemBodies(systemName) {
   return await res.json();
 }
 
+async function fetchSystemStations(systemName) {
+  const res = await fetch(
+    `${BASE_URL}/api-system-v1/stations?systemName=${encodeURIComponent(systemName)}`,
+    { signal: AbortSignal.timeout(10000) }
+  );
+  if (!res.ok) throw new Error('HTTP ' + res.status);
+  return await res.json();
+}
+
 // ── Main lookup — triggered on every system entry ─────────────────────────────
 
 async function lookupSystem(systemName, timestamp) {
   if (!systemName) return;
 
-  // Deduplicate by system+timestamp — collapses duplicate events from the same
-  // jump (both FSDJump and Location fire journal.location), but allows a fresh
-  // fetch every time the player genuinely enters a system.
-  const key = systemName + '|' + (timestamp || '');
-  if (key === _lastLookupKey) return;
-  _lastLookupKey = key;
+  // Deduplicate by system name — only fetch when the player enters a new system.
+  // The old system|timestamp key caused a fresh EDSM hit on every Location event
+  // (FSS entry, supercruise exit, approach body, etc.) because each carries a
+  // different timestamp even though the system hasn't changed.
+  if (systemName === _lastLookupKey) return;
+  _lastLookupKey = systemName;
 
   const cfg    = readConfig();
   const edsmOn = !!cfg.edsmEnabled;
 
   try {
     // Bodies always fetch. System info only when EDSM integration is on.
-    const tasks = [fetchSystemBodies(systemName)];
+    const tasks = [fetchSystemBodies(systemName), fetchSystemStations(systemName)];
     if (edsmOn) tasks.push(fetchSystemInfo(systemName));
 
-    const results  = await Promise.allSettled(tasks);
-    const bodiesRaw = results[0];
-    const infoRaw   = edsmOn ? results[1] : null;
+    const results      = await Promise.allSettled(tasks);
+    const bodiesRaw    = results[0];
+    const stationsRaw  = results[1];
+    const infoRaw      = edsmOn ? results[2] : null;
 
     // ── System info → edsm-system ──────────────────────────────────────────
     if (edsmOn) {
@@ -104,7 +114,7 @@ async function lookupSystem(systemName, timestamp) {
         };
         _cachedSystem = payload;
         send('edsm-system', payload);
-        logger.debug('EDSM', `System info fetched for ${systemName}`, { allegiance: info.allegiance, security: info.security });
+        logger.info('EDSM', `System info fetched for ${systemName}`, { allegiance: info.allegiance, security: info.security });
       } else {
         const errMsg = infoRaw.reason?.message || 'lookup failed';
         const payload = {
@@ -120,10 +130,13 @@ async function lookupSystem(systemName, timestamp) {
 
     // ── Bodies → edsm-bodies ───────────────────────────────────────────────
     if (bodiesRaw.status === 'fulfilled' && bodiesRaw.value && Array.isArray(bodiesRaw.value.bodies)) {
-      const payload = { system: systemName, bodies: bodiesRaw.value.bodies };
+      const stations = (stationsRaw.status === 'fulfilled' && stationsRaw.value && Array.isArray(stationsRaw.value.stations))
+        ? stationsRaw.value.stations
+        : [];
+      const payload = { system: systemName, bodies: bodiesRaw.value.bodies, stations };
       _cachedBodies = payload;
       send('edsm-bodies', payload);
-      logger.debug('EDSM', `Bodies fetched for ${systemName}`, { count: bodiesRaw.value.bodies.length });
+      logger.info('EDSM', `Bodies fetched for ${systemName}`, { count: bodiesRaw.value.bodies.length, stations: stations.length });
     } else {
       logger.warn('EDSM', `Bodies fetch failed for ${systemName}`, bodiesRaw.reason?.message || 'empty response');
     }
@@ -162,7 +175,6 @@ function start() {
 
   eventBus.on('journal.location', (data) => {
     if (data && data.system) {
-      logger.debug('EDSM', `Location event received — looking up ${data.system}`);
       lookupSystem(data.system, data.timestamp);
     }
   });

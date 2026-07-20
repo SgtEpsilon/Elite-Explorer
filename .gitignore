@@ -6,3 +6,8 @@ package-lock.json
 Elite-Explorer-Publishing-Guide.md
 *.zip
 publish.bat
+devmode/Elite-Explorer-Publishing-Guide.docx
+devmode/
+Elite-Explorer-200-Enhancements.docx
+.cursor/rules/dev-testing.mdc
+.vs/*

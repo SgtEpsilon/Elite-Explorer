@@ -13,7 +13,9 @@ const eddnRelay        = require('./engine/services/eddnRelay');
 const edsmSyncService  = require('./engine/services/edsmSyncService');
 const capiService      = require('./engine/services/capiService');
 const updaterService   = require('./engine/services/updaterService');
+const inaraService     = require('./engine/services/inaraService');
 const engine           = require('./engine/core/engine');
+const eventBus         = require('./engine/core/eventBus');
 const api              = require('./engine/api/server');
 const networkServer    = require('./engine/api/network-server');
 
@@ -155,6 +157,14 @@ app.whenReady().then(async () => {
 
   engine.start();      // DB + eventBus listeners
   logger.info('ENGINE', 'Engine started');
+
+  // ── Auto-update history on every FSDJump ─────────────────────────────────
+  // journal.raw.FSDJump fires from the live journal watcher with the full
+  // journal entry. We append it to the history cache immediately so the
+  // history page and web UI update on every jump without a full re-scan.
+  eventBus.on('journal.raw.FSDJump', (entry) => {
+    historyProvider.appendJump(entry);
+  });
   api.start();         // REST API on :3721
   logger.info('API', 'REST API started on :3721');
 
@@ -523,6 +533,24 @@ ipcMain.handle('capi-logout',      ()       => capiService.logout());
 ipcMain.handle('capi-get-status',  ()       => capiService.getStatus());
 ipcMain.handle('capi-get-profile', ()       => capiService.getProfile());
 ipcMain.handle('capi-get-market',  (_e, id) => capiService.getMarket(id));
+
+// ── Inara sync ────────────────────────────────────────────────────────────────
+// inara-sync-profile: rate-limited (5 min) batched sync with Inara.
+//   Sends getCommanderProfile + setCommanderRankPilot + setCommanderReputationMajorFaction
+//   + setCommanderCredits in a single request, using current journal cache for write events.
+ipcMain.handle('inara-sync-profile', async (_e, commanderName) => {
+  try {
+    const journalCache = journalProvider.getCache().profileData || null;
+    return await inaraService.syncProfile(commanderName || '', journalCache);
+  } catch (err) {
+    logger.error('INARA', 'Sync IPC error: ' + err.message);
+    return { success: false, error: err.message };
+  }
+});
+
+// inara-get-sync-status: returns cooldown metadata so the UI can show the
+// countdown without triggering an actual API call.
+ipcMain.handle('inara-get-sync-status', () => inaraService.getSyncStatus());
 
 // ── Debug Log ─────────────────────────────────────────────────────────────────
 ipcMain.handle('debug-get-log', () => {

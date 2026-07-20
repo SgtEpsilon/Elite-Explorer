@@ -1,10 +1,11 @@
 {
   "name": "elite-explorer",
-  "version": "0.1.1",
+  "version": "0.1.6.1",
   "description": "Elite Dangerous exploration desktop engine",
   "main": "main.js",
   "scripts": {
     "start": "electron .",
+    "dev": "electron .",
     "start-ui": "electron .",
     "build": "electron-builder",
     "build:win": "electron-builder --win",
@@ -24,7 +25,7 @@
   },
   "devDependencies": {
     "electron": "^26.2.0",
-    "electron-builder": "^24.0.0"
+    "electron-builder": "^24.13.3"
   },
   "build": {
     "appId": "com.cmdr-epsilon.elite-explorer",

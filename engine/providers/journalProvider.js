@@ -24,15 +24,17 @@ function setMainWindow(win) { mainWindow = win; }
 // ── Replay cache — keeps the last payload of each type so any page that loads
 // after the initial scan still gets populated data immediately. ──────────────
 const _cache = {
-  liveData:    null,   // last live-data payload
-  profileData: null,   // last profile-data payload
-  bodiesData:  null,   // last bodies-data payload
+  liveData:     null,   // last live-data payload
+  profileData:  null,   // last profile-data payload
+  bodiesData:   null,   // last bodies-data payload
+  missionsData: null,   // last missions-data payload
 };
 
 function replayToPage() {
-  if (_cache.liveData)    send('live-data',    _cache.liveData);
-  if (_cache.profileData) send('profile-data', _cache.profileData);
-  if (_cache.bodiesData)  send('bodies-data',  _cache.bodiesData);
+  if (_cache.liveData)     send('live-data',     _cache.liveData);
+  if (_cache.profileData)  send('profile-data',  _cache.profileData);
+  if (_cache.bodiesData)   send('bodies-data',   _cache.bodiesData);
+  if (_cache.missionsData) send('missions-data', _cache.missionsData);
 }
 
 function send(channel, data) {
@@ -94,6 +96,11 @@ function runWorker(files, { mode = 'all', useLastProcessed = false, updateLastPr
           _cache.bodiesData = { system: msg.system, bodies: msg.bodies, signals: msg.signals };
           send('bodies-data', { system: msg.system, bodies: msg.bodies, signals: msg.signals });
           eventBus.emit('journal.bodies', { system: msg.system, bodies: msg.bodies, signals: msg.signals });
+          break;
+
+        case 'missions-data':
+          _cache.missionsData = { missions: msg.missions };
+          send('missions-data', { missions: msg.missions });
           break;
 
         case 'live-data':
@@ -163,7 +170,10 @@ async function readProfileData(journalPath) {
   }
 
   logger.debug('JOURNAL', `Profile scan: checking ${batch.length} file(s)`, { found: [...found].join(', ') || 'none' });
-  await runWorker(batch, { mode: 'profile' });
+  // Reverse so the worker processes oldest→newest: each event type overwrites
+  // the previous, meaning the most-recent Statistics (and LoadGame, Rank, etc.)
+  // is always the final value emitted in the profile-data payload.
+  await runWorker(batch.reverse(), { mode: 'profile' });
 }
 
 // ── Exported "Scan All Journals" (Options button) ─────────────────────────────
@@ -251,6 +261,69 @@ function start() {
 
   watcher.on('add', handleFileEvent);
   watcher.on('change', handleFileEvent);
+
+  // ── Status.json watcher — keeps the fuel panel live ──────────────────────
+  // Status.json is rewritten by Elite every ~1 s while in-game and contains
+  // Fuel.FuelMain (main tank) and Fuel.FuelReservoir (reserve). We read it
+  // on every change and push a partial live-data update so the fuel bar and
+  // display update in real time — independent of FSDJump/FuelScoop journal
+  // events which only fire at discrete moments.
+  const statusPath = path.join(journalPath, 'Status.json');
+
+  function readStatusFuel() {
+    try {
+      const raw    = fs.readFileSync(statusPath, 'utf8');
+      const status = JSON.parse(raw);
+      const fuel   = status.Fuel;
+      if (!fuel) return;
+
+      const fuelMain      = fuel.FuelMain      ?? null;
+      const fuelReservoir = fuel.FuelReservoir ?? null;
+      if (fuelMain === null) return;
+
+      // Capacity comes from Loadout events stored in the live-data cache.
+      // Fall back to fuelMain itself (100%) if we haven't seen a Loadout yet.
+      const fuelCapacity = (_cache.liveData && _cache.liveData.fuelCapacity)
+        ? _cache.liveData.fuelCapacity
+        : null;
+
+      const fuelTotal   = fuelMain;
+      const fuelPct     = fuelCapacity
+        ? Math.min(100, Math.round((fuelTotal / fuelCapacity) * 100))
+        : null;
+      const fuelDisplay = fuelCapacity
+        ? fuelMain.toFixed(1) + ' / ' + fuelCapacity
+        : fuelMain.toFixed(1) + ' t';
+
+      // Build a minimal live-data patch — only overwrite the fuel fields.
+      // The receiver merges using the existing `if (d.field)` guards so
+      // non-fuel fields are untouched.
+      const patch = {
+        fuelMain,
+        fuelReservoir,
+        fuelTotal,
+        fuelPct,
+        fuelDisplay,
+      };
+
+      // Update the cache so replayToPage sends current fuel to new page loads.
+      if (_cache.liveData) {
+        _cache.liveData = { ..._cache.liveData, ...patch };
+      }
+
+      send('live-data', patch);
+    } catch {
+      // Status.json may be transiently locked during an Elite write — skip quietly.
+    }
+  }
+
+  const statusWatcher = chokidar.watch(statusPath, {
+    persistent:       true,
+    ignoreInitial:    false,   // read once on start so the bar is correct immediately
+    awaitWriteFinish: false,   // react as soon as the file is touched
+  });
+  statusWatcher.on('add',    readStatusFuel);
+  statusWatcher.on('change', readStatusFuel);
 }
 
 // ── refreshProfile: re-scan profile data on demand (used by 2-min poll) ──────

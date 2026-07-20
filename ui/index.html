@@ -3,8 +3,6 @@
 <head>
 <meta charset="UTF-8">
 <title>Elite Explorer — Live</title>
-<link rel="preconnect" href="https://fonts.googleapis.com">
-<link href="https://fonts.googleapis.com/css2?family=Rajdhani:wght@400;500;600;700&family=Share+Tech+Mono&family=Orbitron:wght@400;500;700&family=Exo+2:wght@200;300;400&display=swap" rel="stylesheet">
 <link rel="stylesheet" href="styles.css">
 </head>
 <body>
@@ -17,9 +15,10 @@
   <span class="tb-sys" id="tb-sys">&#8212;</span><span id="tb-discovery-star" title="First Discovery!" style="display:none;color:var(--gold);margin-left:4px;font-size:0.85em;">&#9733;</span>
   <div class="tab-nav">
     <a class="tab-btn active" href="index.html">Live</a>
+    <a class="tab-btn" href="ship.html">Ship</a>
     <a class="tab-btn" href="profile.html">Profile</a>
     <a class="tab-btn" href="history.html">History</a>
-	<a class="tab-btn" href="spansh.html">Spansh</a>
+    <a class="tab-btn" href="spansh.html">Spansh</a>
   </div>
   <span class="tb-credits" id="tb-credits"></span>
   <span id="eddn-dot" title="EDDN: disabled" style="width:6px;height:6px;border-radius:50%;background:var(--border2);display:inline-block;margin-right:4px;transition:background 0.4s;"></span>
@@ -27,17 +26,24 @@
   <button id="options-btn" title="Options">&#9881;</button>
 </div>
 
-<div id="app-wrapper" style="display:flex;flex-direction:column;height:calc(100vh - 44px);">
+<div id="live-alert-fuel" class="live-alert-strip" role="status" aria-live="polite" hidden>
+  <span class="live-alert-strip__icon">&#9888;</span>
+  <span class="live-alert-strip__text">Low fuel — main tank below threshold</span>
+</div>
 
-  <div id="view-live" class="active">
+<div id="app-wrapper">
+
+  <div id="view-live" class="active live-grid-lmr">
 
     <!-- LEFT COLUMN: Commander (scrollable) + Scan Summary (locked bottom) -->
     <div class="live-col" id="live-col-left">
+    <div class="live-col-stack">
 
-      <div class="panel" id="panel-commander">
+      <div class="panel live-pane live-pane--tall console-frame" id="panel-commander" data-live-panel="commander">
         <div class="panel-header">
           <span class="label">Commander</span>
           <div class="accent-line"></div>
+          <button type="button" class="live-pane-toggle" data-live-panel="commander" title="Show or hide this panel">&#8722;</button>
         </div>
         <div class="panel-body">
           <div class="stat-group">
@@ -64,7 +70,8 @@
             <div class="stat-row"><span class="stat-key">Cargo Cap</span><span class="stat-val" id="ship-cargo">&#8212;</span></div>
             <div class="stat-row"><span class="stat-key">Fuel</span><span class="stat-val" id="ship-fuel">&#8212;</span></div>
             <div class="fuel-bar-wrap"><div class="fuel-bar-fill" id="fuel-bar" style="width:0%"></div></div>
-            <div class="stat-row" style="margin-top:4px;"><span class="stat-key">Hull</span><span class="stat-val green" id="ship-hull">&#8212;</span></div>
+            <div class="stat-row" style="margin-top:2px;"><span class="stat-key" style="color:var(--text-mute);font-size:0.85em">Reserve</span><span class="stat-val" id="ship-fuel-reserve" style="font-size:0.85em;color:var(--text-mute)">&#8212;</span></div>
+            <div class="stat-row" id="ship-hull-row" style="margin-top:4px;"><span class="stat-key">Hull</span><span class="stat-val green" id="ship-hull">&#8212;</span></div>
             <div class="stat-row"><span class="stat-key">Rebuy</span><span class="stat-val red" id="ship-rebuy">&#8212;</span></div>
           </div>
           <div class="stat-group">
@@ -77,10 +84,11 @@
         </div>
       </div>
 
-      <div class="panel" id="panel-summary">
+      <div class="panel live-pane live-pane--short" id="panel-summary" data-live-panel="summary">
         <div class="panel-header">
           <span class="label">Scan Summary</span>
           <div class="accent-line"></div>
+          <button type="button" class="live-pane-toggle" data-live-panel="summary" title="Show or hide this panel">&#8722;</button>
         </div>
         <div class="panel-body">
           <div class="summary-grid">
@@ -92,16 +100,23 @@
         </div>
       </div>
 
+    </div>
+    <div class="live-col-restore" id="live-col-left-restore" aria-label="Restore hidden panels"></div>
     </div><!-- /live-col-left -->
 
-    <!-- MIDDLE COLUMN: System Bodies (scrollable) + Journal Scan (locked bottom) + Log spacer -->
+    <!-- MIDDLE COLUMN: System Bodies (scrollable) + Journal Scan (strip) -->
     <div class="live-col" id="live-col-mid">
+    <div class="live-col-stack">
 
-      <div class="panel" id="panel-system">
+      <div class="panel live-pane live-pane--tall" id="panel-system" data-live-panel="system">
         <div class="panel-header">
           <span class="label">System Bodies</span>
           <div class="accent-line"></div>
+          <button id="btn-toggle-stations" title="Show/hide stations &amp; settlements"
+                  style="font-family:var(--mono);font-size:0.6667em;letter-spacing:0.08em;text-transform:uppercase;background:rgba(46,207,207,0.1);color:var(--cyan);border:1px solid rgba(46,207,207,0.3);padding:2px 7px;cursor:pointer;transition:all 0.15s;margin-right:6px;"
+                  onclick="toggleStations()">&#9670; Stations</button>
           <span style="font-family:var(--mono);font-size:0.75em;color:var(--text-mute)" id="body-count">0 bodies</span>
+          <button type="button" class="live-pane-toggle" data-live-panel="system" title="Show or hide this panel">&#8722;</button>
         </div>
         <div class="panel-body" style="padding:0;">
           <table class="bodies-table">
@@ -123,25 +138,29 @@
         </div>
       </div>
 
-      <div id="panel-progress">
+      <div id="panel-progress" class="live-pane live-pane--strip" data-live-panel="progress">
         <div class="panel-header" style="padding:6px 10px;">
           <span class="label">Journal Scan</span><div class="accent-line"></div>
           <span style="font-family:var(--mono);font-size:0.75em;color:var(--text-mute)" id="progress-pct">&#8212;</span>
           <span style="font-family:var(--mono);font-size:0.7em;color:var(--text-mute);margin-left:6px;" id="progress-info">Ready</span>
+          <button type="button" class="live-pane-toggle" data-live-panel="progress" title="Show or hide this panel">&#8722;</button>
         </div>
         <div class="progress-track"><div class="progress-fill" id="progress-bar"></div></div>
         <div id="progress-detail" style="display:none;"></div>
       </div>
 
-      <div class="col-log-spacer"></div>
-
+    </div>
+    <div class="live-col-restore" id="live-col-mid-restore" aria-label="Restore hidden panels"></div>
     </div><!-- /live-col-mid -->
 
-    <!-- RIGHT COLUMN: Scan Values (scrollable) + Application Log (locked bottom) -->
+    <!-- RIGHT COLUMN: Scan Values + Missions + Application Log -->
     <div class="live-col" id="live-col-right">
+    <div class="live-col-stack">
 
-      <div class="panel" id="panel-scan">
-        <div class="panel-header"><span class="label">Scan Values</span><div class="accent-line"></div></div>
+      <div class="panel live-pane live-pane--mid" id="panel-scan" data-live-panel="scan">
+        <div class="panel-header"><span class="label">Scan Values</span><div class="accent-line"></div>
+          <button type="button" class="live-pane-toggle" data-live-panel="scan" title="Show or hide this panel">&#8722;</button>
+        </div>
         <div class="scan-total-bar"><span class="scan-total-label">EST. TOTAL</span><span class="scan-total-val" id="scan-total">0 cr</span></div>
         <div class="panel-body" style="padding:0;">
           <table class="scan-table">
@@ -160,15 +179,35 @@
         </div>
       </div>
 
-      <div class="panel" id="panel-log">
+      <!-- MISSIONS PANEL -->
+      <div class="panel live-pane live-pane--mid" id="panel-missions" data-live-panel="missions">
+        <div class="panel-header">
+          <span class="label">Missions</span>
+          <div class="accent-line"></div>
+          <div class="missions-tab-strip">
+            <button class="missions-tab active" data-mtab="active">Active <span class="missions-badge" id="missions-badge-active">0</span></button>
+            <button class="missions-tab" data-mtab="past">Past <span class="missions-badge past" id="missions-badge-past">0</span></button>
+          </div>
+          <button type="button" class="live-pane-toggle" data-live-panel="missions" title="Show or hide this panel">&#8722;</button>
+        </div>
+        <div class="panel-body" style="padding:0;">
+          <div id="missions-active-list" class="missions-list"></div>
+          <div id="missions-past-list"   class="missions-list" style="display:none;"></div>
+        </div>
+      </div>
+
+      <div class="panel live-pane live-pane--footer" id="panel-log" data-live-panel="log">
         <div class="panel-header">
           <span class="label">Application Log</span>
           <div class="accent-line"></div>
           <span id="log-count" style="font-family:var(--mono);font-size:0.75em;color:var(--text-mute)">0 entries</span>
+          <button type="button" class="live-pane-toggle" data-live-panel="log" title="Show or hide this panel">&#8722;</button>
         </div>
         <div id="log-entries"></div>
       </div>
 
+    </div>
+    <div class="live-col-restore" id="live-col-right-restore" aria-label="Restore hidden panels"></div>
     </div><!-- /live-col-right -->
 
   </div><!-- /view-live -->
@@ -209,7 +248,7 @@
       </button>
     </div>
     <div class="opt-section">
-      <div class="opt-section-title">EDDN — Data Network</div>
+      <div class="opt-section-title">EDDN &#8212; Data Network</div>
       <label class="opt-toggle" style="margin-bottom:8px;">
         <input type="checkbox" id="opt-eddn-enabled">
         <span class="tog-track"><span class="tog-thumb"></span></span>
@@ -222,7 +261,7 @@
       </div>
     </div>
     <div class="opt-section">
-      <div class="opt-section-title">EDSM — Star Map</div>
+      <div class="opt-section-title">EDSM &#8212; Star Map</div>
       <label class="opt-toggle" style="margin-bottom:8px;">
         <input type="checkbox" id="opt-edsm-enabled">
         <span class="tog-track"><span class="tog-thumb"></span></span>
@@ -230,16 +269,32 @@
       </label>
       <div class="opt-hint">Displays security, allegiance, population and enables the EDSM link for each system you visit. No account required for lookups.</div>
       <div style="margin-top:8px;">
-        <label style="font-size:0.72em;color:var(--text-dim);display:block;margin-bottom:3px;">EDSM Commander Name <span style="opacity:0.5">(optional — for flight log sync)</span></label>
+        <label style="font-size:0.72em;color:var(--text-dim);display:block;margin-bottom:3px;">EDSM Commander Name <span style="opacity:0.5">(optional &#8212; for flight log sync)</span></label>
         <input class="opt-input" id="opt-edsm-cmdr" type="text" placeholder="Your EDSM commander name" spellcheck="false"/>
       </div>
       <div style="margin-top:6px;">
-        <label style="font-size:0.72em;color:var(--text-dim);display:block;margin-bottom:3px;">EDSM API Key <span style="opacity:0.5">(optional — from edsm.net/en/settings/api)</span></label>
-        <input class="opt-input" id="opt-edsm-key" type="password" placeholder="••••••••••••••••" spellcheck="false"/>
+        <label style="font-size:0.72em;color:var(--text-dim);display:block;margin-bottom:3px;">EDSM API Key <span style="opacity:0.5">(optional &#8212; from edsm.net/en/settings/api)</span></label>
+        <input class="opt-input" id="opt-edsm-key" type="password" placeholder="&#8226;&#8226;&#8226;&#8226;&#8226;&#8226;&#8226;&#8226;&#8226;&#8226;&#8226;&#8226;&#8226;&#8226;&#8226;&#8226;" spellcheck="false"/>
       </div>
       <button class="opt-action-btn" id="opt-save-api-btn" style="margin-top:10px;">
         <span class="opt-btn-icon">&#10003;</span>
         <div><div class="opt-btn-label">Save API Settings</div><div class="opt-btn-sub" id="opt-api-hint">Changes take effect immediately</div></div>
+      </button>
+    </div>
+    <div class="opt-section">
+      <div class="opt-section-title">Inara &#8212; Commander Profile</div>
+      <div style="font-size:0.78em;color:var(--text-mute);margin-bottom:8px;line-height:1.5;">Syncs your CMDR profile from Inara every 5 minutes.</div>
+      <div style="margin-top:6px;">
+        <label style="font-size:0.72em;color:var(--text-dim);display:block;margin-bottom:3px;">CMDR Name Override <span style="opacity:0.5">(only if different from in-game name)</span></label>
+        <input class="opt-input" id="opt-inara-cmdr-name" type="text" placeholder="Your Inara display name" spellcheck="false"/>
+      </div>
+      <button class="opt-action-btn" id="opt-inara-save-btn" style="margin-top:10px;">
+        <span class="opt-btn-icon">&#10003;</span>
+        <div><div class="opt-btn-label">Save Inara Settings</div><div class="opt-btn-sub" id="opt-inara-save-status">Save API key and sync now</div></div>
+      </button>
+      <button class="opt-action-btn" id="opt-inara-sync-now-btn" style="margin-top:6px;">
+        <span class="opt-btn-icon">&#8635;</span>
+        <div><div class="opt-btn-label">Sync Now</div><div class="opt-btn-sub" id="opt-inara-sync-status">Manually trigger an Inara profile sync</div></div>
       </button>
     </div>
     <div class="opt-section">
@@ -252,25 +307,31 @@
       <div class="opt-hint" id="opt-path-hint">Leave blank to use the default path for your OS</div>
     </div>
     <div class="opt-section">
+      <div class="opt-section-title">Ship alerts</div>
+      <div class="opt-hint" style="margin-bottom:10px;">Warnings on the Live tab and in the application log. Set to <strong>0</strong> to disable.</div>
+      <label style="font-size:0.72em;color:var(--text-dim);display:block;margin-bottom:3px;">Fuel low (main tank %)</label>
+      <input class="opt-input" id="opt-fuel-alert-pct" type="number" min="0" max="100" step="1" value="25" spellcheck="false" style="width:100px;margin-bottom:8px;"/>
+      <label style="font-size:0.72em;color:var(--text-dim);display:block;margin-bottom:3px;">Hull low (% integrity)</label>
+      <input class="opt-input" id="opt-hull-alert-pct" type="number" min="0" max="100" step="1" value="70" spellcheck="false" style="width:100px;margin-bottom:10px;"/>
+      <button class="opt-action-btn" id="opt-ship-alerts-save-btn" type="button">
+        <span class="opt-btn-icon">&#10003;</span>
+        <div><div class="opt-btn-label">Save ship alerts</div><div class="opt-btn-sub" id="opt-ship-alerts-hint">Applies immediately</div></div>
+      </button>
+    </div>
+    <div class="opt-section">
       <div class="opt-section-title">Theme</div>
       <div class="opt-theme-grid">
-        <div class="opt-theme-swatch active" data-theme="default"><div class="swatch-bar" style="background:#c8972a"></div><div class="swatch-bar" style="background:#2ecfcf"></div><span>Default</span></div>
-        <div class="opt-theme-swatch" data-theme="red"><div class="swatch-bar" style="background:#e05252"></div><div class="swatch-bar" style="background:#cf7a3e"></div><span>Red Alert</span></div>
-        <div class="opt-theme-swatch" data-theme="green"><div class="swatch-bar" style="background:#4caf7d"></div><div class="swatch-bar" style="background:#a0cf3e"></div><span>Viridian</span></div>
-        <div class="opt-theme-swatch" data-theme="purple"><div class="swatch-bar" style="background:#a855f7"></div><div class="swatch-bar" style="background:#cf3ecf"></div><span>Nebula</span></div>
+        <div class="opt-theme-swatch active" data-theme="default"><div class="swatch-bar" style="background:#ff9d1f"></div><div class="swatch-bar" style="background:#ffd24d"></div><span>Default</span></div>
+        <div class="opt-theme-swatch" data-theme="red"><div class="swatch-bar" style="background:#ff4d3d"></div><div class="swatch-bar" style="background:#ffa53d"></div><span>Red Alert</span></div>
+        <div class="opt-theme-swatch" data-theme="green"><div class="swatch-bar" style="background:#39e07a"></div><div class="swatch-bar" style="background:#a6e22e"></div><span>Viridian</span></div>
+        <div class="opt-theme-swatch" data-theme="purple"><div class="swatch-bar" style="background:#b26bff"></div><div class="swatch-bar" style="background:#ff6bcb"></div><span>Nebula</span></div>
       </div>
     </div>
     <div class="opt-section">
       <div class="sl-group">
         <div class="sl-group-title">Scale &amp; Size</div>
-        <div class="sl-row"><div class="sl-header"><span class="sl-label">UI Scale</span><span class="sl-val" id="sv-scale">100%</span></div><input type="range" class="sl-input" id="sl-scale" min="70" max="130" step="1" value="100"></div>
-        <div class="sl-row"><div class="sl-header"><span class="sl-label">Font Size</span><span class="sl-val" id="sv-font">24px</span></div><input type="range" class="sl-input" id="sl-font" min="1" max="32" step="0.5" value="24"></div>
+        <div class="sl-row"><div class="sl-header"><span class="sl-label">Font Size</span><span class="sl-val" id="sv-font">14px</span></div><input type="range" class="sl-input" id="sl-font" min="1" max="32" step="0.5" value="14"></div>
         <div class="sl-row"><div class="sl-header"><span class="sl-label">Row Density</span><span class="sl-val" id="sv-density">Normal</span></div><input type="range" class="sl-input" id="sl-density" min="1" max="5" step="1" value="3"></div>
-      </div>
-      <div class="sl-group">
-        <div class="sl-group-title">Panel Layout</div>
-        <div class="sl-row"><div class="sl-header"><span class="sl-label">Left Panel Width</span><span class="sl-val" id="sv-left">250px</span></div><input type="range" class="sl-input" id="sl-left" min="1" max="360" step="5" value="250"></div>
-        <div class="sl-row"><div class="sl-header"><span class="sl-label">Right Panel Width</span><span class="sl-val" id="sv-right">320px</span></div><input type="range" class="sl-input" id="sl-right" min="1" max="500" step="5" value="320"></div>
       </div>
       <div class="sl-group">
         <div class="sl-group-title">Atmosphere</div>
@@ -291,11 +352,13 @@
         <label class="opt-toggle"><input type="checkbox" id="tog-summary" checked><span class="tog-track"><span class="tog-thumb"></span></span><span class="tog-lbl">Scan Summary</span></label>
         <label class="opt-toggle"><input type="checkbox" id="tog-progress" checked><span class="tog-track"><span class="tog-thumb"></span></span><span class="tog-lbl">Journal Progress</span></label>
         <label class="opt-toggle"><input type="checkbox" id="tog-log" checked><span class="tog-track"><span class="tog-thumb"></span></span><span class="tog-lbl">Application Log</span></label>
+        <label class="opt-toggle"><input type="checkbox" id="tog-missions" checked><span class="tog-track"><span class="tog-thumb"></span></span><span class="tog-lbl">Missions</span></label>
       </div>
     </div>
   </div>
 </div>
 
+<script src="display-settings.js"></script>
 <script src="script.js"></script>
 
 <!-- ══════════════════════════════════════════════════════════════════════════

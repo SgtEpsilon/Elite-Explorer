@@ -240,6 +240,47 @@ function buildApp() {
     res.json(results);
   });
 
+  app.post('/api/enrich-history-bulk', async (req, res) => {
+    const systems = req.body.systems || [];
+    const results = [];
+    for (const { system, index } of systems) {
+      try {
+        const url = `https://www.edsm.net/api-system-v1/bodies?systemName=${encodeURIComponent(system)}`;
+        const r = await fetch(url, { signal: AbortSignal.timeout(8000) });
+        if (r.ok) {
+          const data = await r.json();
+          const bodies = Array.isArray(data.bodies) ? data.bodies : [];
+          const primaryStar = bodies.find(b => b.type === 'Star' && b.distanceToArrival === 0) || bodies.find(b => b.type === 'Star');
+          const starClass  = primaryStar ? (primaryStar.subType || primaryStar.spectralClass || null) : null;
+          const bodyCount  = data.bodyCount != null ? data.bodyCount : (bodies.length > 0 ? bodies.length : null);
+          results.push({ system, index, starClass, bodyCount, ok: true });
+        } else {
+          results.push({ system, index, starClass: null, bodyCount: null, ok: false });
+        }
+      } catch {
+        results.push({ system, index, starClass: null, bodyCount: null, ok: false });
+      }
+      await new Promise(r => setTimeout(r, 250));
+    }
+    res.json(results);
+  });
+
+  app.post('/api/inara-sync-profile', async (req, res) => {
+    try {
+      const inaraService  = require('../services/inaraService');
+      const journalCache  = _journalProvider ? (_journalProvider.getCache().profileData || null) : null;
+      const result = await inaraService.syncProfile(req.body.commanderName || '', journalCache);
+      res.json(result);
+    } catch (e) { res.status(500).json({ error: e.message }); }
+  });
+
+  app.get('/api/inara-get-sync-status', (_req, res) => {
+    try {
+      const inaraService = require('../services/inaraService');
+      res.json(inaraService.getSyncStatus());
+    } catch (e) { res.status(500).json({ error: e.message }); }
+  });
+
   app.post('/api/edsm-sync-logs', async (req, res) => {
     try {
       const result = await _edsmSyncService.syncFromEdsm(req.body.localJumps || []);

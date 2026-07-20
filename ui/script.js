@@ -16,6 +16,17 @@ function repLabel(v){ if (v >= 90) return 'Allied'; if (v >= 50) return 'Friendl
 function ts() { return new Date().toTimeString().slice(0,8); }
 function set(id, v) { const el = document.getElementById(id); if (el) el.textContent = (v != null ? v : '\u2014'); }
 
+function toggleStations() {
+  _showStations = !_showStations;
+  var btn = document.getElementById('btn-toggle-stations');
+  if (btn) {
+    btn.style.background  = _showStations ? 'rgba(46,207,207,0.1)'  : 'transparent';
+    btn.style.color       = _showStations ? 'var(--cyan)'            : 'var(--text-mute)';
+    btn.style.borderColor = _showStations ? 'rgba(46,207,207,0.3)'  : 'var(--border2)';
+  }
+  renderBodies(_currentSystem);
+}
+
 // ─── LOGGING (live page only) ──────────────────────────────────────
 const LOG_MAX_ENTRIES = 200;
 let logCount = 0;
@@ -40,7 +51,9 @@ function log(msg, type = 'info') {
 var _journalBodies = {};   // bodyName → journal Scan entry
 var _journalSignals = {};  // bodyName → [signal strings]
 var _edsmBodies     = [];  // array of EDSM body objects
+var _edsmStations   = [];  // array of EDSM station objects
 var _currentSystem  = null;
+var _showStations   = true; // toggle: show stations/settlements in bodies table
 
 // Map journal scan data → icon type
 function bodyIconType(b) {
@@ -105,7 +118,37 @@ function isMoonBody(b, system) {
   return /\d+\s+[a-z]/i.test(short) || /[a-z]\s+\d+/i.test(short);
 }
 
-// Merge journal + EDSM data into a unified list sorted by distance
+// Parse a short body name into sortable key parts.
+// Elite body names follow patterns like: "A", "1", "2", "3 a", "3 b", "4", "5 a", "5 b"
+// We need to produce sort keys that give: Main Star < 1 < 2 < 3 < 3A < 4 < 5 < 5A < 5B
+function bodyNameSortKey(name, system) {
+  var short = shortBodyName(name, system).trim().toUpperCase();
+  // Split into tokens: numbers and letters separately
+  var tokens = short.match(/[A-Z]+|\d+/g) || [];
+  // Build a sort tuple: [firstNum, firstLetter, secondNum, secondLetter, ...]
+  var parts = [];
+  for (var i = 0; i < tokens.length; i++) {
+    if (/^\d+$/.test(tokens[i])) {
+      parts.push(parseInt(tokens[i], 10));
+    } else {
+      // Letter component (e.g. "A", "B") — encode as offset after preceding number
+      parts.push(tokens[i].charCodeAt(0) - 64); // A=1, B=2, etc.
+    }
+  }
+  return parts;
+}
+
+function compareSortKeys(ak, bk) {
+  var len = Math.max(ak.length, bk.length);
+  for (var i = 0; i < len; i++) {
+    var av = ak[i] != null ? ak[i] : 0;
+    var bv = bk[i] != null ? bk[i] : 0;
+    if (av !== bv) return av - bv;
+  }
+  return 0;
+}
+
+// Merge journal + EDSM data into a unified list sorted by body name order
 function buildMergedBodies(system) {
   var merged = {};  // name.toLowerCase() → merged body
 
@@ -125,6 +168,7 @@ function buildMergedBodies(system) {
     }
   });
 
+  var sys = system || _currentSystem;
   return Object.values(merged).sort(function(a, b) {
     // Helper: is this entry the arrival/main star (distance ≈ 0 or missing)?
     function isMainStar(entry) {
@@ -137,15 +181,21 @@ function buildMergedBodies(system) {
     var aMain = isMainStar(a), bMain = isMainStar(b);
     if (aMain && !bMain) return -1;
     if (!aMain && bMain) return 1;
-    // Stars before non-stars
-    var aIsstar = (a.journal && a.journal.type === 'Star') || (a.edsm && a.edsm.type === 'Star');
-    var bIsStar = (b.journal && b.journal.type === 'Star') || (b.edsm && b.edsm.type === 'Star');
-    if (aIsstar && !bIsStar) return -1;
-    if (!aIsstar && bIsStar)  return 1;
-    // Within same tier, sort by distance
-    var aDist = (a.journal && a.journal.distanceFromArrival) || (a.edsm && a.edsm.distanceToArrival) || 999999;
-    var bDist = (b.journal && b.journal.distanceFromArrival) || (b.edsm && b.edsm.distanceToArrival) || 999999;
-    return aDist - bDist;
+
+    // Sort by parsed body name: e.g. "1" < "2" < "3" < "3 A" < "4" < "5" < "5 A" < "5 B"
+    var aName = (a.journal && a.journal.name) || (a.edsm && a.edsm.name) || '';
+    var bName = (b.journal && b.journal.name) || (b.edsm && b.edsm.name) || '';
+    var ak = bodyNameSortKey(aName, sys);
+    var bk = bodyNameSortKey(bName, sys);
+
+    // If both have no parseable tokens (edge case), fall back to distance
+    if (!ak.length && !bk.length) {
+      var aDist = (a.journal && a.journal.distanceFromArrival) || (a.edsm && a.edsm.distanceToArrival) || 999999;
+      var bDist = (b.journal && b.journal.distanceFromArrival) || (b.edsm && b.edsm.distanceToArrival) || 999999;
+      return aDist - bDist;
+    }
+
+    return compareSortKeys(ak, bk);
   });
 }
 
@@ -298,8 +348,63 @@ function renderBodies(system) {
     );
   });
 
+  // ── Station / Settlement rows ────────────────────────────────────────────
+  if (_showStations && _edsmStations.length) {
+    _edsmStations.forEach(function(st) {
+      var stType = st.type || 'Station';
+      // Classify: settlement vs station
+      var isSettlement = /settlement|surface|planetary|installation/i.test(stType);
+      var isCarrier    = /fleet carrier/i.test(stType);
+      var isMegaship   = /megaship|dockable/i.test(stType);
+      var iconCls      = isSettlement ? 'settlement' : isCarrier ? 'carrier' : 'station';
+      var rowCls       = 'body-station' + (isSettlement ? ' body-settlement' : '');
+
+      var distDisplay = st.distanceToArrival != null ? fmtLS(st.distanceToArrival) : '—';
+
+      // Services as small tags
+      var services = st.otherServices || [];
+      var serviceHtml = '';
+      if (st.haveMarket)   serviceHtml += '<span class="info-tag poi">Market</span>';
+      if (st.haveShipyard) serviceHtml += '<span class="info-tag poi">Shipyard</span>';
+      if (st.haveOutfitting) serviceHtml += '<span class="info-tag poi">Outfitting</span>';
+      if (services.indexOf('Black Market') !== -1) serviceHtml += '<span class="info-tag alien">B.Market</span>';
+      if (services.indexOf('Material Trader') !== -1) serviceHtml += '<span class="info-tag geo">Materials</span>';
+      if (services.indexOf('Technology Broker') !== -1) serviceHtml += '<span class="info-tag geo">Tech Broker</span>';
+      if (services.indexOf('Interstellar Factors Contact') !== -1) serviceHtml += '<span class="info-tag human">I.Factors</span>';
+
+      var factionHtml = st.controllingFaction && st.controllingFaction.name
+        ? '<div style="font-size:0.75em;color:var(--text-mute);margin-top:1px">' + st.controllingFaction.name + '</div>'
+        : '';
+
+      rows.push(
+        '<tr class="' + rowCls + '">' +
+          '<td style="text-align:center;padding:4px;">' +
+            '<div style="display:flex;justify-content:center;">' +
+              '<div class="body-icon ' + iconCls + '"></div>' +
+            '</div>' +
+          '</td>' +
+          '<td>' +
+            '<div class="body-name-cell">' +
+              '<span style="font-size:0.9em;font-weight:400;color:var(--text)">' + (st.name || '?') + '</span>' +
+            '</div>' +
+            factionHtml +
+          '</td>' +
+          '<td class="body-class" style="color:var(--text-dim)">' + stType + '</td>' +
+          '<td style="font-size:0.75em;color:var(--text-dim);white-space:nowrap">' + distDisplay + '</td>' +
+          '<td>' + (serviceHtml ? '<div style="margin-top:2px">' + serviceHtml + '</div>' : '') + '</td>' +
+          '<td class="val-cell">—</td>' +
+          '<td class="val-cell muted" style="font-size:0.75em">—</td>' +
+        '</tr>'
+      );
+    });
+  }
+
   tbody.innerHTML = rows.join('');
-  set('body-count', bodies.length + ' bod' + (bodies.length !== 1 ? 'ies' : 'y'));
+  var stationCount = _showStations ? _edsmStations.length : 0;
+  var bodyTotal    = bodies.length;
+  var countLabel   = bodyTotal + ' bod' + (bodyTotal !== 1 ? 'ies' : 'y');
+  if (stationCount) countLabel += ' · ' + stationCount + ' station' + (stationCount !== 1 ? 's' : '');
+  set('body-count', countLabel);
   set('sum-stars',   stars);
   set('sum-planets', planets);
   set('sum-moons',   moons);
@@ -308,6 +413,18 @@ function renderBodies(system) {
 
 function populateBodies() {
   renderBodies(_currentSystem);
+}
+
+// Debounced version of renderBodies — coalesces rapid calls (e.g. onLocation +
+// onBodiesData + onEdsmBodies firing in quick succession) into a single DOM
+// update, eliminating the flicker seen when switching systems.
+var _renderBodiesTimer = null;
+function renderBodiesDebounced(system) {
+  if (_renderBodiesTimer) clearTimeout(_renderBodiesTimer);
+  _renderBodiesTimer = setTimeout(function() {
+    _renderBodiesTimer = null;
+    renderBodies(system || _currentSystem);
+  }, 80);
 }
 
 // ─── SCAN VALUES PANEL ────────────────────────────────────────────
@@ -341,8 +458,109 @@ function populateScans() {
   renderScans();
 }
 
+// ─── SHIP ALERTS (fuel strip + hull highlight + log) ───────────────
+var _shipAlertCfg = { fuelPct: 25, hullPct: 70 };
+var _prevHullForAlert = null;
+var _fuelBelowLogged = false;
+
+function clampShipAlertPct(v, fallback) {
+  var n = parseInt(v, 10);
+  if (isNaN(n)) return fallback;
+  return Math.max(0, Math.min(100, n));
+}
+
+function syncShipAlertCfgFromObject(cfg) {
+  if (!cfg || typeof cfg !== 'object') return;
+  _shipAlertCfg.fuelPct = cfg.fuelAlertThresholdPct != null
+    ? clampShipAlertPct(cfg.fuelAlertThresholdPct, 25)
+    : 25;
+  _shipAlertCfg.hullPct = cfg.hullAlertThresholdPct != null
+    ? clampShipAlertPct(cfg.hullAlertThresholdPct, 70)
+    : 70;
+}
+
+function refreshShipAlertCfg() {
+  if (!window.electronAPI || !window.electronAPI.getConfig) return;
+  window.electronAPI.getConfig().then(function(cfg) {
+    syncShipAlertCfgFromObject(cfg);
+    var fi = document.getElementById('opt-fuel-alert-pct');
+    var hi = document.getElementById('opt-hull-alert-pct');
+    if (fi) fi.value = String(_shipAlertCfg.fuelPct);
+    if (hi) hi.value = String(_shipAlertCfg.hullPct);
+  }).catch(function() {});
+}
+
+function applyShipAlerts(d) {
+  if (!document.getElementById('ship-hull')) return;
+  var ft = _shipAlertCfg.fuelPct;
+  var ht = _shipAlertCfg.hullPct;
+  var fuelStrip = document.getElementById('live-alert-fuel');
+  var fuelStripWasHidden = fuelStrip ? fuelStrip.hidden : true;
+
+  if (d.fuelPct != null && ft > 0) {
+    var fuelLow = d.fuelPct < ft;
+    if (fuelStrip) {
+      fuelStrip.hidden = !fuelLow;
+      fuelStrip.classList.toggle('live-alert-strip--active', fuelLow);
+      var txt = fuelStrip.querySelector('.live-alert-strip__text');
+      if (txt && fuelLow) {
+        txt.textContent = 'Low fuel — ' + Math.round(d.fuelPct) + '% (threshold ' + ft + '%)';
+      }
+    }
+    if (fuelLow) {
+      if (!_fuelBelowLogged) {
+        log('Fuel below ' + ft + '% (' + Math.round(d.fuelPct) + '% main tank)', 'warn');
+        _fuelBelowLogged = true;
+      }
+    } else {
+      _fuelBelowLogged = false;
+    }
+  } else {
+    if (fuelStrip) {
+      fuelStrip.hidden = true;
+      fuelStrip.classList.remove('live-alert-strip--active');
+    }
+    _fuelBelowLogged = false;
+  }
+
+  if (d.hull != null && ht > 0) {
+    var hullEl = document.getElementById('ship-hull');
+    var hullRow = document.getElementById('ship-hull-row');
+    var below = d.hull < ht;
+    if (hullRow) hullRow.classList.toggle('stat-row--hull-alert', below);
+    if (hullEl) {
+      hullEl.textContent = d.hull + '%';
+      if (below) {
+        hullEl.className = 'stat-val red ship-hull-below-threshold';
+      } else {
+        hullEl.className = 'stat-val ' + (d.hull >= 70 ? 'green' : d.hull >= 40 ? 'gold' : 'red');
+      }
+    }
+    if (_prevHullForAlert != null && _prevHullForAlert >= ht && d.hull < ht) {
+      log('Hull integrity below ' + ht + '% (' + d.hull + '%)', 'warn');
+    }
+    _prevHullForAlert = d.hull;
+  } else {
+    var hullRow2 = document.getElementById('ship-hull-row');
+    if (hullRow2) hullRow2.classList.remove('stat-row--hull-alert');
+    if (d.hull != null) {
+      var hullEl2 = document.getElementById('ship-hull');
+      if (hullEl2) {
+        hullEl2.textContent = d.hull + '%';
+        hullEl2.className = 'stat-val ' + (d.hull >= 70 ? 'green' : d.hull >= 40 ? 'gold' : 'red');
+      }
+      _prevHullForAlert = d.hull;
+    } else {
+      _prevHullForAlert = null;
+    }
+  }
+
+}
+
 // ─── ELECTRON IPC ─────────────────────────────────────────────────
 if (window.electronAPI) {
+
+  refreshShipAlertCfg();
 
   // ── LIVE DATA → index.html ─────────────────────────────────────
   // Ship state, fuel, location, docking — sourced from the latest journal only.
@@ -369,17 +587,24 @@ if (window.electronAPI) {
     if (d.rebuy  != null) set('ship-rebuy', fmtCr(d.rebuy));
     if (d.credits != null) set('credits',  fmtCr(d.credits));
 
-    // Hull — colour-coded: green ≥70%, gold 40–69%, red <40%
-    if (d.hull != null) {
-      var hullEl = document.getElementById('ship-hull');
-      if (hullEl) {
-        hullEl.textContent = d.hull + '%';
-        hullEl.className   = 'stat-val ' + (d.hull >= 70 ? 'green' : d.hull >= 40 ? 'gold' : 'red');
-      }
+    // Fuel reservoir (from Status.json, updated ~1s while in-game)
+    if (d.fuelReservoir != null) {
+      set('ship-fuel-reserve', d.fuelReservoir.toFixed(2) + ' t');
     }
 
+    // Fuel bar — colour-coded: cyan ≥50%, gold 25–49%, red <25%
     var fuelBar = document.getElementById('fuel-bar');
-    if (fuelBar && d.fuelPct != null) fuelBar.style.width = d.fuelPct + '%';
+    if (fuelBar && d.fuelPct != null) {
+      fuelBar.style.width = d.fuelPct + '%';
+      fuelBar.style.background = d.fuelPct >= 50
+        ? 'var(--cyan)'
+        : d.fuelPct >= 25
+          ? 'var(--gold)'
+          : 'var(--red, #e05252)';
+    }
+
+    applyShipAlerts(d);
+
     set('station-name',    d.dockedStation     || '\u2014');
     set('station-type',    d.dockedStationType || '\u2014');
     set('station-faction', d.dockedFaction     || '\u2014');
@@ -602,8 +827,9 @@ if (window.electronAPI) {
       _journalBodies  = {};
       _journalSignals = {};
       _edsmBodies     = [];
+      _edsmStations   = [];
       _scanEntries    = {};
-      renderBodies(data.system);
+      renderBodiesDebounced(data.system);
       renderScans();
 
       // Clear EDSM fields until new system data arrives
@@ -641,8 +867,9 @@ if (window.electronAPI) {
 
       // If the system changed, flush stale EDSM bodies and scan entries
       if (incomingSystem && incomingSystem !== _currentSystem) {
-        _edsmBodies  = [];
-        _scanEntries = {};
+        _edsmBodies   = [];
+        _edsmStations = [];
+        _scanEntries  = {};
       }
 
       _currentSystem  = incomingSystem;
@@ -659,7 +886,7 @@ if (window.electronAPI) {
           };
         }
       });
-      renderBodies(_currentSystem);
+      renderBodiesDebounced(_currentSystem);
       renderScans();
     });
   }
@@ -680,9 +907,10 @@ if (window.electronAPI) {
       // If _currentSystem wasn't known yet, set it now from the EDSM response.
       if (data.system && !_currentSystem) _currentSystem = data.system;
 
-      _edsmBodies = data.bodies || [];
-      renderBodies(data.system || _currentSystem);
-      log('EDSM: ' + _edsmBodies.length + ' bodies for ' + (data.system || _currentSystem || '?'), 'info');
+      _edsmBodies   = data.bodies   || [];
+      _edsmStations = data.stations || [];
+      renderBodiesDebounced(data.system || _currentSystem);
+      log('EDSM: ' + _edsmBodies.length + ' bodies, ' + _edsmStations.length + ' stations for ' + (data.system || _currentSystem || '?'), 'info');
     });
   }
 
@@ -776,6 +1004,138 @@ async function refreshStats() {
   try { var res = await fetch('http://localhost:3721/stats'); var d = await res.json(); log('DB scans: ' + d.scans, 'info'); } catch {}
 }
 
+// ─── MISSIONS ─────────────────────────────────────────────────────
+var _missions = {};  // missionID → mission object
+var _missionsActiveTab = 'active';
+
+var MISSION_TYPE_MAP = [
+  { match: /massacre|assassin|kill|destroy/i,       type: 'Combat',     color: 'var(--red, #e05252)' },
+  { match: /delivery|transport|smuggle/i,            type: 'Delivery',   color: 'var(--cyan)' },
+  { match: /collect|mine|source|recover|salvage/i,  type: 'Collection', color: 'var(--gold)' },
+  { match: /scan|survey|explore/i,                  type: 'Scan',       color: 'var(--cyan)' },
+  { match: /courier/i,                               type: 'Courier',    color: 'var(--cyan)' },
+  { match: /passenger/i,                             type: 'Passenger',  color: 'var(--green, #4caf7d)' },
+  { match: /rescue/i,                                type: 'Rescue',     color: 'var(--green, #4caf7d)' },
+];
+
+function missionType(name) {
+  if (!name) return { type: 'Other', color: 'var(--text-dim)' };
+  for (var i = 0; i < MISSION_TYPE_MAP.length; i++) {
+    if (MISSION_TYPE_MAP[i].match.test(name)) return MISSION_TYPE_MAP[i];
+  }
+  return { type: 'Other', color: 'var(--text-dim)' };
+}
+
+function fmtExpiry(iso) {
+  if (!iso) return null;
+  var ms    = new Date(iso).getTime() - Date.now();
+  if (ms <= 0) return { label: 'Expired', urgent: true };
+  var hours = Math.floor(ms / 3600000);
+  var mins  = Math.floor((ms % 3600000) / 60000);
+  if (hours < 1)  return { label: mins + 'm left', urgent: true };
+  if (hours < 6)  return { label: hours + 'h ' + mins + 'm left', urgent: true };
+  if (hours < 24) return { label: hours + 'h left', urgent: false };
+  return { label: Math.floor(hours / 24) + 'd left', urgent: false };
+}
+
+function influenceDots(inf) {
+  if (!inf) return '';
+  var n = typeof inf === 'string' ? inf.length : (inf || 0);
+  return '<span style="color:var(--green,#4caf7d);letter-spacing:1px;">' + '▲'.repeat(Math.min(n, 5)) + '</span>';
+}
+
+function renderMissions() {
+  var missions = Object.values(_missions);
+  var active   = missions.filter(function(m) { return m.status === 'Active'; })
+                         .sort(function(a, b) {
+                           if (!a.expiry && !b.expiry) return 0;
+                           if (!a.expiry) return 1;
+                           if (!b.expiry) return -1;
+                           return new Date(a.expiry) - new Date(b.expiry);
+                         });
+  var past     = missions.filter(function(m) { return m.status !== 'Active'; })
+                         .sort(function(a, b) {
+                           return new Date(b.doneTimestamp || 0) - new Date(a.doneTimestamp || 0);
+                         });
+
+  var badgeA = document.getElementById('missions-badge-active');
+  var badgeP = document.getElementById('missions-badge-past');
+  if (badgeA) badgeA.textContent = active.length;
+  if (badgeP) badgeP.textContent = past.length;
+
+  renderMissionList('missions-active-list', active);
+  renderMissionList('missions-past-list',   past);
+}
+
+function renderMissionList(containerId, list) {
+  var el = document.getElementById(containerId);
+  if (!el) return;
+
+  if (!list.length) {
+    el.innerHTML = '<div class="empty-state" style="height:60px;"><div class="msg">No missions</div></div>';
+    return;
+  }
+
+  el.innerHTML = list.map(function(m) {
+    var t       = missionType(m.internalName || m.name);
+    var expiry  = fmtExpiry(m.expiry);
+    var statusColor = m.status === 'Complete'  ? 'var(--green,#4caf7d)'
+                    : m.status === 'Failed'    ? 'var(--red,#e05252)'
+                    : m.status === 'Abandoned' ? 'var(--text-dim)'
+                    : 'var(--cyan)';
+
+    return '<div class="mission-row" onclick="this.classList.toggle(\'expanded\')">' +
+      '<div class="mission-row-main">' +
+        '<div class="mission-dot" style="background:' + t.color + '"></div>' +
+        '<div class="mission-info">' +
+          '<div class="mission-name">' + (m.name || 'Unknown Mission') + '</div>' +
+          '<div class="mission-meta">' +
+            (m.faction ? '<span class="mission-faction">' + m.faction + '</span>' : '') +
+            '<span class="mission-type-tag" style="color:' + t.color + ';border-color:' + t.color + '">' + t.type + '</span>' +
+          '</div>' +
+        '</div>' +
+        '<div class="mission-right">' +
+          '<span class="mission-status" style="color:' + statusColor + '">' + m.status + '</span>' +
+          (expiry ? '<span class="mission-expiry' + (expiry.urgent ? ' urgent' : '') + '">' + expiry.label + '</span>' : '') +
+          (m.reward ? '<span class="mission-reward">' + fmtCr(m.reward) + '</span>' : '') +
+        '</div>' +
+      '</div>' +
+      '<div class="mission-detail">' +
+        (m.destinationSystem  ? '<div class="mission-detail-row"><span class="mdk">Destination</span><span class="mdv">' + (m.destinationStation ? m.destinationStation + ' · ' : '') + m.destinationSystem + '</span></div>' : '') +
+        (m.commodity          ? '<div class="mission-detail-row"><span class="mdk">Cargo</span><span class="mdv">' + m.commodity + (m.count ? ' × ' + m.count : '') + '</span></div>' : '') +
+        (m.targetFaction      ? '<div class="mission-detail-row"><span class="mdk">Target</span><span class="mdv">' + m.targetFaction + (m.targetType ? ' (' + m.targetType + ')' : '') + '</span></div>' : '') +
+        (m.influence          ? '<div class="mission-detail-row"><span class="mdk">Influence</span><span class="mdv">' + influenceDots(m.influence) + '</span></div>' : '') +
+        (m.expiry             ? '<div class="mission-detail-row"><span class="mdk">Expires</span><span class="mdv">' + new Date(m.expiry).toLocaleString() + '</span></div>' : '') +
+        (m.acceptedTimestamp  ? '<div class="mission-detail-row"><span class="mdk">Accepted</span><span class="mdv">' + new Date(m.acceptedTimestamp).toLocaleString() + '</span></div>' : '') +
+      '</div>' +
+    '</div>';
+  }).join('');
+}
+
+// Sub-tab switching
+document.addEventListener('click', function(e) {
+  var btn = e.target.closest('.missions-tab');
+  if (!btn) return;
+  var tab = btn.dataset.mtab;
+  _missionsActiveTab = tab;
+  document.querySelectorAll('.missions-tab').forEach(function(b) { b.classList.toggle('active', b.dataset.mtab === tab); });
+  var activeList = document.getElementById('missions-active-list');
+  var pastList   = document.getElementById('missions-past-list');
+  if (activeList) activeList.style.display = tab === 'active' ? '' : 'none';
+  if (pastList)   pastList.style.display   = tab === 'past'   ? '' : 'none';
+});
+
+// IPC listener
+if (window.electronAPI && window.electronAPI.onMissionsData) {
+  window.electronAPI.onMissionsData(function(data) {
+    if (!data || !data.missions) return;
+    _missions = data.missions;
+    renderMissions();
+    var active = Object.values(_missions).filter(function(m) { return m.status === 'Active'; }).length;
+    log('Missions: ' + active + ' active', 'info');
+  });
+}
+
 // ─── OPTIONS PANEL ────────────────────────────────────────────────
 function capiUpdateUI(status) {
   // status: { hasClientId, isLoggedIn, tokenValid, tokenExpiry } from capiGetStatus()
@@ -840,9 +1200,14 @@ function openOptions() {
     el = document.getElementById('opt-edsm-cmdr');    if (el) el.value  = cfg.edsmCommanderName || '';
     el = document.getElementById('opt-edsm-key');     if (el) el.value  = cfg.edsmApiKey        || '';
     el = document.getElementById('capi-client-id');   if (el) el.value  = cfg.capiClientId      || '';
+    // Inara settings
+    el = document.getElementById('opt-inara-cmdr-name');  if (el) el.value = cfg.inaraCommanderName || '';
     // Network server settings
     el = document.getElementById('opt-network-enabled'); if (el) el.checked = !!cfg.networkServerEnabled;
     el = document.getElementById('opt-network-port');    if (el) el.value  = cfg.networkServerPort || 3722;
+    el = document.getElementById('opt-fuel-alert-pct'); if (el) el.value = cfg.fuelAlertThresholdPct != null ? cfg.fuelAlertThresholdPct : 25;
+    el = document.getElementById('opt-hull-alert-pct'); if (el) el.value = cfg.hullAlertThresholdPct != null ? cfg.hullAlertThresholdPct : 70;
+    syncShipAlertCfgFromObject(cfg);
     // Fetch live network info and render clickable URLs
     if (window.electronAPI.getNetworkInfo) {
       window.electronAPI.getNetworkInfo().then(function(info) {
@@ -914,6 +1279,29 @@ if (openBtn) openBtn.addEventListener('click', async function() {
   if (!window.electronAPI) return;
   try { await window.electronAPI.openJournalFolder(document.getElementById('opt-journal-path').value.trim() || null); }
   catch { log('Could not open folder', 'warn'); }
+});
+
+var shipAlertsSaveBtn = document.getElementById('opt-ship-alerts-save-btn');
+if (shipAlertsSaveBtn) shipAlertsSaveBtn.addEventListener('click', async function() {
+  if (!window.electronAPI) return;
+  var fuelRaw = ((document.getElementById('opt-fuel-alert-pct') || {}).value || '').trim();
+  var hullRaw = ((document.getElementById('opt-hull-alert-pct') || {}).value || '').trim();
+  var fuelAlertThresholdPct = clampShipAlertPct(fuelRaw, 25);
+  var hullAlertThresholdPct = clampShipAlertPct(hullRaw, 70);
+  try {
+    await window.electronAPI.saveConfig({ fuelAlertThresholdPct, hullAlertThresholdPct });
+    _shipAlertCfg.fuelPct = fuelAlertThresholdPct;
+    _shipAlertCfg.hullPct = hullAlertThresholdPct;
+    var hint = document.getElementById('opt-ship-alerts-hint');
+    if (hint) {
+      hint.textContent = 'Saved \u2714';
+      hint.style.color = 'var(--green)';
+      setTimeout(function() { hint.textContent = 'Applies immediately'; hint.style.color = ''; }, 2000);
+    }
+    log('Ship alert thresholds saved', 'good');
+  } catch (e) {
+    log('Failed to save ship alerts', 'error');
+  }
 });
 
 var journalPath = document.getElementById('opt-journal-path');
@@ -1084,198 +1472,155 @@ if (edsmSyncBtnMain) edsmSyncBtnMain.addEventListener('click', async function() 
   }
 });
 
-// ─── THEMES ───────────────────────────────────────────────────────
-var THEMES = {
-  default: { '--gold':'#c8972a','--gold2':'#e8b840','--gold-dim':'#7a5a10','--gold-glow':'rgba(200,151,42,0.15)','--cyan':'#2ecfcf','--cyan2':'#5ee8e8','--cyan-dim':'rgba(46,207,207,0.1)' },
-  red:     { '--gold':'#e05252','--gold2':'#f07070','--gold-dim':'#a03030','--gold-glow':'rgba(224,82,82,0.15)', '--cyan':'#cf7a3e','--cyan2':'#e89060','--cyan-dim':'rgba(207,122,62,0.1)' },
-  green:   { '--gold':'#4caf7d','--gold2':'#70d090','--gold-dim':'#2a7a50','--gold-glow':'rgba(76,175,125,0.15)','--cyan':'#a0cf3e','--cyan2':'#c0e060','--cyan-dim':'rgba(160,207,62,0.1)' },
-  purple:  { '--gold':'#a855f7','--gold2':'#c080ff','--gold-dim':'#7a30c0','--gold-glow':'rgba(168,85,247,0.15)','--cyan':'#cf3ecf','--cyan2':'#e060e0','--cyan-dim':'rgba(207,62,207,0.1)' },
-};
-function applyTheme(name) {
-  var t = THEMES[name] || THEMES.default;
-  Object.entries(t).forEach(function(kv) { document.documentElement.style.setProperty(kv[0], kv[1]); });
-  document.querySelectorAll('.opt-theme-swatch').forEach(function(el) { el.classList.toggle('active', el.dataset.theme === name); });
-  localStorage.setItem('ee-theme', name);
-}
-document.querySelectorAll('.opt-theme-swatch').forEach(function(el) {
-  el.addEventListener('click', function() { applyTheme(el.dataset.theme); });
-});
-applyTheme(localStorage.getItem('ee-theme') || 'default');
+// Theme swatches and display sliders (font/density/brightness/opacity/
+// scanlines/glow/border) are handled by display-settings.js, shared by
+// every page — see that file for the single implementation.
 
-// ─── DISPLAY SLIDERS ──────────────────────────────────────────────
-var SLIDER_DEFAULTS = { scale:100, font:18, density:3, left:250, right:320, bright:100, opacity:100, scan:1, glow:100, border:2 };
-var DENSITY_LABELS  = ['Compact','Tight','Normal','Relaxed','Spacious'];
-var SCAN_LABELS     = ['Off','Low','Medium','High','Intense','Max'];
-var BORDER_LABELS   = ['None','Faint','Medium','Bold','Heavy'];
+// ─── LIVE LAYOUT: toggleable panes, reflow, persistence (index.html) ─
+(function () {
+  var viewLive = document.getElementById('view-live');
+  if (!viewLive) return;
 
-var scanlineStyle = document.createElement('style');
-scanlineStyle.id = 'dynamic-scanlines';
-document.head.appendChild(scanlineStyle);
+  var LIVE_PANEL_KEYS = ['commander', 'summary', 'system', 'progress', 'scan', 'missions', 'log'];
+  var LIVE_PANEL_ID = {
+    commander: 'panel-commander',
+    summary: 'panel-summary',
+    system: 'panel-system',
+    progress: 'panel-progress',
+    scan: 'panel-scan',
+    missions: 'panel-missions',
+    log: 'panel-log',
+  };
+  var LIVE_PANEL_TOG = {
+    commander: 'tog-commander',
+    summary: 'tog-summary',
+    system: 'tog-system',
+    progress: 'tog-progress',
+    scan: 'tog-scan',
+    missions: 'tog-missions',
+    log: 'tog-log',
+  };
+  var LIVE_PANEL_LABELS = {
+    commander: 'Commander',
+    summary: 'Scan Summary',
+    system: 'System Bodies',
+    progress: 'Journal Scan',
+    scan: 'Scan Values',
+    missions: 'Missions',
+    log: 'Application Log',
+  };
+  var LIVE_COL_LAYOUT = [
+    { col: 'live-col-left', restore: 'live-col-left-restore', keys: ['commander', 'summary'] },
+    { col: 'live-col-mid', restore: 'live-col-mid-restore', keys: ['system', 'progress'] },
+    { col: 'live-col-right', restore: 'live-col-right-restore', keys: ['scan', 'missions', 'log'] },
+  ];
 
-var panelOpacityStyle = document.createElement('style');
-panelOpacityStyle.id = 'dynamic-opacity';
-document.head.appendChild(panelOpacityStyle);
-
-function applyDisplay(key, v) {
-  var root = document.documentElement;
-  var wrap = document.getElementById('app-wrapper');
-  switch (key) {
-    case 'scale':
-      if (wrap) {
-        wrap.style.transform       = 'scale(' + (v/100) + ')';
-        wrap.style.transformOrigin = 'top left';
-        wrap.style.width           = Math.round(10000/v) + '%';
-        wrap.style.height          = 'calc(' + Math.round(10000/v) + 'vh - ' + Math.round(44*100/v) + 'px)';
-      }
-      break;
-    case 'font':
-      document.documentElement.style.fontSize = v + 'px';
-      break;
-    case 'density':
-      var pad = [2,3,4,6,8][v-1] + 'px';
-      root.style.setProperty('--row-pad', pad);
-      var ds = document.getElementById('density-style') || document.createElement('style');
-      ds.id = 'density-style';
-      ds.textContent = '.stat-row { padding-top:' + pad + '; padding-bottom:' + pad + '; }' +
-                       '.mini-stat { padding-top:' + pad + '; padding-bottom:' + pad + '; }' +
-                       '.panel-body { padding:' + [6,8,10,14,18][v-1] + 'px; }';
-      document.head.appendChild(ds);
-      break;
-    case 'left':   root.style.setProperty('--left-w',   v + 'px'); break;
-    case 'right':  root.style.setProperty('--right-w',  v + 'px'); break;
-    case 'bright':
-      if (wrap) wrap.style.filter = 'brightness(' + (v/100) + ') saturate(' + (0.8 + (v/100)*0.4) + ')';
-      break;
-    case 'opacity':
-      panelOpacityStyle.textContent =
-        '.panel, #panel-summary, #panel-progress { background: rgba(9,14,24,' + (v/100) + ') !important; }' +
-        '#options-panel { background: rgba(9,14,24,' + Math.min(1, v/100+0.1) + ') !important; }';
-      break;
-    case 'scan':
-      if (v === 0) {
-        scanlineStyle.textContent = 'body::after { display:none; }';
-      } else {
-        var opacity = [0.02, 0.04, 0.07, 0.11, 0.16][v-1];
-        var gap     = [4, 4, 3, 3, 2][v-1];
-        scanlineStyle.textContent =
-          'body::after { background: repeating-linear-gradient(0deg, transparent, transparent ' + (gap-1) + 'px, rgba(0,0,0,' + opacity + ') ' + (gap-1) + 'px, rgba(0,0,0,' + opacity + ') ' + gap + 'px) !important; }';
-      }
-      break;
-    case 'glow':
-      var g = v / 100;
-      root.style.setProperty('--gold-glow', 'rgba(200,151,42,' + (0.15*g) + ')');
-      var gs = document.getElementById('glow-style') || document.createElement('style');
-      gs.id = 'glow-style';
-      gs.textContent =
-        '.tb-logo { text-shadow: 0 0 ' + Math.round(16*g) + 'px var(--gold-glow) !important; }' +
-        '.scan-total-val { text-shadow: 0 0 ' + Math.round(8*g) + 'px var(--gold-glow) !important; }' +
-        '.body-icon.star { box-shadow: 0 0 ' + Math.round(8*g) + 'px rgba(245,166,35,' + (0.5*g) + ') !important; }' +
-        '.body-icon.hmc  { box-shadow: 0 0 ' + Math.round(6*g) + 'px rgba(42,90,138,' + (0.4*g) + ') !important; }' +
-        '.mapped-icon.yes { box-shadow: 0 0 ' + Math.round(4*g) + 'px var(--green) !important; }';
-      document.head.appendChild(gs);
-      break;
-    case 'border':
-      var bw = [0, 0.5, 1, 1.5, 2][v];
-      root.style.setProperty('--border-w', bw + 'px');
-      var bs = document.getElementById('border-style') || document.createElement('style');
-      bs.id = 'border-style';
-      bs.textContent =
-        '.panel, .rank-card, .rep-card, .stat-block { border-width:' + bw + 'px !important; }' +
-        '#topbar, .panel-header { border-bottom-width:' + bw + 'px !important; }' +
-        '.stat-group-title { border-bottom-width:' + bw + 'px !important; }';
-      document.head.appendChild(bs);
-      break;
+  function panelEl(key) {
+    return document.getElementById(LIVE_PANEL_ID[key]);
   }
-}
 
-function sliderFill(input) {
-  var min = parseFloat(input.min), max = parseFloat(input.max), v = parseFloat(input.value);
-  input.style.setProperty('--fill', Math.round(((v - min) / (max - min)) * 100) + '%');
-}
-
-function updateSliderUI(key, v) {
-  var valEl = document.getElementById('sv-' + key);
-  if (!valEl) return;
-  switch (key) {
-    case 'scale':   valEl.textContent = Math.round(v) + '%'; break;
-    case 'font':    valEl.textContent = v + 'px'; break;
-    case 'density': valEl.textContent = DENSITY_LABELS[v-1] || v; break;
-    case 'left':
-    case 'right':
-    case 'bottom':
-    case 'log':    valEl.textContent = v + 'px'; break;
-    case 'bright':
-    case 'opacity':
-    case 'glow':    valEl.textContent = v + '%'; break;
-    case 'scan':    valEl.textContent = SCAN_LABELS[v] || v; break;
-    case 'border':  valEl.textContent = BORDER_LABELS[v] || v; break;
+  function isLivePanelVisible(key) {
+    var el = panelEl(key);
+    return !!(el && !el.classList.contains('live-pane-hidden'));
   }
-}
 
-function loadDisplaySettings() {
+  function saveLivePanelPrefs() {
+    var o = {};
+    LIVE_PANEL_KEYS.forEach(function (k) { o[k] = isLivePanelVisible(k); });
+    try { localStorage.setItem('ee-live-panels', JSON.stringify(o)); } catch (e) {}
+  }
+
+  function setLivePanelVisible(key, visible, opts) {
+    opts = opts || {};
+    var el = panelEl(key);
+    if (!el) return;
+    el.classList.toggle('live-pane-hidden', !visible);
+    var cb = document.getElementById(LIVE_PANEL_TOG[key]);
+    if (cb) cb.checked = visible;
+    if (!opts.skipSave) saveLivePanelPrefs();
+    if (!opts.skipReflow) reflowLiveLayout();
+  }
+
+  function reflowLiveLayout() {
+    LIVE_COL_LAYOUT.forEach(function (block) {
+      var colEl = document.getElementById(block.col);
+      var restoreEl = document.getElementById(block.restore);
+      if (!colEl || !restoreEl) return;
+      var visibleEls = [];
+      var hiddenKeys = [];
+      block.keys.forEach(function (k) {
+        var el = panelEl(k);
+        if (!el) return;
+        el.classList.remove('live-pane-grow');
+        if (el.classList.contains('live-pane-hidden')) hiddenKeys.push(k);
+        else visibleEls.push(el);
+      });
+      if (visibleEls.length === 1) visibleEls[0].classList.add('live-pane-grow');
+      colEl.classList.toggle('live-col-empty', visibleEls.length === 0);
+      restoreEl.innerHTML = '';
+      if (hiddenKeys.length) {
+        restoreEl.style.display = 'flex';
+        hiddenKeys.forEach(function (k) {
+          var b = document.createElement('button');
+          b.type = 'button';
+          b.className = 'live-restore-btn';
+          b.setAttribute('data-live-panel', k);
+          b.textContent = '\u002B ' + LIVE_PANEL_LABELS[k];
+          restoreEl.appendChild(b);
+        });
+      } else restoreEl.style.display = 'none';
+    });
+
+    var L = document.getElementById('live-col-left');
+    var M = document.getElementById('live-col-mid');
+    var R = document.getElementById('live-col-right');
+    var lVis = L && !L.classList.contains('live-col-empty');
+    var mVis = M && !M.classList.contains('live-col-empty');
+    var rVis = R && !R.classList.contains('live-col-empty');
+    viewLive.classList.remove(
+      'live-grid-lmr', 'live-grid-lm', 'live-grid-lr', 'live-grid-mr',
+      'live-grid-l', 'live-grid-m', 'live-grid-r'
+    );
+    if (lVis && mVis && rVis) viewLive.classList.add('live-grid-lmr');
+    else if (lVis && mVis) viewLive.classList.add('live-grid-lm');
+    else if (lVis && rVis) viewLive.classList.add('live-grid-lr');
+    else if (mVis && rVis) viewLive.classList.add('live-grid-mr');
+    else if (lVis) viewLive.classList.add('live-grid-l');
+    else if (mVis) viewLive.classList.add('live-grid-m');
+    else if (rVis) viewLive.classList.add('live-grid-r');
+  }
+
+  viewLive.addEventListener('click', function (e) {
+    var t = e.target.closest('.live-pane-toggle');
+    if (t && t.getAttribute('data-live-panel')) {
+      var k = t.getAttribute('data-live-panel');
+      if (LIVE_PANEL_KEYS.indexOf(k) >= 0) setLivePanelVisible(k, !isLivePanelVisible(k));
+      return;
+    }
+    var r = e.target.closest('.live-restore-btn');
+    if (r && r.getAttribute('data-live-panel')) {
+      var k2 = r.getAttribute('data-live-panel');
+      if (LIVE_PANEL_KEYS.indexOf(k2) >= 0) setLivePanelVisible(k2, true);
+    }
+  });
+
+  LIVE_PANEL_KEYS.forEach(function (k) {
+    var cb = document.getElementById(LIVE_PANEL_TOG[k]);
+    var el = panelEl(k);
+    if (!cb || !el) return;
+    cb.addEventListener('change', function () {
+      setLivePanelVisible(k, cb.checked);
+    });
+  });
+
   var saved = {};
-  try { saved = JSON.parse(localStorage.getItem('ee-display') || '{}'); } catch {}
-  Object.keys(SLIDER_DEFAULTS).forEach(function(key) {
-    var v   = saved[key] != null ? saved[key] : SLIDER_DEFAULTS[key];
-    var inp = document.getElementById('sl-' + key);
-    if (inp) { inp.value = v; sliderFill(inp); }
-    updateSliderUI(key, v);
-    applyDisplay(key, v);
+  try { saved = JSON.parse(localStorage.getItem('ee-live-panels') || '{}'); } catch (e) {}
+  LIVE_PANEL_KEYS.forEach(function (k) {
+    var vis = saved[k] !== false;
+    setLivePanelVisible(k, vis, { skipSave: true, skipReflow: true });
   });
-}
-
-function saveDisplaySettings() {
-  var data = {};
-  Object.keys(SLIDER_DEFAULTS).forEach(function(key) {
-    var inp = document.getElementById('sl-' + key);
-    if (inp) data[key] = parseFloat(inp.value);
-  });
-  localStorage.setItem('ee-display', JSON.stringify(data));
-}
-
-Object.keys(SLIDER_DEFAULTS).forEach(function(key) {
-  var inp = document.getElementById('sl-' + key);
-  if (!inp) return;
-  inp.addEventListener('input', function() {
-    var v = parseFloat(inp.value);
-    sliderFill(inp);
-    updateSliderUI(key, v);
-    applyDisplay(key, v);
-    saveDisplaySettings();
-  });
-});
-
-var resetBtn = document.getElementById('sl-reset-all');
-if (resetBtn) resetBtn.addEventListener('click', function() {
-  Object.keys(SLIDER_DEFAULTS).forEach(function(key) {
-    var inp = document.getElementById('sl-' + key);
-    if (inp) { inp.value = SLIDER_DEFAULTS[key]; sliderFill(inp); }
-    updateSliderUI(key, SLIDER_DEFAULTS[key]);
-    applyDisplay(key, SLIDER_DEFAULTS[key]);
-  });
-  localStorage.removeItem('ee-display');
-});
-
-loadDisplaySettings();
-
-// ─── PANEL TOGGLES (live page only) ───────────────────────────────
-var PANEL_MAP = {
-  'tog-commander':'panel-commander',
-  'tog-system':   'panel-system',
-  'tog-scan':     'panel-scan',
-  'tog-summary':  'panel-summary',
-  'tog-progress': 'panel-progress',
-  'tog-log':      'panel-log'
-};
-Object.entries(PANEL_MAP).forEach(function(kv) {
-  var cb    = document.getElementById(kv[0]);
-  var panel = document.getElementById(kv[1]);
-  if (!cb || !panel) return;
-  cb.addEventListener('change', function() {
-    panel.style.visibility = cb.checked ? '' : 'hidden';
-    panel.style.opacity    = cb.checked ? '' : '0';
-  });
-});
+  reflowLiveLayout();
+}());
 
 // ─── BOOT ─────────────────────────────────────────────────────────
 populateBodies();
@@ -1295,3 +1640,76 @@ if (window.electronAPI && window.electronAPI.triggerProfileRefresh) {
     window.electronAPI.triggerProfileRefresh();
   }, 10 * 60 * 1000);
 }
+
+// ── Inara options panel — shared across all pages ─────────────────────────────
+// Save button: persists name, then triggers a sync.
+(function () {
+  var inaraSaveBtn    = document.getElementById('opt-inara-save-btn');
+  var inaraSaveStatus = document.getElementById('opt-inara-save-status');
+  var inaraSyncBtn    = document.getElementById('opt-inara-sync-now-btn');
+  var inaraSyncStatus = document.getElementById('opt-inara-sync-status');
+
+  function inaraSetStatus(el, msg, color, resetMs) {
+    if (!el) return;
+    el.textContent  = msg;
+    el.style.color  = color || '';
+    if (resetMs) setTimeout(function () { el.textContent = el.dataset.default || ''; el.style.color = ''; }, resetMs);
+  }
+
+  // Preserve default sub-text so we can restore it after a timeout
+  if (inaraSaveStatus) inaraSaveStatus.dataset.default = inaraSaveStatus.textContent;
+  if (inaraSyncStatus) inaraSyncStatus.dataset.default = inaraSyncStatus.textContent;
+
+  if (inaraSaveBtn && window.electronAPI) {
+    inaraSaveBtn.addEventListener('click', function () {
+      var cmdrName = (document.getElementById('opt-inara-cmdr-name') || {}).value || '';
+      inaraSetStatus(inaraSaveStatus, 'Saving\u2026');
+      window.electronAPI.saveConfig({ inaraCommanderName: cmdrName.trim() })
+        .then(function () {
+          inaraSetStatus(inaraSaveStatus, '\u2713 Saved', 'var(--green)', 3000);
+          // Kick off a sync immediately after saving — fire-and-forget from the options panel
+          if (window.electronAPI.inaraSyncProfile) {
+            window.electronAPI.inaraSyncProfile(cmdrName.trim()).then(function (r) {
+              if (r && r.success) {
+                inaraSetStatus(inaraSyncStatus, '\u2713 Synced at ' + new Date().toLocaleTimeString(), 'var(--green)', 5000);
+              } else if (r && !r.skipped) {
+                inaraSetStatus(inaraSyncStatus, '\u26a0 ' + (r.error || 'Sync failed'), 'var(--gold)', 6000);
+              }
+            }).catch(function () {});
+          }
+        })
+        .catch(function (err) {
+          inaraSetStatus(inaraSaveStatus, 'Error: ' + err.message, 'var(--red)', 5000);
+        });
+    });
+  }
+
+  if (inaraSyncBtn && window.electronAPI && window.electronAPI.inaraSyncProfile) {
+    inaraSyncBtn.addEventListener('click', function () {
+      var cmdrName = (document.getElementById('opt-inara-cmdr-name') || {}).value || '';
+      inaraSetStatus(inaraSyncStatus, 'Syncing\u2026');
+      inaraSyncBtn.disabled = true;
+      window.electronAPI.inaraSyncProfile(cmdrName.trim()).then(function (r) {
+        inaraSyncBtn.disabled = false;
+        if (!r) { inaraSetStatus(inaraSyncStatus, 'No response', 'var(--red)', 4000); return; }
+        if (r.skipped) {
+          var remaining = r.nextSyncAt ? Math.max(0, Math.round((r.nextSyncAt - Date.now()) / 1000)) : null;
+          var msg = 'Rate-limited' + (remaining !== null ? ' \u2014 ' + remaining + 's remaining' : '');
+          inaraSetStatus(inaraSyncStatus, msg, 'var(--text-mute)', 5000);
+        } else if (r.success) {
+          var cache = r.fromCache ? ' (cached)' : '';
+          inaraSetStatus(inaraSyncStatus, '\u2713 Synced at ' + new Date().toLocaleTimeString() + cache, 'var(--green)', 5000);
+        } else if (r.retryable) {
+          var remaining2 = r.nextSyncAt ? Math.max(0, Math.round((r.nextSyncAt - Date.now()) / 1000)) : null;
+          var retryMsg = (r.error || 'Server unavailable') + (remaining2 !== null ? ' \u2014 retrying in ' + remaining2 + 's' : '');
+          inaraSetStatus(inaraSyncStatus, '\u26a0 ' + retryMsg, 'var(--gold)', 8000);
+        } else {
+          inaraSetStatus(inaraSyncStatus, '\u26a0 ' + (r.error || 'Failed'), 'var(--gold)', 6000);
+        }
+      }).catch(function (err) {
+        inaraSyncBtn.disabled = false;
+        inaraSetStatus(inaraSyncStatus, 'Error: ' + err.message, 'var(--red)', 5000);
+      });
+    });
+  }
+}());

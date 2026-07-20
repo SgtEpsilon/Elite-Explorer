@@ -3,8 +3,6 @@
 <head>
 <meta charset="UTF-8">
 <title>Elite Explorer — Profile</title>
-<link rel="preconnect" href="https://fonts.googleapis.com">
-<link href="https://fonts.googleapis.com/css2?family=Rajdhani:wght@400;500;600;700&family=Share+Tech+Mono&family=Orbitron:wght@400;500;700&family=Exo+2:wght@200;300;400&display=swap" rel="stylesheet">
 <link rel="stylesheet" href="styles.css">
 </head>
 <body>
@@ -17,81 +15,255 @@
   <span class="tb-sys" id="tb-sys">&#8212;</span><span id="tb-discovery-star" title="First Discovery!" style="display:none;color:var(--gold);margin-left:4px;font-size:0.85em;">&#9733;</span>
   <div class="tab-nav">
     <a class="tab-btn" href="index.html">Live</a>
+    <a class="tab-btn" href="ship.html">Ship</a>
     <a class="tab-btn active" href="profile.html">Profile</a>
     <a class="tab-btn" href="history.html">History</a>
-	<a class="tab-btn" href="spansh.html">Spansh</a>
+    <a class="tab-btn" href="spansh.html">Spansh</a>
   </div>
   <span class="tb-credits" id="tb-credits"></span>
+  <span id="eddn-dot" title="EDDN: disabled" style="width:6px;height:6px;border-radius:50%;background:var(--border2);display:inline-block;margin-right:4px;transition:background 0.4s;"></span>
+  <span id="edsm-dot" title="EDSM: disabled" style="width:6px;height:6px;border-radius:50%;background:var(--border2);display:inline-block;margin-right:8px;transition:background 0.4s;"></span>
   <button id="options-btn" title="Options">&#9881;</button>
 </div>
 
-<div id="app-wrapper" style="display:flex;flex-direction:column;height:calc(100vh - 44px);">
+<div id="app-wrapper">
+<div id="view-profile" class="active">
 
-  <div id="view-profile" class="active">
-    <div id="prof-no-data">
-      <div class="icon">&#9672;</div>
-      <div class="msg">No Commander Data Yet</div>
-      <div class="sub">Run "Scan All Journals" from Options &#9881; to populate this view</div>
+  <!-- ── No data placeholder ─────────────────────────────────────────────── -->
+  <div id="prof-no-data">
+    <div class="icon">&#9672;</div>
+    <div class="msg">No Commander Data Yet</div>
+    <div class="sub">Run &ldquo;Scan All Journals&rdquo; from Options &#9881; to populate this view</div>
+  </div>
+
+  <!-- ── Main content ────────────────────────────────────────────────────── -->
+  <div id="prof-content" style="display:none;">
+
+    <!-- ── Sub-tab navigation ───────────────────────────────────────────── -->
+    <div id="prof-subtab-bar">
+      <button class="prof-subtab active" data-subtab="overview">Overview</button>
+      <button class="prof-subtab" data-subtab="engineers">Engineers</button>
+      <button class="prof-subtab" data-subtab="materials">Materials</button>
     </div>
-    <div id="prof-content" style="display:none;">
-      <div class="ident-card">
-        <div class="ident-avatar">&#9672;</div>
-        <div>
+
+    <!-- ════════════════════════════════════════════════════════════════════ -->
+    <!-- OVERVIEW SUB-PAGE                                                   -->
+    <!-- ════════════════════════════════════════════════════════════════════ -->
+    <div id="prof-subpage-overview" class="prof-subpage active">
+
+    <!-- ════════════════════════════════════════════════════════════════════ -->
+    <!-- HERO IDENTITY CARD                                                   -->
+    <!-- Left:  Inara avatar (◆ glyph until Inara syncs)                     -->
+    <!-- Right: CMDR name + Inara link, role + squadron, ship, kv pills       -->
+    <!-- ════════════════════════════════════════════════════════════════════ -->
+    <div class="ident-card">
+
+      <!-- Avatar: replaced by Inara img after sync -->
+      <div class="ident-avatar" id="ident-avatar-wrap">&#9672;</div>
+
+      <!-- Right-hand identity block -->
+      <div style="flex:1;min-width:0;">
+
+        <!-- Name + Inara link -->
+        <div style="display:flex;align-items:baseline;gap:12px;flex-wrap:wrap;margin-bottom:2px;">
           <div class="ident-name" id="prof-name">CMDR &#8212;</div>
-          <div class="ident-ship">
-            <span id="prof-ship-type" style="color:var(--text-dim)">&#8212;</span>
-            <span style="color:var(--text-mute)"> &middot; </span>
-            <span id="prof-ship-name" style="color:var(--cyan)">&#8212;</span>
-            <span style="color:var(--text-mute)"> &middot; </span>
-            <span id="prof-ship-ident" style="color:var(--text-mute)">&#8212;</span>
+          <a class="ident-inara-link" id="inara-url" href="#">&#8599; Inara Profile</a>
+        </div>
+
+        <!-- Role + squadron  (hidden until Inara syncs) -->
+        <div class="ident-hero-meta" id="inara-hero-meta">
+          <span class="ident-role" id="inara-role"></span>
+          <span class="ident-squadron-pill" id="inara-squadron-pill"></span>
+        </div>
+
+        <!-- Current ship -->
+        <div class="ident-ship">
+          <span id="prof-ship-type" style="color:var(--text-dim)">&#8212;</span>
+          <span style="color:var(--text-mute)"> &middot; </span>
+          <span id="prof-ship-name" style="color:var(--cyan)">&#8212;</span>
+          <span style="color:var(--text-mute)"> &middot; </span>
+          <span id="prof-ship-ident" style="color:var(--text-mute)">&#8212;</span>
+        </div>
+
+        <!-- Key-value pills: credits / system / game mode -->
+        <div class="ident-kv-row">
+          <div>
+            <div class="ident-kv-val" id="prof-credits">&#8212;</div>
+            <div class="ident-kv-lbl">Credits</div>
           </div>
-          <div class="ident-kv-row">
-            <div><div class="ident-kv-val" id="prof-credits">&#8212;</div><div class="ident-kv-lbl">Credits</div></div>
-            <div><div class="ident-kv-val" style="color:var(--text-dim)" id="prof-mode">&#8212;</div><div class="ident-kv-lbl">Game Mode</div></div>
-            <div><div class="ident-kv-val" style="color:var(--cyan2)"><span id="prof-system">&#8212;</span><span id="prof-discovery-badge" title="First Discovery — you found this system!" style="display:none;margin-left:6px;color:var(--gold);font-size:0.9em;">&#9733;</span></div><div class="ident-kv-lbl">Current System</div></div>
-            <div><div class="ident-kv-val" id="prof-jump" style="color:var(--cyan)">&#8212;</div><div class="ident-kv-lbl">Jump Range</div></div>
+          <div>
+            <div class="ident-kv-val" style="color:var(--cyan2)">
+              <span id="prof-system">&#8212;</span>
+              <span id="prof-discovery-badge" title="First Discovery &#8212; you found this system!" style="display:none;margin-left:6px;color:var(--gold);font-size:0.9em;">&#9733;</span>
+            </div>
+            <div class="ident-kv-lbl">Current System</div>
+          </div>
+          <div>
+            <div class="ident-kv-val" style="color:var(--text-dim)" id="prof-mode">&#8212;</div>
+            <div class="ident-kv-lbl">Game Mode</div>
           </div>
         </div>
-      </div>
-      <div class="prof-section" style="background:var(--panel);">
-        <div class="prof-title">Commander Ranks</div>
-        <div class="ranks-grid" id="prof-ranks-grid"></div>
-      </div>
-      <div class="prof-section" style="background:var(--panel);">
-        <div class="prof-title">Superpower Reputation</div>
-        <div class="rep-grid">
-          <div class="rep-card rep-empire">
-            <div class="rep-name">Empire</div><div class="rep-num" id="rep-empire-num">&#8212;</div>
-            <div class="rep-sub" id="rep-empire-lbl">&#8212;</div>
-            <div class="rep-track"><div class="rep-fill" id="rep-empire-bar" style="width:0%"></div></div>
-          </div>
-          <div class="rep-card rep-federation">
-            <div class="rep-name">Federation</div><div class="rep-num" id="rep-fed-num">&#8212;</div>
-            <div class="rep-sub" id="rep-fed-lbl">&#8212;</div>
-            <div class="rep-track"><div class="rep-fill" id="rep-fed-bar" style="width:0%"></div></div>
-          </div>
-          <div class="rep-card rep-alliance">
-            <div class="rep-name">Alliance</div><div class="rep-num" id="rep-all-num">&#8212;</div>
-            <div class="rep-sub" id="rep-all-lbl">&#8212;</div>
-            <div class="rep-track"><div class="rep-fill" id="rep-all-bar" style="width:0%"></div></div>
-          </div>
-          <div class="rep-card rep-independent">
-            <div class="rep-name">Independent</div><div class="rep-num" id="rep-ind-num">&#8212;</div>
-            <div class="rep-sub" id="rep-ind-lbl">&#8212;</div>
-            <div class="rep-track"><div class="rep-fill" id="rep-ind-bar" style="width:0%"></div></div>
-          </div>
+
+      </div><!-- /identity block -->
+    </div><!-- /ident-card -->
+
+    <!-- ════════════════════════════════════════════════════════════════════ -->
+    <!-- LIVE STATUS STRIP                                                    -->
+    <!-- Fuel, Hull, Jump Range, Cargo, Docking — sourced from live journals  -->
+    <!-- Hidden until first live-data arrives                                 -->
+    <!-- ════════════════════════════════════════════════════════════════════ -->
+    <div id="prof-status-strip">
+
+      <div class="status-item s-fuel">
+        <div class="status-lbl">Fuel</div>
+        <div class="status-val" id="prof-fuel-display">&#8212;</div>
+        <div class="status-gauge">
+          <div class="status-gauge-fill" id="prof-fuel-bar" style="width:0%;background:var(--cyan);"></div>
         </div>
       </div>
-      <div class="prof-section" style="background:var(--bg2);">
-        <div class="prof-title">Lifetime Statistics</div>
-        <div class="stats-cols" id="prof-stats-cols"></div>
+
+      <div class="status-item s-hull">
+        <div class="status-lbl">Hull Integrity</div>
+        <div class="status-val" id="prof-hull-val">&#8212;</div>
+        <div class="status-gauge">
+          <div class="status-gauge-fill" id="prof-hull-bar" style="width:0%;background:var(--green);"></div>
+        </div>
+      </div>
+
+      <div class="status-item s-jump">
+        <div class="status-lbl">Jump Range</div>
+        <!-- prof-jump is written by script.js onLiveData — keep this ID here -->
+        <div class="status-val" id="prof-jump">&#8212;</div>
+      </div>
+
+      <div class="status-item s-cargo">
+        <div class="status-lbl">Cargo Capacity</div>
+        <div class="status-val" id="prof-cargo">&#8212;</div>
+      </div>
+
+      <div class="status-item s-loc">
+        <div class="status-lbl">Docked At</div>
+        <div class="status-val" id="prof-docked-name">In Space</div>
+        <div class="status-sub" id="prof-docked-type"></div>
+      </div>
+
+    </div><!-- /prof-status-strip -->
+
+    <!-- ════════════════════════════════════════════════════════════════════ -->
+    <!-- COMMANDER RANKS                                                      -->
+    <!-- 7-card grid built by script.js; Inara enrichment appended after sync -->
+    <!-- ════════════════════════════════════════════════════════════════════ -->
+    <div class="prof-section" style="background:var(--panel);">
+      <div class="prof-title">
+        Commander Ranks
+        <span id="ranks-inara-badge">&#10003; Inara verified</span>
+      </div>
+      <div class="ranks-grid" id="prof-ranks-grid"></div>
+    </div>
+
+    <!-- ════════════════════════════════════════════════════════════════════ -->
+    <!-- SUPERPOWER REPUTATION                                                -->
+    <!-- Inara allegiance + power preference shown above the 4 rep bars      -->
+    <!-- ════════════════════════════════════════════════════════════════════ -->
+    <div class="prof-section" style="background:var(--panel);">
+      <div class="prof-title">Superpower Reputation</div>
+
+      <!-- Inara preferred allegiance / power (hidden until Inara syncs) -->
+      <div id="inara-rep-pref">
+        <span class="rep-pref-label">Preferred &rsaquo;</span>
+        <div id="inara-pref-pills" style="display:flex;gap:6px;flex-wrap:wrap;"></div>
+      </div>
+
+      <div class="rep-grid">
+        <div class="rep-card rep-empire">
+          <div class="rep-name">Empire</div>
+          <div class="rep-num" id="rep-empire-num">&#8212;</div>
+          <div class="rep-sub" id="rep-empire-lbl">&#8212;</div>
+          <div class="rep-track"><div class="rep-fill" id="rep-empire-bar" style="width:0%"></div></div>
+        </div>
+        <div class="rep-card rep-federation">
+          <div class="rep-name">Federation</div>
+          <div class="rep-num" id="rep-fed-num">&#8212;</div>
+          <div class="rep-sub" id="rep-fed-lbl">&#8212;</div>
+          <div class="rep-track"><div class="rep-fill" id="rep-fed-bar" style="width:0%"></div></div>
+        </div>
+        <div class="rep-card rep-alliance">
+          <div class="rep-name">Alliance</div>
+          <div class="rep-num" id="rep-all-num">&#8212;</div>
+          <div class="rep-sub" id="rep-all-lbl">&#8212;</div>
+          <div class="rep-track"><div class="rep-fill" id="rep-all-bar" style="width:0%"></div></div>
+        </div>
+        <div class="rep-card rep-independent">
+          <div class="rep-name">Independent</div>
+          <div class="rep-num" id="rep-ind-num">&#8212;</div>
+          <div class="rep-sub" id="rep-ind-lbl">&#8212;</div>
+          <div class="rep-track"><div class="rep-fill" id="rep-ind-bar" style="width:0%"></div></div>
+        </div>
       </div>
     </div>
-  </div><!-- /view-profile -->
 
+    <!-- ════════════════════════════════════════════════════════════════════ -->
+    <!-- LIFETIME STATISTICS                                                  -->
+    <!-- Built by script.js onProfileData — 5-col grid                       -->
+    <!-- ════════════════════════════════════════════════════════════════════ -->
+    <div class="prof-section" style="background:var(--bg2);">
+      <div class="prof-title">Lifetime Statistics</div>
+      <div class="stats-cols" id="prof-stats-cols"></div>
+    </div>
+
+    <!-- ════════════════════════════════════════════════════════════════════ -->
+    <!-- INARA SYNC FOOTER                                                    -->
+    <!-- Compact status bar: badge / status text / countdown / sync button   -->
+    <!-- ════════════════════════════════════════════════════════════════════ -->
+    <div id="inara-panel">
+      <div class="inara-footer-left">
+        <span class="inara-source-tag">Inara Sync</span>
+        <span id="inara-sync-badge" style="display:none;font-family:var(--mono);font-size:0.68em;padding:2px 8px;border-radius:10px;"></span>
+        <span id="inara-status" style="font-size:0.73em;color:var(--text-mute);font-family:var(--mono);"></span>
+        <span id="inara-no-key" style="display:none;font-size:0.73em;color:var(--gold);font-family:var(--mono);">
+          &#9888; No API key &#8212; add in Options &#9881; &rsaquo; Inara
+        </span>
+      </div>
+      <div class="inara-footer-right">
+        <span id="inara-next-sync" style="font-size:0.68em;color:var(--text-mute);font-family:var(--mono);"></span>
+        <button id="inara-refresh-btn" title="Sync Inara profile now" style="
+          background:rgba(46,207,207,0.08);border:1px solid rgba(46,207,207,0.25);
+          color:var(--cyan);border-radius:6px;padding:4px 12px;cursor:pointer;
+          font-family:var(--mono);font-size:0.78em;letter-spacing:0.05em;
+          transition:background 0.15s,border-color 0.15s;
+        ">&#8635; Sync</button>
+      </div>
+    </div>
+
+    </div><!-- /prof-subpage-overview -->
+
+    <!-- ════════════════════════════════════════════════════════════════════ -->
+    <!-- ENGINEERS SUB-PAGE                                                  -->
+    <!-- Unlocked engineers from EngineerProgress journal events             -->
+    <!-- ════════════════════════════════════════════════════════════════════ -->
+    <div id="prof-subpage-engineers" class="prof-subpage">
+      <div class="prof-section" style="background:var(--panel);border-bottom:1px solid var(--border);">
+        <div class="prof-title">Unlocked Engineers</div>
+      </div>
+      <div id="prof-engineers-grid" class="eng-grid"></div>
+    </div><!-- /prof-subpage-engineers -->
+
+    <!-- ════════════════════════════════════════════════════════════════════ -->
+    <!-- MATERIALS SUB-PAGE                                                  -->
+    <!-- Commander material inventory from Materials journal events          -->
+    <!-- ════════════════════════════════════════════════════════════════════ -->
+    <div id="prof-subpage-materials" class="prof-subpage">
+      <div class="prof-section" style="background:var(--panel);border-bottom:1px solid var(--border);">
+        <div class="prof-title">Materials Inventory</div>
+      </div>
+      <div id="prof-materials-by-grade"></div>
+    </div><!-- /prof-subpage-materials -->
+
+  </div><!-- /prof-content -->
+</div><!-- /view-profile -->
 </div><!-- /app-wrapper -->
 
-<!-- OPTIONS PANEL -->
+<!-- ── OPTIONS PANEL ─────────────────────────────────────────────────────── -->
 <div id="options-overlay"></div>
 <div id="options-panel">
   <div id="options-header">
@@ -107,6 +279,74 @@
       </button>
     </div>
     <div class="opt-section">
+      <div class="opt-section-title">Network UI Server</div>
+      <label class="opt-toggle" style="margin-bottom:8px;">
+        <input type="checkbox" id="opt-network-enabled">
+        <span class="tog-track"><span class="tog-thumb"></span></span>
+        <span class="tog-lbl">Enable network UI server</span>
+      </label>
+      <div class="opt-hint">Serves the Elite Explorer UI over HTTP so any device on your local network can access it in a browser. Restart the app after changing this setting.</div>
+      <div style="margin-top:8px;">
+        <label style="font-size:0.72em;color:var(--text-dim);display:block;margin-bottom:3px;">Port <span style="opacity:0.5">(default: 3722)</span></label>
+        <input class="opt-input" id="opt-network-port" type="number" min="1024" max="65535" placeholder="3722" spellcheck="false" style="width:120px;"/>
+      </div>
+      <div id="opt-network-urls" style="margin-top:8px;font-size:0.72em;color:var(--text-dim);display:none;"></div>
+      <button class="opt-action-btn" id="opt-network-save-btn" style="margin-top:10px;">
+        <span class="opt-btn-icon">&#10003;</span>
+        <div><div class="opt-btn-label">Save Network Settings</div><div class="opt-btn-sub" id="opt-network-hint">Restart required to apply changes</div></div>
+      </button>
+    </div>
+    <div class="opt-section">
+      <div class="opt-section-title">EDDN &#8212; Data Network</div>
+      <label class="opt-toggle" style="margin-bottom:8px;">
+        <input type="checkbox" id="opt-eddn-enabled">
+        <span class="tog-track"><span class="tog-thumb"></span></span>
+        <span class="tog-lbl">Submit events to EDDN</span>
+      </label>
+      <div class="opt-hint">Shares jump, scan &amp; dock events with the community network. Your commander name is used as the uploader ID.</div>
+      <div style="margin-top:8px;">
+        <label style="font-size:0.72em;color:var(--text-dim);display:block;margin-bottom:3px;">Commander Name (uploader ID)</label>
+        <input class="opt-input" id="opt-cmdr-name" type="text" placeholder="Your in-game commander name" spellcheck="false"/>
+      </div>
+    </div>
+    <div class="opt-section">
+      <div class="opt-section-title">EDSM &#8212; Star Map</div>
+      <label class="opt-toggle" style="margin-bottom:8px;">
+        <input type="checkbox" id="opt-edsm-enabled">
+        <span class="tog-track"><span class="tog-thumb"></span></span>
+        <span class="tog-lbl">Fetch system data from EDSM</span>
+      </label>
+      <div class="opt-hint">Displays security, allegiance, population and enables the EDSM link for each system you visit. No account required for lookups.</div>
+      <div style="margin-top:8px;">
+        <label style="font-size:0.72em;color:var(--text-dim);display:block;margin-bottom:3px;">EDSM Commander Name <span style="opacity:0.5">(optional &#8212; for flight log sync)</span></label>
+        <input class="opt-input" id="opt-edsm-cmdr" type="text" placeholder="Your EDSM commander name" spellcheck="false"/>
+      </div>
+      <div style="margin-top:6px;">
+        <label style="font-size:0.72em;color:var(--text-dim);display:block;margin-bottom:3px;">EDSM API Key <span style="opacity:0.5">(optional &#8212; from edsm.net/en/settings/api)</span></label>
+        <input class="opt-input" id="opt-edsm-key" type="password" placeholder="&#8226;&#8226;&#8226;&#8226;&#8226;&#8226;&#8226;&#8226;&#8226;&#8226;&#8226;&#8226;&#8226;&#8226;&#8226;&#8226;" spellcheck="false"/>
+      </div>
+      <button class="opt-action-btn" id="opt-save-api-btn" style="margin-top:10px;">
+        <span class="opt-btn-icon">&#10003;</span>
+        <div><div class="opt-btn-label">Save API Settings</div><div class="opt-btn-sub" id="opt-api-hint">Changes take effect immediately</div></div>
+      </button>
+    </div>
+    <div class="opt-section">
+      <div class="opt-section-title">Inara &#8212; Commander Profile</div>
+      <div style="font-size:0.78em;color:var(--text-mute);margin-bottom:8px;line-height:1.5;">Syncs your CMDR profile from Inara every 5 minutes.</div>
+      <div style="margin-top:6px;">
+        <label style="font-size:0.72em;color:var(--text-dim);display:block;margin-bottom:3px;">CMDR Name Override <span style="opacity:0.5">(only if different from in-game name)</span></label>
+        <input class="opt-input" id="opt-inara-cmdr-name" type="text" placeholder="Your Inara display name" spellcheck="false"/>
+      </div>
+      <button class="opt-action-btn" id="opt-inara-save-btn" style="margin-top:10px;">
+        <span class="opt-btn-icon">&#10003;</span>
+        <div><div class="opt-btn-label">Save Inara Settings</div><div class="opt-btn-sub" id="opt-inara-save-status">Save API key and sync now</div></div>
+      </button>
+      <button class="opt-action-btn" id="opt-inara-sync-now-btn" style="margin-top:6px;">
+        <span class="opt-btn-icon">&#8635;</span>
+        <div><div class="opt-btn-label">Sync Now</div><div class="opt-btn-sub" id="opt-inara-sync-status">Manually trigger an Inara profile sync</div></div>
+      </button>
+    </div>
+    <div class="opt-section">
       <div class="opt-section-title">Journal Folder</div>
       <div class="opt-path-row">
         <input class="opt-input" id="opt-journal-path" type="text" placeholder="Auto-detected" spellcheck="false"/>
@@ -118,25 +358,17 @@
     <div class="opt-section">
       <div class="opt-section-title">Theme</div>
       <div class="opt-theme-grid">
-        <div class="opt-theme-swatch active" data-theme="default"><div class="swatch-bar" style="background:#c8972a"></div><div class="swatch-bar" style="background:#2ecfcf"></div><span>Default</span></div>
-        <div class="opt-theme-swatch" data-theme="red"><div class="swatch-bar" style="background:#e05252"></div><div class="swatch-bar" style="background:#cf7a3e"></div><span>Red Alert</span></div>
-        <div class="opt-theme-swatch" data-theme="green"><div class="swatch-bar" style="background:#4caf7d"></div><div class="swatch-bar" style="background:#a0cf3e"></div><span>Viridian</span></div>
-        <div class="opt-theme-swatch" data-theme="purple"><div class="swatch-bar" style="background:#a855f7"></div><div class="swatch-bar" style="background:#cf3ecf"></div><span>Nebula</span></div>
+        <div class="opt-theme-swatch active" data-theme="default"><div class="swatch-bar" style="background:#ff9d1f"></div><div class="swatch-bar" style="background:#ffd24d"></div><span>Default</span></div>
+        <div class="opt-theme-swatch" data-theme="red"><div class="swatch-bar" style="background:#ff4d3d"></div><div class="swatch-bar" style="background:#ffa53d"></div><span>Red Alert</span></div>
+        <div class="opt-theme-swatch" data-theme="green"><div class="swatch-bar" style="background:#39e07a"></div><div class="swatch-bar" style="background:#a6e22e"></div><span>Viridian</span></div>
+        <div class="opt-theme-swatch" data-theme="purple"><div class="swatch-bar" style="background:#b26bff"></div><div class="swatch-bar" style="background:#ff6bcb"></div><span>Nebula</span></div>
       </div>
     </div>
     <div class="opt-section">
       <div class="sl-group">
         <div class="sl-group-title">Scale &amp; Size</div>
-        <div class="sl-row"><div class="sl-header"><span class="sl-label">UI Scale</span><span class="sl-val" id="sv-scale">100%</span></div><input type="range" class="sl-input" id="sl-scale" min="70" max="130" step="1" value="100"></div>
-        <div class="sl-row"><div class="sl-header"><span class="sl-label">Font Size</span><span class="sl-val" id="sv-font">24px</span></div><input type="range" class="sl-input" id="sl-font" min="1" max="32" step="0.5" value="24"></div>
+        <div class="sl-row"><div class="sl-header"><span class="sl-label">Font Size</span><span class="sl-val" id="sv-font">14px</span></div><input type="range" class="sl-input" id="sl-font" min="1" max="32" step="0.5" value="14"></div>
         <div class="sl-row"><div class="sl-header"><span class="sl-label">Row Density</span><span class="sl-val" id="sv-density">Normal</span></div><input type="range" class="sl-input" id="sl-density" min="1" max="5" step="1" value="3"></div>
-      </div>
-      <div class="sl-group">
-        <div class="sl-group-title">Panel Layout</div>
-        <div class="sl-row"><div class="sl-header"><span class="sl-label">Left Panel Width</span><span class="sl-val" id="sv-left">250px</span></div><input type="range" class="sl-input" id="sl-left" min="1" max="360" step="5" value="250"></div>
-        <div class="sl-row"><div class="sl-header"><span class="sl-label">Right Panel Width</span><span class="sl-val" id="sv-right">320px</span></div><input type="range" class="sl-input" id="sl-right" min="1" max="500" step="5" value="320"></div>
-        <div class="sl-row"><div class="sl-header"><span class="sl-label">Bottom Bar Height</span><span class="sl-val" id="sv-bottom">120px</span></div><input type="range" class="sl-input" id="sl-bottom" min="1" max="240" step="5" value="120"></div>
-        <div class="sl-row"><div class="sl-header"><span class="sl-label">Log Height</span><span class="sl-val" id="sv-log">130px</span></div><input type="range" class="sl-input" id="sl-log" min="1" max="400" step="5" value="130"></div>
       </div>
       <div class="sl-group">
         <div class="sl-group-title">Atmosphere</div>
@@ -151,8 +383,730 @@
   </div>
 </div>
 
+<script src="display-settings.js"></script>
 <script src="script.js"></script>
 <script src="update-modal.js"></script>
 <script src="prefs-modal.js"></script>
-</body>
+<script>
+// ═════════════════════════════════════════════════════════════════════════════
+// Profile page  —  Live Status Strip  +  Inara Sync  +  Rank Cross-reference
+//
+// Execution order guarantee:
+//   script.js loads and registers its IPC listeners first.
+//   This inline block runs second, so when our onProfileData fires the rank
+//   grid is already built by script.js's handler.
+// ═════════════════════════════════════════════════════════════════════════════
+(function () {
+  'use strict';
+
+  // ── Constants ──────────────────────────────────────────────────────────────
+  var SYNC_INTERVAL_MS = 5 * 60 * 1000;
+
+  // Inara API rankName values → rank card CSS class names
+  var INARA_TO_CARD = {
+    'combat':       'combat',
+    'trade':        'trade',
+    'explore':      'explore',
+    'cqc':          'cqc',
+    'exobiologist': 'exobio',
+    'federation':   'fed',
+    'empire':       'empire',
+  };
+
+  // ── State ──────────────────────────────────────────────────────────────────
+  var _cmdName        = '';
+  var _syncTimer      = null;
+  var _countdownTimer = null;
+  var _inaraRanks     = null;   // commanderRanksPilot array from last Inara sync
+  var _localRanksDone = false;  // true once script.js has built the rank grid
+
+  // ── DOM shortcuts ──────────────────────────────────────────────────────────
+  var elStatus     = document.getElementById('inara-status');
+  var elNoKey      = document.getElementById('inara-no-key');
+  var elBadge      = document.getElementById('inara-sync-badge');
+  var elNextSync   = document.getElementById('inara-next-sync');
+  var elRefreshBtn = document.getElementById('inara-refresh-btn');
+  var elPrefPills  = document.getElementById('inara-pref-pills');
+  var elRepPref    = document.getElementById('inara-rep-pref');
+  var elHeroMeta   = document.getElementById('inara-hero-meta');
+
+  // ── Escape HTML ────────────────────────────────────────────────────────────
+  function esc(s) {
+    return String(s || '')
+      .replace(/&/g, '&amp;').replace(/</g, '&lt;')
+      .replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+  }
+
+  // ── Status / badge helpers ─────────────────────────────────────────────────
+  function setStatus(msg, color) {
+    if (elStatus) {
+      elStatus.textContent = msg;
+      elStatus.style.color = color || 'var(--text-mute)';
+    }
+  }
+
+  function setBadge(text, bg, color) {
+    if (!elBadge) return;
+    elBadge.textContent      = text;
+    elBadge.style.background = bg    || 'rgba(46,207,207,0.12)';
+    elBadge.style.color      = color || 'var(--cyan)';
+    elBadge.style.border     = '1px solid ' + (color || 'rgba(46,207,207,0.3)');
+    elBadge.style.display    = 'inline-block';
+  }
+
+  function startCountdown(nextSyncAt, label) {
+    if (_countdownTimer) clearInterval(_countdownTimer);
+    var prefix = label || 'next sync in ';
+    function tick() {
+      if (!elNextSync) return;
+      var remaining = Math.max(0, nextSyncAt - Date.now());
+      if (remaining === 0) { elNextSync.textContent = ''; clearInterval(_countdownTimer); return; }
+      var m = Math.floor(remaining / 60000);
+      var s = Math.floor((remaining % 60000) / 1000);
+      elNextSync.textContent = prefix + (m > 0 ? m + ':' + (s < 10 ? '0' : '') + s : s + 's');
+    }
+    tick();
+    _countdownTimer = setInterval(tick, 1000);
+  }
+
+  // ════════════════════════════════════════════════════════════════════════════
+  // LIVE STATUS STRIP
+  // script.js already handles: prof-system, prof-jump (moved to strip),
+  // prof-ship-*, prof-credits, prof-mode, prof-name, prof-discovery-badge.
+  // We handle the NEW fields: fuel, hull, cargo, docked station.
+  // ════════════════════════════════════════════════════════════════════════════
+  if (window.electronAPI && window.electronAPI.onLiveData) {
+    window.electronAPI.onLiveData(function (d) {
+      var strip = document.getElementById('prof-status-strip');
+      var shouldReveal = false;
+
+      // Fuel gauge
+      if (d.fuelDisplay) {
+        var fuelEl = document.getElementById('prof-fuel-display');
+        if (fuelEl) fuelEl.textContent = d.fuelDisplay;
+        shouldReveal = true;
+      }
+      if (d.fuelPct != null) {
+        var fuelBar = document.getElementById('prof-fuel-bar');
+        if (fuelBar) fuelBar.style.width = d.fuelPct + '%';
+        shouldReveal = true;
+      }
+
+      // Hull integrity — colour-coded
+      if (d.hull != null) {
+        var hullColor = d.hull >= 70 ? 'var(--green)' : d.hull >= 40 ? 'var(--gold)' : 'var(--red)';
+        var hullVal = document.getElementById('prof-hull-val');
+        var hullBar = document.getElementById('prof-hull-bar');
+        if (hullVal) { hullVal.textContent = d.hull + '%'; hullVal.style.color = hullColor; }
+        if (hullBar) { hullBar.style.width = d.hull + '%'; hullBar.style.background = hullColor; }
+        shouldReveal = true;
+      }
+
+      // Cargo capacity
+      if (d.cargoCapacity != null) {
+        var cargoEl = document.getElementById('prof-cargo');
+        if (cargoEl) cargoEl.textContent = d.cargoCapacity + ' T';
+        shouldReveal = true;
+      }
+
+      // Docked / In Space
+      var dockedNameEl = document.getElementById('prof-docked-name');
+      var dockedTypeEl = document.getElementById('prof-docked-type');
+      if (d.dockedStation) {
+        if (dockedNameEl) dockedNameEl.textContent = d.dockedStation;
+        if (dockedTypeEl) dockedTypeEl.textContent = d.dockedStationType || '';
+      } else if (d.dockedStation === null) {
+        // Explicit undock event
+        if (dockedNameEl) dockedNameEl.textContent = 'In Space';
+        if (dockedTypeEl) dockedTypeEl.textContent = '';
+      }
+
+      // Reveal strip on first meaningful data
+      if (shouldReveal && strip) strip.style.display = 'grid';
+    });
+  }
+
+  // ════════════════════════════════════════════════════════════════════════════
+  // RANK CROSS-REFERENCE
+  // Annotates each rank card with the Inara-reported rank name and progress
+  // after both local data (rank grid built by script.js) and Inara data are ready.
+  // ════════════════════════════════════════════════════════════════════════════
+  function enrichRankCards() {
+    if (!_inaraRanks || !_inaraRanks.length) return;
+    var grid = document.getElementById('prof-ranks-grid');
+    if (!grid || !grid.children.length) return;
+
+    _inaraRanks.forEach(function (r) {
+      var cls  = INARA_TO_CARD[r.rankName];
+      if (!cls) return;
+      var card = grid.querySelector('.rank-card.' + cls);
+      if (!card) return;
+
+      // Remove stale annotation from a previous sync cycle
+      var old = card.querySelector('.inara-rank-row');
+      if (old) old.remove();
+
+      // Compare Inara value against what the local journals show
+      var localNameEl = card.querySelector('.rank-name');
+      var localName   = localNameEl ? localNameEl.textContent.trim() : '';
+      var inaraVal    = r.rankValue || '';
+      var match       = localName && inaraVal &&
+                        localName.toLowerCase() === inaraVal.toLowerCase();
+
+      // Inara reports progress as 0–1; convert to integer percent for display
+      var pct = r.rankProgress != null ? Math.round(r.rankProgress * 100) : null;
+
+      var row = document.createElement('div');
+      row.className = 'inara-rank-row';
+      row.innerHTML =
+        '<div style="display:flex;align-items:center;justify-content:space-between;' +
+        'margin-top:7px;padding-top:6px;border-top:1px solid rgba(255,255,255,0.05);">' +
+          '<span style="font-size:0.58em;color:var(--cyan2);letter-spacing:0.1em;text-transform:uppercase;">Inara</span>' +
+          '<span style="font-size:0.7em;font-family:var(--mono);color:' +
+            (match ? 'var(--green)' : 'var(--gold)') + ';"' +
+            ' title="' + (match
+              ? 'Inara confirms your local journal rank'
+              : 'Differs from local journal \u2014 journals may be ahead of Inara') +
+            '">' +
+            esc(inaraVal || '\u2014') + '\u00a0' +
+            (match ? '&#10003;' : '&#9888;') +
+          '</span>' +
+        '</div>' +
+        (pct != null
+          ? '<div style="margin-top:3px;height:2px;background:rgba(255,255,255,0.05);' +
+            'border-radius:1px;overflow:hidden;">' +
+            '<div style="height:100%;width:' + pct + '%;background:var(--cyan);opacity:0.45;' +
+            'border-radius:1px;transition:width 1s ease;"></div></div>' +
+            '<div style="font-size:0.58em;color:var(--text-mute);text-align:right;margin-top:1px;">' +
+            pct + '% (Inara)</div>'
+          : '');
+      card.appendChild(row);
+    });
+
+    // Reveal the "Inara verified" badge in the ranks section title
+    var badge = document.getElementById('ranks-inara-badge');
+    if (badge) badge.style.display = 'inline';
+  }
+
+  // Our onProfileData fires after script.js's (script.js is loaded first),
+  // so the rank grid is already populated when this runs.
+  if (window.electronAPI && window.electronAPI.onProfileData) {
+    window.electronAPI.onProfileData(function (p) {
+      if (p.identity && p.identity.name && !_cmdName) _cmdName = p.identity.name;
+      _localRanksDone = true;
+      if (_inaraRanks) enrichRankCards();
+    });
+  }
+
+  // ════════════════════════════════════════════════════════════════════════════
+  // renderInara — populates hero card, rep banner, and triggers rank enrichment
+  // ════════════════════════════════════════════════════════════════════════════
+  function renderInara(d) {
+    if (!d) return;
+
+    // ── Avatar image ──────────────────────────────────────────────────────────
+    if (d.avatarImageURL) {
+      var avatarWrap = document.getElementById('ident-avatar-wrap');
+      if (avatarWrap) {
+        avatarWrap.innerHTML =
+          '<img class="ident-avatar-img" src="' + esc(d.avatarImageURL) + '" alt="CMDR Avatar"' +
+          ' onerror="this.parentElement.innerHTML=\'&#9672;\'">';
+      }
+    }
+
+    // ── Inara profile link (inline with CMDR name) ────────────────────────────
+    var urlEl = document.getElementById('inara-url');
+    if (d.inaraURL && urlEl) {
+      urlEl.style.display = 'inline';
+      urlEl.onclick = function (e) {
+        e.preventDefault();
+        if (window.electronAPI && window.electronAPI.openExternal) {
+          window.electronAPI.openExternal(d.inaraURL);
+        }
+      };
+    }
+
+    // ── Preferred game role ───────────────────────────────────────────────────
+    var roleEl = document.getElementById('inara-role');
+    if (roleEl && d.preferredGameRole) {
+      roleEl.textContent = d.preferredGameRole;
+      if (elHeroMeta) elHeroMeta.style.display = 'flex';
+    }
+
+    // ── Squadron pill ─────────────────────────────────────────────────────────
+    if (d.commanderSquadron && d.commanderSquadron.squadronName) {
+      var sq     = d.commanderSquadron;
+      var sqPill = document.getElementById('inara-squadron-pill');
+      if (sqPill) {
+        sqPill.textContent = '\u25C8\u00a0' + sq.squadronName +
+          (sq.squadronMemberRank ? '\u00a0\u00b7\u00a0' + sq.squadronMemberRank : '');
+        sqPill.style.display = 'inline-block';
+        if (sq.inaraURL) {
+          sqPill.style.cursor = 'pointer';
+          sqPill.title = 'View squadron on Inara';
+          sqPill.onclick = function () {
+            if (window.electronAPI && window.electronAPI.openExternal) {
+              window.electronAPI.openExternal(sq.inaraURL);
+            }
+          };
+        }
+        if (elHeroMeta) elHeroMeta.style.display = 'flex';
+      }
+    }
+
+    // ── Preferred allegiance + power above the rep grid ───────────────────────
+    if (elPrefPills && elRepPref) {
+      var pills = '';
+      if (d.preferredAllegianceName) {
+        pills += '<span class="rep-pref-pill allegiance">\u2B21\u00a0' + esc(d.preferredAllegianceName) + '</span>';
+      }
+      if (d.preferredPowerName) {
+        pills += '<span class="rep-pref-pill power">\u2691\u00a0' + esc(d.preferredPowerName) + '</span>';
+      }
+      if (pills) {
+        elPrefPills.innerHTML = pills;
+        elRepPref.style.display = 'flex';
+      }
+    }
+
+    // ── Rank cross-reference ──────────────────────────────────────────────────
+    _inaraRanks = d.commanderRanksPilot || null;
+    if (_localRanksDone && _inaraRanks) {
+      // Small delay ensures any concurrent onProfileData re-render finishes first
+      setTimeout(enrichRankCards, 80);
+    }
+  }
+
+  // ════════════════════════════════════════════════════════════════════════════
+  // INARA SYNC  —  rate-limited, with retry back-off
+  // ════════════════════════════════════════════════════════════════════════════
+  function doSync(isManual) {
+    if (!window.electronAPI || !window.electronAPI.inaraSyncProfile) return;
+
+    setStatus((isManual ? 'Syncing' : 'Syncing with Inara') + '\u2026', 'var(--cyan)');
+    if (elRefreshBtn) elRefreshBtn.disabled = true;
+
+    window.electronAPI.inaraSyncProfile(_cmdName).then(function (result) {
+      if (elRefreshBtn) elRefreshBtn.disabled = false;
+      if (result.nextSyncAt) startCountdown(result.nextSyncAt);
+
+      // Still within cooldown window, no new data
+      if (result.skipped) {
+        setStatus(result.error || 'Rate-limited', 'var(--text-mute)');
+        setBadge('cooling down', 'rgba(90,90,90,0.15)', 'var(--text-mute)');
+        return;
+      }
+
+      if (!result.success) {
+        if (result.retryable) {
+          setStatus('\u26a0 ' + (result.error || 'Server unavailable'), 'var(--gold)');
+          setBadge('retrying\u2026', 'rgba(200,151,42,0.1)', 'var(--gold)');
+          if (result.nextSyncAt) startCountdown(result.nextSyncAt, 'retrying in ');
+        } else {
+          setStatus('\u26a0 ' + (result.error || 'Unknown error'), 'var(--gold)');
+          setBadge('sync failed', 'rgba(200,80,80,0.1)', '#f07070');
+          if (result.nextSyncAt) startCountdown(result.nextSyncAt);
+          if (result.error && result.error.toLowerCase().indexOf('api key') !== -1) {
+            if (elNoKey) elNoKey.style.display = '';
+          }
+        }
+        return;
+      }
+
+      // Success
+      var ts        = new Date().toLocaleTimeString();
+      var cacheNote = result.fromCache ? ' (cached)' : '';
+      setStatus('\u2713 Synced at ' + ts + cacheNote, 'var(--text-dim)');
+      setBadge(result.fromCache ? 'cached' : 'synced', 'rgba(76,175,130,0.1)', '#4caf82');
+      if (elNoKey) elNoKey.style.display = 'none';
+      if (result.warning) setStatus('\u26a0 ' + result.warning, 'var(--gold)');
+
+      renderInara(result.data);
+      scheduleSyncIn(SYNC_INTERVAL_MS);
+
+    }).catch(function (err) {
+      if (elRefreshBtn) elRefreshBtn.disabled = false;
+      setStatus('\u26a0 IPC error: ' + err.message, '#f07070');
+      setBadge('error', 'rgba(200,80,80,0.1)', '#f07070');
+    });
+  }
+
+  function scheduleSyncIn(ms) {
+    if (_syncTimer) clearTimeout(_syncTimer);
+    _syncTimer = setTimeout(function () { doSync(false); }, ms);
+  }
+
+  // ── Boot ───────────────────────────────────────────────────────────────────
+  function maybeStartSync() {
+    // Grab commander name from topbar if profile data hasn't arrived yet
+    var tbEl = document.getElementById('tb-cmdr');
+    if (tbEl && tbEl.textContent && tbEl.textContent !== '\u2014') {
+      _cmdName = tbEl.textContent.replace(/^CMDR\s*/i, '').trim();
+    }
+    if (!window.electronAPI) return;
+
+    if (window.electronAPI.inaraGetSyncStatus) {
+      window.electronAPI.inaraGetSyncStatus().then(function (status) {
+        var remaining  = Math.max(0, status.nextSyncAt - Date.now());
+        var isRetrying = (status.retryCount || 0) > 0;
+        if (remaining > 0) {
+          startCountdown(status.nextSyncAt, isRetrying ? 'retrying in ' : 'next sync in ');
+          scheduleSyncIn(remaining);
+          // If we have cached data from a prior sync, fetch it immediately for display
+          if (status.hasCached) {
+            doSync(false);
+          } else {
+            var msg = isRetrying ? 'Server unavailable \u2014 retrying\u2026' : 'Waiting for next sync window\u2026';
+            setStatus(msg, 'var(--text-mute)');
+            setBadge(isRetrying ? 'retrying\u2026' : 'cooling down',
+                     isRetrying ? 'rgba(200,151,42,0.1)' : 'rgba(90,90,90,0.15)',
+                     isRetrying ? 'var(--gold)' : 'var(--text-mute)');
+          }
+        } else {
+          doSync(false);
+        }
+      }).catch(function () { doSync(false); });
+    } else {
+      doSync(false);
+    }
+  }
+
+  // Capture commander name early, before the sync fires
+  if (window.electronAPI && window.electronAPI.onProfileData) {
+    window.electronAPI.onProfileData(function (p) {
+      if (p.identity && p.identity.name && !_cmdName) _cmdName = p.identity.name;
+    });
+  }
+
+  // Manual sync button
+  if (elRefreshBtn) {
+    elRefreshBtn.addEventListener('click', function () { doSync(true); });
+  }
+
+  // Kick off on page ready
+  if (document.readyState === 'loading') {
+    document.addEventListener('DOMContentLoaded', maybeStartSync);
+  } else {
+    maybeStartSync();
+  }
+
+}());
+</script>
+
+<script>
+// ═════════════════════════════════════════════════════════════════════════════
+// Profile Sub-tabs  —  Engineers  +  Materials
+// ═════════════════════════════════════════════════════════════════════════════
+(function () {
+  'use strict';
+
+  // ── Sub-tab switching ───────────────────────────────────────────────────────
+  var tabs     = document.querySelectorAll('.prof-subtab');
+  var subpages = document.querySelectorAll('.prof-subpage');
+
+  tabs.forEach(function (btn) {
+    btn.addEventListener('click', function () {
+      var target = btn.getAttribute('data-subtab');
+      tabs.forEach(function (t) { t.classList.remove('active'); });
+      subpages.forEach(function (p) { p.classList.remove('active'); });
+      btn.classList.add('active');
+      var page = document.getElementById('prof-subpage-' + target);
+      if (page) page.classList.add('active');
+    });
+  });
+
+  // ── HTML escape ─────────────────────────────────────────────────────────────
+  function esc(s) {
+    return String(s || '').replace(/&/g,'&amp;').replace(/</g,'&lt;')
+      .replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+  }
+
+  // ── Render Engineers ────────────────────────────────────────────────────────
+  // Static lookup: EngineerID → home system
+  // Engineer ID → home system (verified against journal EngineerProgress events + Elite Dangerous wiki)
+  var ENGINEER_SYSTEMS = {
+    // ── Ship Engineers (Core Systems) ────────────────────────────────────────
+    300100: 'Deciat',           // Felicity Farseer
+    300160: 'Khun',             // Elvira Martuuk
+    300080: 'Eurybia',          // Liz Ryder
+    300180: 'Wyrd',             // The Dweller
+    300120: 'Laksak',           // Lei Cheung
+    300260: 'Wolf 397',         // Tod "The Blaster" McQuinn
+    300060: 'Kuk',              // Selene Jean
+    300210: 'Kuwemaki',         // Hera Tani
+    300200: 'Muang',            // Broo Tarquin
+    300130: 'Sirius',           // Marco Qwent
+    300110: 'Meene',            // Ram Tah
+    300010: 'Leesti',           // Didi Vatermann
+    300140: 'Sol',              // Colonel Bris Dekker
+    300250: 'Giryak',           // Juri Ishmaak
+    300170: 'Arque',            // Professor Palin
+    300090: 'Alioth',           // Bill Turner
+    300220: 'Shinrarta Dezhra', // Lori Jameson
+    300270: 'Achenar',          // Tiana Fortune
+    300230: 'Beta-3 Tucani',    // The Sarge
+    300150: 'Tir',              // Marsha Hicks
+    300190: 'Los',              // Etienne Dorn
+    300240: 'Luchtaine',        // Mel Brandon
+    300280: 'Asura',            // Petra Olmanova
+    300320: 'Shenve',           // Chloe Sedesi
+    300070: 'Yoru',             // Zacariah Nemo
+    // ── Pilot Equipment Engineers (Core Systems) ─────────────────────────────
+    400002: 'Orishis',          // Domino Green
+    400003: 'Siris',            // Hero Ferrari
+    400001: 'Aurai',            // Jude Navarro
+    400004: 'Capoya',           // Kit Fowler
+    400009: 'Candiaei',         // Oden Geiger
+    400005: 'Shou Xing',        // Terra Velasquez
+    400008: 'Xuane',            // Uma Laszlo
+    400006: 'Jolapa',           // Wellington Beck
+    400007: 'Bayan',            // Yarden Bond
+    // ── Pilot Equipment Engineers (Colonia) ──────────────────────────────────
+    400010: 'Deriso',           // Baltanos
+    400011: 'Desy',             // Eleanor Bresa
+    400012: 'Kojeara',          // Rosa Dayette
+    400013: 'Einheriar',        // Yi Shen
+  };
+
+  function renderEngineers(engineers) {
+    var grid = document.getElementById('prof-engineers-grid');
+    if (!grid) return;
+
+    var ORDER = { Unlocked: 0, Invited: 1, Known: 2, Barred: 3 };
+    var sorted = engineers.slice().sort(function (a, b) {
+      var pa = ORDER[a.progress] != null ? ORDER[a.progress] : 99;
+      var pb = ORDER[b.progress] != null ? ORDER[b.progress] : 99;
+      if (pa !== pb) return pa - pb;
+      return (b.rank || 0) - (a.rank || 0);
+    });
+
+    if (!sorted.length) {
+      grid.innerHTML = '<div class="eng-no-data">No engineer data found in journals. Scan all journals to populate this view.</div>';
+      return;
+    }
+
+    grid.innerHTML = sorted.map(function (eng) {
+      var progressCls = 'progress-' + (eng.progress || 'Unknown');
+      var statusCls   = 'status-'   + (eng.progress || 'Unknown');
+      var rankNum     = eng.rank != null ? eng.rank : '';
+      var rankPct     = eng.rankProgress != null ? eng.rankProgress : null;
+      var system      = ENGINEER_SYSTEMS[eng.id] || '';
+      var rankBar     = rankPct != null
+        ? '<div class="eng-progress-bar"><div class="eng-progress-fill" style="width:' + rankPct + '%;"></div></div>' +
+          '<div style="font-family:var(--mono);font-size:0.58em;color:var(--text-mute);text-align:right;margin-top:2px;">' + rankPct + '% to next</div>'
+        : '';
+
+      return '<div class="eng-card ' + progressCls + '">' +
+        '<div class="eng-name" title="' + esc(eng.name) + '">' + esc(eng.name) + '</div>' +
+        (system ? '<div style="font-family:var(--mono);font-size:0.6em;color:var(--text-mute);margin-top:1px;margin-bottom:4px;">' + esc(system) + '</div>' : '') +
+        '<div class="eng-status ' + statusCls + '">' + esc(eng.progress || 'Unknown') + '</div>' +
+        (eng.rank != null
+          ? '<div class="eng-rank-row">' +
+              '<div class="eng-rank-num">G' + rankNum + '</div>' +
+              '<div class="eng-rank-lbl">Grade</div>' +
+            '</div>'
+          : '') +
+        rankBar +
+      '</div>';
+    }).join('');
+  }
+
+  // ── Material Grade & Name Lookup ────────────────────────────────────────────
+  var MATERIAL_GRADES = {
+    // RAW — Grade 1
+    carbon:1, iron:1, lead:1, nickel:1, phosphorus:1, rhenium:1, sulphur:1,
+    // RAW — Grade 2
+    arsenic:2, chromium:2, germanium:2, manganese:2, vanadium:2, zinc:2, zirconium:2,
+    // RAW — Grade 3
+    boron:3, cadmium:3, mercury:3, molybdenum:3, niobium:3, tin:3, tungsten:3,
+    // RAW — Grade 4
+    antimony:4, polonium:4, ruthenium:4, selenium:4, technetium:4, tellurium:4, yttrium:4,
+    // MANUFACTURED — Grade 1
+    basicconductors:1, chemicalstorageunits:1, compactcomposites:1, crystalshards:1,
+    gridresistors:1, heatconductionwiring:1, mechanicalscrap:1, salvagedalloys:1,
+    temperedalloys:1, wornshieldemitters:1,
+    // MANUFACTURED — Grade 2
+    chemicalprocessors:2, conductivecomponents:2, filamentcomposites:2, flawedfocuscrystals:2,
+    galvanisingalloys:2, heatdispersionplate:2, heatresistanttoughcomposite:2,
+    mechanicalequipment:2, shieldemitters:2, uncutfocuscrystals:2,
+    // MANUFACTURED — Grade 3
+    chemicaldistillery:3, conductiveceramics:3, conductiveceramic:3, electrochemicalarrays:3,
+    focuscrystals:3, heatexchangers:3, highdensitycomposites:3, mechanicalcomponents:3,
+    phasealloys:3, precipitatedalloys:3, refinedfocuscrystals:3, shieldingsensors:3,
+    unknownfragment:3,
+    // MANUFACTURED — Grade 4
+    chemicalmanipulators:4, compoundshielding:4, conductivepolymers:4, configurablecomponents:4,
+    heatvanes:4, polymercapacitors:4, protoheatradiators:4, militarygradealloys:4,
+    militarysupercapacitors:4, pharmaceuticalisolators:4, thermicalloys:4,
+    // MANUFACTURED — Grade 5
+    bioelectricchemicals:5, biotechconductors:5, corrosionresistantcargoracks:5,
+    exquisitefocuscrystals:5, exquisitecystalshards:5, improvisedcomponents:5,
+    magneticemittercoupling:5, mutatingcatalyst:5, protolightalloys:5,
+    protoradiolicalloys:5, rareexoticcrystals:5, unknownenergysource:5, unknownorganiccircuitry:5,
+    // ENCODED — Grade 1
+    legacyfirmware:1, disruptedwakeechoes:1, anomalousbulkscandata:1,
+    unusualencryptedfiles:1, unidentifiedscanarchives:1, classifiedscandata:1,
+    // ENCODED — Grade 2
+    consumerfirmware:2, fsdtelemetry:2, inconsistentshieldsoakanalysis:2,
+    encryptedfiles:2, encrytpedfiles:2, scanarchives:2, encodedscandata:2,
+    // ENCODED — Grade 3
+    industrialfirmware:3, wakesolutions:3, symmetrickeys:3, embeddedfirmware:3,
+    securityfirmwarepatch:3, scannedemissiondata:3, adaptiveencryptors:3,
+    // ENCODED — Grade 4
+    modifiedconsumerfirmware:4, hyperspacetrajectories:4, dataminedwake:4,
+    accessiblelogs:4, encryptionarchives:4, classifiedscanarchives:4,
+    // ENCODED — Grade 5
+    classifiedfirmware:5, dataminedwakeexceptions:5, adaptiveencryptorsuite:5,
+    divergentscansensors:5, modifiedembeddedfirmware:5, securityfirmware:5,
+    abnormalcompactedrelativitysupport:5,
+  };
+
+  var MATERIAL_FULL_NAMES = {
+    carbon:'Carbon', iron:'Iron', lead:'Lead', nickel:'Nickel', phosphorus:'Phosphorus',
+    rhenium:'Rhenium', sulphur:'Sulphur', arsenic:'Arsenic', chromium:'Chromium',
+    germanium:'Germanium', manganese:'Manganese', vanadium:'Vanadium', zinc:'Zinc',
+    zirconium:'Zirconium', boron:'Boron', cadmium:'Cadmium', mercury:'Mercury',
+    molybdenum:'Molybdenum', niobium:'Niobium', tin:'Tin', tungsten:'Tungsten',
+    antimony:'Antimony', polonium:'Polonium', ruthenium:'Ruthenium', selenium:'Selenium',
+    technetium:'Technetium', tellurium:'Tellurium', yttrium:'Yttrium',
+    basicconductors:'Basic Conductors', chemicalstorageunits:'Chemical Storage Units',
+    compactcomposites:'Compact Composites', crystalshards:'Crystal Shards',
+    gridresistors:'Grid Resistors', heatconductionwiring:'Heat Conduction Wiring',
+    mechanicalscrap:'Mechanical Scrap', salvagedalloys:'Salvaged Alloys',
+    temperedalloys:'Tempered Alloys', wornshieldemitters:'Worn Shield Emitters',
+    chemicalprocessors:'Chemical Processors', conductivecomponents:'Conductive Components',
+    filamentcomposites:'Filament Composites', flawedfocuscrystals:'Flawed Focus Crystals',
+    galvanisingalloys:'Galvanising Alloys', heatdispersionplate:'Heat Dispersion Plate',
+    heatresistanttoughcomposite:'Heat Resistant Composite',
+    mechanicalequipment:'Mechanical Equipment', shieldemitters:'Shield Emitters',
+    uncutfocuscrystals:'Uncut Focus Crystals', chemicaldistillery:'Chemical Distillery',
+    conductiveceramics:'Conductive Ceramics', conductiveceramic:'Conductive Ceramics',
+    electrochemicalarrays:'Electrochemical Arrays', focuscrystals:'Focus Crystals',
+    heatexchangers:'Heat Exchangers', highdensitycomposites:'High Density Composites',
+    mechanicalcomponents:'Mechanical Components', phasealloys:'Phase Alloys',
+    precipitatedalloys:'Precipitated Alloys', refinedfocuscrystals:'Refined Focus Crystals',
+    shieldingsensors:'Shielding Sensors', unknownfragment:'Unknown Fragment',
+    chemicalmanipulators:'Chemical Manipulators', compoundshielding:'Compound Shielding',
+    conductivepolymers:'Conductive Polymers', configurablecomponents:'Configurable Components',
+    heatvanes:'Heat Vanes', polymercapacitors:'Polymer Capacitors',
+    protoheatradiators:'Proto Heat Radiators', militarygradealloys:'Military Grade Alloys',
+    militarysupercapacitors:'Military Supercapacitors',
+    pharmaceuticalisolators:'Pharmaceutical Isolators', thermicalloys:'Thermic Alloys',
+    bioelectricchemicals:'Bioelectric Chemicals', biotechconductors:'Biotech Conductors',
+    corrosionresistantcargoracks:'Corrosion Resistant Cargo Racks',
+    exquisitefocuscrystals:'Exquisite Focus Crystals', exquisitecystalshards:'Exquisite Focus Crystals',
+    improvisedcomponents:'Improvised Components', magneticemittercoupling:'Magnetic Emitter Coupling',
+    mutatingcatalyst:'Mutating Catalyst', protolightalloys:'Proto Light Alloys',
+    protoradiolicalloys:'Proto Radiolic Alloys', rareexoticcrystals:'Rare Exotic Crystals',
+    unknownenergysource:'Unknown Energy Source', unknownorganiccircuitry:'Unknown Organic Circuitry',
+    legacyfirmware:'Exceptional Scrambled Emission Data',
+    disruptedwakeechoes:'Disrupted Wake Echoes', anomalousbulkscandata:'Anomalous Bulk Scan Data',
+    unusualencryptedfiles:'Unusual Encrypted Files', unidentifiedscanarchives:'Unidentified Scan Archives',
+    classifiedscandata:'Classified Scan Data', consumerfirmware:'Modified Consumer Firmware',
+    fsdtelemetry:'FSD Telemetry', inconsistentshieldsoakanalysis:'Inconsistent Shield Soak Analysis',
+    encryptedfiles:'Encrypted Files', encrytpedfiles:'Encrypted Files',
+    scanarchives:'Scan Archives', encodedscandata:'Encoded Scan Data',
+    industrialfirmware:'Cracked Industrial Firmware', wakesolutions:'Strange Wake Solutions',
+    symmetrickeys:'Open Symmetric Keys', embeddedfirmware:'Atypical Encryption Archives',
+    securityfirmwarepatch:'Security Firmware Patch', scannedemissiondata:'Tagged Encryption Codes',
+    adaptiveencryptors:'Adaptive Encryptors Capture', modifiedconsumerfirmware:'Modified Consumer Firmware',
+    hyperspacetrajectories:'Hyperspace Trajectories', dataminedwake:'Datamined Wake Exceptions',
+    accessiblelogs:'Aberrant Shield Pattern Analysis', encryptionarchives:'Atypical Encryption Archives',
+    classifiedscanarchives:'Classified Scan Archives', classifiedfirmware:'Classified Firmware Decryption',
+    dataminedwakeexceptions:'Datamined Wake Exceptions', adaptiveencryptorsuite:'Adaptive Encryptors Capture',
+    divergentscansensors:'Divergent Scan Data', modifiedembeddedfirmware:'Modified Embedded Firmware',
+    securityfirmware:'Security Firmware Patch',
+    abnormalcompactedrelativitysupport:'Abnormal Compact Relativity Support',
+  };
+
+  var GRADE_MAX   = {1:300, 2:250, 3:200, 4:150, 5:100};
+  var GRADE_COLOR = {1:'#a0b880', 2:'#7ecfcf', 3:'#d4b84a', 4:'#c080d0', 5:'#e07060'};
+  var GRADE_CLS   = {1:'g1', 2:'g2', 3:'g3', 4:'g4', 5:'g5'};
+  var CAT_DOT_CLS = {Raw:'raw', Manufactured:'manufactured', Encoded:'encoded'};
+
+  // ── Render Materials ─────────────────────────────────────────────────────────
+  function renderMaterials(materials) {
+    var el = document.getElementById('prof-materials-by-grade');
+    if (!el) return;
+
+    var CATS = ['Raw','Manufactured','Encoded'];
+    var CAT_CLS_MAP = {Raw:'raw', Manufactured:'manufactured', Encoded:'encoded'};
+
+    // Build lookup: cat → grade → [items]
+    var byGroup = {};
+    CATS.forEach(function(cat) {
+      byGroup[cat] = {1:[],2:[],3:[],4:[],5:[]};
+      (materials[cat] || []).forEach(function(m) {
+        var key   = (m.Name || '').toLowerCase().replace(/[^a-z0-9]/g,'');
+        var grade = MATERIAL_GRADES[key] || null;
+        var name  = m.Name_Localised || MATERIAL_FULL_NAMES[key] || m.Name || '?';
+        if (grade) byGroup[cat][grade].push({name:name, count:m.Count||0});
+      });
+      // Sort each cell alphabetically
+      [1,2,3,4,5].forEach(function(g) {
+        byGroup[cat][g].sort(function(a,b){ return a.name.localeCompare(b.name); });
+      });
+    });
+
+    var html = '<div class="mat-table">';
+
+    // ── Header row: corner + grade headers ──────────────────────────────────
+    html += '<div class="mat-th-corner"></div>';
+    [1,2,3,4,5].forEach(function(g) {
+      var gcls = GRADE_CLS[g];
+      html += '<div class="mat-th-grade '+gcls+'">';
+      html += '<div class="mat-th-grade-title">Grade '+g+'</div>';
+      html += '<div class="mat-th-grade-max">max '+GRADE_MAX[g]+'</div>';
+      html += '</div>';
+    });
+
+    // ── 3 data rows: one per category ───────────────────────────────────────
+    CATS.forEach(function(cat) {
+      var catCls = CAT_CLS_MAP[cat];
+
+      // Row label
+      html += '<div class="mat-row-label '+catCls+'">';
+      html += '<div class="mat-row-label-text">'+cat+'</div>';
+      html += '</div>';
+
+      // 5 cells
+      [1,2,3,4,5].forEach(function(g) {
+        var items  = byGroup[cat][g];
+        var maxVal = GRADE_MAX[g];
+        var color  = GRADE_COLOR[g];
+
+        html += '<div class="mat-cell">';
+        if (!items.length) {
+          html += '<div class="mat-cell-empty">—</div>';
+        } else {
+          items.forEach(function(m) {
+            var fillPct = Math.min(100, Math.round((m.count / maxVal) * 100));
+            html += '<div class="mat-item">';
+            html += '<div class="mat-item-fill" style="width:'+fillPct+'%;background:'+color+'"></div>';
+            html += '<div class="mat-name" title="'+esc(m.name)+'">'+esc(m.name)+'</div>';
+            html += '<div class="mat-item-right">';
+            html += '<div class="mat-count" style="color:'+color+'">'+m.count+'</div>';
+            html += '<div class="mat-count-max">/'+maxVal+'</div>';
+            html += '</div>';
+            html += '</div>';
+          });
+        }
+        html += '</div>'; // .mat-cell
+      });
+    });
+
+    html += '</div>'; // .mat-table
+    el.innerHTML = html;
+  }
+
+  // ── Listen for profile data ─────────────────────────────────────────────────
+  if (window.electronAPI && window.electronAPI.onProfileData) {
+    window.electronAPI.onProfileData(function (p) {
+      if (p.engineers) renderEngineers(p.engineers);
+      if (p.materials) renderMaterials(p.materials);
+    });
+  }
+
+}());
+</script>
 </html>

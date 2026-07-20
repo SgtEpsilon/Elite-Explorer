@@ -29,6 +29,81 @@ var _lastRoute      = null;   // { type, systems: [] }
 var _liveSystem     = null;   // from IPC
 var _liveJumpRange  = null;   // from IPC (e.g. "24.55 ly")
 
+// Per-tab saved state so results survive tab switching.
+// Key = panel name ('neutron', 'riches', 'exobio', 'carrier').
+// Value = { theadHtml, tbodyHtml, tableVisible, summaryVisible, summaryVals,
+//           statusText, statusState, statusMeta, lastRoute }
+var _tabState = {};
+
+function saveTabState(panel) {
+  var thead   = document.getElementById('spansh-thead');
+  var tbody   = document.getElementById('spansh-tbody');
+  var table   = document.getElementById('spansh-table');
+  var summary = document.getElementById('route-summary');
+  var sDot    = document.getElementById('status-dot');
+  var sTxt    = document.getElementById('status-text');
+  var sMet    = document.getElementById('status-meta');
+
+  _tabState[panel] = {
+    theadHtml:     thead   ? thead.innerHTML   : '',
+    tbodyHtml:     tbody   ? tbody.innerHTML   : '',
+    tableVisible:  table   ? table.style.display !== 'none' : false,
+    summaryVisible: summary ? summary.style.display !== 'none' : false,
+    summaryVals: {
+      'rsm-jumps':   (document.getElementById('rsm-jumps')   || {}).textContent || '\u2014',
+      'rsm-dist':    (document.getElementById('rsm-dist')    || {}).textContent || '\u2014',
+      'rsm-neutron': (document.getElementById('rsm-neutron') || {}).textContent || '\u2014',
+      'rsm-value':   (document.getElementById('rsm-value')   || {}).textContent || '\u2014',
+    },
+    statusState: sDot ? (sDot.className.replace('status-dot', '').trim()) : '',
+    statusText:  sTxt ? sTxt.textContent : '',
+    statusMeta:  sMet ? sMet.textContent : '',
+    lastRoute:   _lastRoute,
+  };
+}
+
+function restoreTabState(panel) {
+  var saved = _tabState[panel];
+  var thead   = document.getElementById('spansh-thead');
+  var tbody   = document.getElementById('spansh-tbody');
+  var table   = document.getElementById('spansh-table');
+  var idle    = document.getElementById('spansh-idle');
+  var summary = document.getElementById('route-summary');
+
+  if (!saved) {
+    // No previous state — show the idle placeholder
+    if (table)   table.style.display   = 'none';
+    if (idle)    idle.style.display    = '';
+    if (summary) summary.style.display = 'none';
+    setStatus('Enter a route and click Calculate', '', '');
+    showProgress(100);
+    return;
+  }
+
+  if (thead) thead.innerHTML = saved.theadHtml;
+  if (tbody) tbody.innerHTML = saved.tbodyHtml;
+
+  if (saved.tableVisible) {
+    if (table) table.style.display = 'table';
+    if (idle)  idle.style.display  = 'none';
+  } else {
+    if (table) table.style.display = 'none';
+    if (idle)  idle.style.display  = '';
+  }
+
+  if (summary) summary.style.display = saved.summaryVisible ? 'flex' : 'none';
+
+  Object.keys(saved.summaryVals).forEach(function(id) {
+    var el = document.getElementById(id);
+    if (el) el.textContent = saved.summaryVals[id];
+  });
+
+  setStatus(saved.statusText, saved.statusState, saved.statusMeta);
+  showProgress(100);
+
+  _lastRoute = saved.lastRoute;
+}
+
 // Road to Riches option toggles
 var _rtrOptions = { mappingValue: false, avoidThargoids: false, loop: false };
 
@@ -176,6 +251,10 @@ function setRunning(yes) {
 document.querySelectorAll('.sub-tab').forEach(function(btn) {
   btn.addEventListener('click', function() {
     if (_isRunning) return;
+
+    // Save the current tab's results before switching away
+    saveTabState(_currentPanel);
+
     _currentPanel = btn.dataset.panel;
     document.querySelectorAll('.sub-tab').forEach(function(b) { b.classList.toggle('active', b === btn); });
     document.querySelectorAll('.form-panel').forEach(function(p) { p.classList.toggle('active', p.id === 'form-' + _currentPanel); });
@@ -183,8 +262,9 @@ document.querySelectorAll('.sub-tab').forEach(function(btn) {
     var tritBtn = document.getElementById('fc-tritium-btn');
     if (tritBtn) tritBtn.style.display = btn.dataset.panel === 'carrier' ? 'flex' : 'none';
     set('submit-label', labels[_currentPanel] || 'Calculate');
-    // Reset results area
-    hideResults();
+
+    // Restore the new tab's results (or show idle placeholder if none yet)
+    restoreTabState(_currentPanel);
     showError('');
     updateCarrierMassPanel();
   });
@@ -387,6 +467,8 @@ document.getElementById('spansh-submit').addEventListener('click', function() {
   if (_isRunning) return;
   showError('');
   stopPoll();
+  // Clear any saved state for this tab so the old results don't flash back
+  delete _tabState[_currentPanel];
 
   if (_currentPanel === 'neutron')  submitNeutron();
   else if (_currentPanel === 'riches')  submitRiches();
@@ -566,58 +648,70 @@ function submitRiches() {
 function renderRiches(data) {
   showProgress(100);
 
-  // Extract body array from whatever structure Spansh returns.
-  // Spansh has changed this format multiple times; we try every known variant
-  // and pick the first non-empty result rather than an if/else chain that can
-  // short-circuit on an empty intermediate value.
+  // Spansh /api/riches/route returns the result as an object with numeric keys,
+  // where each value is a SYSTEM object containing a nested bodies[] array —
+  // the same structure as /api/exobiology/route.
+  // Extract the system list then flatten into individual body rows.
   function numericEntries(obj) {
-    if (!obj || typeof obj !== 'object') return [];
+    if (!obj || typeof obj !== 'object' || Array.isArray(obj)) return [];
     return Object.keys(obj)
-      .filter(function(k) { return k !== '' && !isNaN(Number(k)); })
+      .filter(function(k) { return !isNaN(Number(k)); })
       .sort(function(a, b) { return Number(a) - Number(b); })
       .map(function(k) { return obj[k]; })
       .filter(function(v) { return v !== null && typeof v === 'object'; });
   }
 
   var r = data.result;
-  var candidates = [
-    Array.isArray(data)              ? data              : [],
-    Array.isArray(r)                 ? r                 : [],
-    r && Array.isArray(r.bodies)     ? r.bodies          : [],
-    r && Array.isArray(r.systems)    ? r.systems         : [],
-    r && Array.isArray(r.waypoints)  ? r.waypoints       : [],
-    r && typeof r === 'object'       ? numericEntries(r) : [],
-    numericEntries(data),
-  ];
 
+  // Build a list of system objects (each has .name and .bodies[])
+  var systemList = [];
+  if (Array.isArray(r))                         systemList = r;
+  else if (r && Array.isArray(r.systems))        systemList = r.systems;
+  else if (r && Array.isArray(r.bodies))         systemList = r.bodies;
+  else if (r && typeof r === 'object')           systemList = numericEntries(r);
+  else if (typeof data === 'object')             systemList = numericEntries(data);
+
+  // Flatten: stamp system name + jumps onto each body object
   var route = [];
-  for (var ci = 0; ci < candidates.length; ci++) {
-    if (candidates[ci].length > 0) { route = candidates[ci]; break; }
-  }
+  var seenSystems = [];
+  var seenSysSet  = {};
 
-  console.log('[RTR] candidates lengths:', candidates.map(function(c){return c.length;}).join(','),
-    '| picked:', route.length, '| data keys:', Object.keys(data).slice(0,10).join(','));
-  if (route.length > 0) console.log('[RTR] First item:', JSON.stringify(route[0]).slice(0,200));
+  systemList.forEach(function(sys) {
+    var sysName  = sys.name || sys.system_name || sys.system || '?';
+    var sysJumps = sys.jumps != null ? sys.jumps : null;
+    var bodies   = Array.isArray(sys.bodies) ? sys.bodies : [];
+
+    if (!seenSysSet[sysName]) { seenSysSet[sysName] = true; seenSystems.push(sysName); }
+
+    bodies.forEach(function(b) {
+      route.push({
+        _sysName:  sysName,
+        _sysJumps: sysJumps,
+        // body fields — Spansh uses these names
+        bodyName:  b.name             || b.body_name  || '?',
+        subtype:   b.subtype          || b.type        || '\u2014',
+        distLs:    b.distance_to_arrival != null ? b.distance_to_arrival : (b.distance != null ? b.distance : null),
+        value:     b.estimated_mapping_value || b.mapping_value || b.value || 0,
+      });
+    });
+  });
 
   if (!route.length) {
-    handleApiError('No bodies found. API response keys: ' + Object.keys(data).join(', ') +
-      ' | result type: ' + (r === undefined ? 'undefined' : Array.isArray(r) ? 'array['+r.length+']' : typeof r));
+    handleApiError('No bodies found. Try widening search radius or reducing minimum value.');
     return;
   }
 
-  var systems  = route.map(function(b) { return b.system_name || b.systemName || b.system || '?'; });
-  var uniqueSys = systems.filter(function(v, i, a) { return a.indexOf(v) === i; });
-  var totalVal = route.reduce(function(acc, b) { return acc + (b.estimated_mapping_value || b.mapping_value || b.value || 0); }, 0);
+  var totalVal = route.reduce(function(acc, b) { return acc + b.value; }, 0);
 
-  _lastRoute = { type: 'riches', systems: uniqueSys };
+  _lastRoute = { type: 'riches', systems: seenSystems };
 
-  set('rsm-jumps',   uniqueSys.length + ' systems');
+  set('rsm-jumps',   seenSystems.length + ' systems');
   set('rsm-dist',    route.length + ' bodies');
   set('rsm-neutron', '\u2014');
   set('rsm-value',   fmtCr(totalVal));
 
   showSummary(true);
-  setStatus('Found ' + route.length + ' valuable bodies in ' + uniqueSys.length + ' systems', 'ok',
+  setStatus('Found ' + route.length + ' valuable bodies in ' + seenSystems.length + ' systems', 'ok',
     'Est. ' + fmtCr(totalVal) + ' total');
 
   // Table header
@@ -628,28 +722,22 @@ function renderRiches(data) {
   var frag  = document.createDocumentFragment();
 
   route.slice(0, MAX_TABLE_ROWS).forEach(function(b, i) {
-    var sys  = b.system_name || b.systemName || b.system || '?';
-    var body = b.body_name   || b.bodyName   || b.name   || '?';
-    var type = b.subtype     || b.type       || '?';
-    var dist = b.distance    || b.distance_to_arrival || null;
-    var val  = b.estimated_mapping_value || b.mapping_value || b.value || 0;
-
-    var tr   = document.createElement('tr');
+    var tr = document.createElement('tr');
     tr.className = i % 2 === 1 ? 'alt-row' : '';
 
     var cbTd = document.createElement('td');
     cbTd.appendChild(makeVisitedCb(tr));
     var cpTd = document.createElement('td');
-    cpTd.appendChild(makeCopyBtn(sys));
+    cpTd.appendChild(makeCopyBtn(b._sysName));
 
     tr.innerHTML =
       '<td><span class="hop-num">' + (i + 1) + '</span></td>' +
       '<td></td>' +
-      '<td class="hop-sys">' + sys + '</td>' +
-      '<td style="font-size:0.85em;color:var(--text-dim)">' + body + '</td>' +
-      '<td><span class="scan-type-chip">' + type + '</span></td>' +
-      '<td class="hop-dist">' + (dist != null ? Number(dist).toFixed(0) + ' ls' : '\u2014') + '</td>' +
-      '<td class="hop-val">'  + fmtCr(val) + '</td>' +
+      '<td class="hop-sys">' + b._sysName + '</td>' +
+      '<td style="font-size:0.85em;color:var(--text-dim)">' + b.bodyName + '</td>' +
+      '<td><span class="scan-type-chip">' + b.subtype + '</span></td>' +
+      '<td class="hop-dist">' + (b.distLs != null ? Number(b.distLs).toFixed(0) + ' ls' : '\u2014') + '</td>' +
+      '<td class="hop-val">'  + fmtCr(b.value) + '</td>' +
       '<td></td>';
 
     tr.cells[1].replaceWith(cbTd);
@@ -1155,6 +1243,37 @@ function openOptions() {
   window.electronAPI.getJournalPath()
     .then(function(p) { if (p) document.getElementById('opt-journal-path').value = p; })
     .catch(function() {});
+  window.electronAPI.getConfig().then(function(cfg) {
+    var el;
+    el = document.getElementById('opt-eddn-enabled'); if (el) el.checked = !!cfg.eddnEnabled;
+    el = document.getElementById('opt-cmdr-name');    if (el) el.value   = cfg.commanderName       || '';
+    el = document.getElementById('opt-edsm-enabled'); if (el) el.checked = !!cfg.edsmEnabled;
+    el = document.getElementById('opt-edsm-cmdr');    if (el) el.value   = cfg.edsmCommanderName   || '';
+    el = document.getElementById('opt-edsm-key');     if (el) el.value   = cfg.edsmApiKey          || '';
+    el = document.getElementById('capi-client-id');   if (el) el.value   = cfg.capiClientId        || '';
+    el = document.getElementById('opt-inara-cmdr-name'); if (el) el.value = cfg.inaraCommanderName || '';
+    el = document.getElementById('opt-network-enabled'); if (el) el.checked = !!cfg.networkServerEnabled;
+    el = document.getElementById('opt-network-port');    if (el) el.value   = cfg.networkServerPort || 3722;
+    if (window.electronAPI.getNetworkInfo) {
+      window.electronAPI.getNetworkInfo().then(function(info) {
+        var urlsDiv = document.getElementById('opt-network-urls');
+        if (!urlsDiv) return;
+        if (info && info.enabled && info.ips && info.ips.length) {
+          var port = info.port || 3722;
+          var links = info.ips.map(function(ip) {
+            var url = 'http://' + ip + ':' + port;
+            return '<a href="' + url + '" style="color:var(--green);text-decoration:none;font-family:monospace;font-size:1.05em;" ' +
+              'onclick="if(window.electronAPI&&window.electronAPI.openExternal){event.preventDefault();window.electronAPI.openExternal(\'' + url + '\');}">' +
+              url + '</a>';
+          }).join('<br>');
+          urlsDiv.style.display = 'block';
+          urlsDiv.innerHTML = '<div style="margin-bottom:4px;color:var(--text-mute);">Network UI is active — open on any device:</div>' + links;
+        } else {
+          urlsDiv.style.display = 'none';
+        }
+      }).catch(function() {});
+    }
+  }).catch(function() {});
 }
 function closeOptions() {
   document.getElementById('options-panel').classList.remove('open');
@@ -1198,128 +1317,166 @@ if (journalPathInp) journalPathInp.addEventListener('change', async function() {
   } catch {}
 });
 
-// ─── THEMES ──────────────────────────────────────────────────────
-var THEMES = {
-  default: { '--gold':'#c8972a','--gold2':'#e8b840','--gold-dim':'#7a5a10','--gold-glow':'rgba(200,151,42,0.15)','--cyan':'#2ecfcf','--cyan2':'#5ee8e8','--cyan-dim':'rgba(46,207,207,0.1)' },
-  red:     { '--gold':'#e05252','--gold2':'#f07070','--gold-dim':'#a03030','--gold-glow':'rgba(224,82,82,0.15)', '--cyan':'#cf7a3e','--cyan2':'#e89060','--cyan-dim':'rgba(207,122,62,0.1)'  },
-  green:   { '--gold':'#4caf7d','--gold2':'#70d090','--gold-dim':'#2a7a50','--gold-glow':'rgba(76,175,125,0.15)','--cyan':'#a0cf3e','--cyan2':'#c0e060','--cyan-dim':'rgba(160,207,62,0.1)' },
-  purple:  { '--gold':'#a855f7','--gold2':'#c080ff','--gold-dim':'#7a30c0','--gold-glow':'rgba(168,85,247,0.15)','--cyan':'#cf3ecf','--cyan2':'#e060e0','--cyan-dim':'rgba(207,62,207,0.1)'  },
-};
-function applyTheme(name) {
-  var t = THEMES[name] || THEMES.default;
-  Object.entries(t).forEach(function(kv) { document.documentElement.style.setProperty(kv[0], kv[1]); });
-  document.querySelectorAll('.opt-theme-swatch').forEach(function(el) {
-    el.classList.toggle('active', el.dataset.theme === name);
-  });
-  localStorage.setItem('ee-theme', name);
-}
-document.querySelectorAll('.opt-theme-swatch').forEach(function(el) {
-  el.addEventListener('click', function() { applyTheme(el.dataset.theme); });
+// ─── EDDN / EDSM SAVE BUTTON (spansh page) ──────────────────────────────────
+var saveApiBtnS = document.getElementById('opt-save-api-btn');
+if (saveApiBtnS) saveApiBtnS.addEventListener('click', async function() {
+  if (!window.electronAPI) return;
+  var eddnEnabled       = (document.getElementById('opt-eddn-enabled') || {}).checked || false;
+  var edsmEnabled       = (document.getElementById('opt-edsm-enabled') || {}).checked || false;
+  var commanderName     = ((document.getElementById('opt-cmdr-name')   || {}).value || '').trim();
+  var edsmCommanderName = ((document.getElementById('opt-edsm-cmdr')   || {}).value || '').trim();
+  var edsmApiKey        = ((document.getElementById('opt-edsm-key')    || {}).value || '').trim();
+  try {
+    await window.electronAPI.saveConfig({ eddnEnabled, edsmEnabled, commanderName, edsmCommanderName, edsmApiKey });
+    var hint = document.getElementById('opt-api-hint');
+    if (hint) { hint.textContent = 'Saved \u2714'; hint.style.color = 'var(--green)'; setTimeout(function() { hint.textContent = 'Changes take effect immediately'; hint.style.color = ''; }, 2500); }
+  } catch {}
 });
-applyTheme(localStorage.getItem('ee-theme') || 'default');
 
-// ─── DISPLAY SLIDERS (abbreviated — scale, font, bright, scan, glow) ──
-var SLIDER_DEFAULTS = { scale:100, font:12, bright:100, scan:1, glow:100 };
-var SCAN_LABELS     = ['Off','Low','Medium','High','Intense','Max'];
-var scanlineStyle   = document.createElement('style');
-scanlineStyle.id    = 'dynamic-scanlines';
-document.head.appendChild(scanlineStyle);
+// ─── NETWORK SAVE BUTTON (spansh page) ──────────────────────────────────────
+var networkSaveBtnS = document.getElementById('opt-network-save-btn');
+if (networkSaveBtnS) networkSaveBtnS.addEventListener('click', async function() {
+  if (!window.electronAPI) return;
+  var networkServerEnabled = (document.getElementById('opt-network-enabled') || {}).checked || false;
+  var portVal = parseInt(((document.getElementById('opt-network-port') || {}).value || '3722'), 10);
+  var networkServerPort = (portVal >= 1024 && portVal <= 65535) ? portVal : 3722;
+  try {
+    await window.electronAPI.saveConfig({ networkServerEnabled, networkServerPort });
+    var hint = document.getElementById('opt-network-hint');
+    if (hint) { hint.textContent = 'Saved \u2714 \u2014 restart to apply'; hint.style.color = 'var(--green)'; setTimeout(function() { hint.textContent = 'Restart required to apply changes'; hint.style.color = ''; }, 3000); }
+  } catch {}
+});
 
-function applyDisplay(key, v) {
-  var root = document.documentElement;
-  var wrap = document.getElementById('app-wrapper');
-  switch (key) {
-    case 'scale':
-      if (wrap) {
-        wrap.style.transform       = 'scale(' + (v/100) + ')';
-        wrap.style.transformOrigin = 'top left';
-        wrap.style.width           = Math.round(10000/v) + '%';
-        wrap.style.height          = 'calc(' + Math.round(10000/v) + 'vh - ' + Math.round(44*100/v) + 'px)';
-      }
-      break;
-    case 'font':
-      document.body.style.fontSize = v + 'px';
-      var tb = document.getElementById('topbar');
-      if (tb) tb.style.fontSize = v + 'px';
-      break;
-    case 'bright':
-      if (wrap) wrap.style.filter = 'brightness(' + (v/100) + ') saturate(' + (0.8 + (v/100)*0.4) + ')';
-      break;
-    case 'scan':
-      if (v === 0) { scanlineStyle.textContent = 'body::after { display:none; }'; }
-      else {
-        var op  = [0.02,0.04,0.07,0.11,0.16][v-1];
-        var gap = [4,4,3,3,2][v-1];
-        scanlineStyle.textContent = 'body::after { background: repeating-linear-gradient(0deg,transparent,transparent '+(gap-1)+'px,rgba(0,0,0,'+op+') '+(gap-1)+'px,rgba(0,0,0,'+op+') '+gap+'px) !important; }';
-      }
-      break;
-    case 'glow':
-      var g = v/100;
-      root.style.setProperty('--gold-glow', 'rgba(200,151,42,'+(0.15*g)+')');
-      var gs = document.getElementById('glow-style') || document.createElement('style');
-      gs.id  = 'glow-style';
-      gs.textContent = '.tb-logo { text-shadow: 0 0 '+Math.round(16*g)+'px var(--gold-glow) !important; }';
-      document.head.appendChild(gs);
-      break;
+// ─── INARA SAVE BUTTON (spansh page) ────────────────────────────────────────
+(function() {
+  var inaraSaveBtn    = document.getElementById('opt-inara-save-btn');
+  var inaraSaveStatus = document.getElementById('opt-inara-save-status');
+  var inaraSyncBtn    = document.getElementById('opt-inara-sync-now-btn');
+  var inaraSyncStatus = document.getElementById('opt-inara-sync-status');
+  function inaraSetStatus(el, msg, color, resetMs) {
+    if (!el) return;
+    el.textContent = msg;
+    el.style.color = color || '';
+    if (resetMs) setTimeout(function() { el.textContent = el.dataset.default || ''; el.style.color = ''; }, resetMs);
+  }
+  if (inaraSaveStatus) inaraSaveStatus.dataset.default = inaraSaveStatus.textContent;
+  if (inaraSyncStatus) inaraSyncStatus.dataset.default = inaraSyncStatus.textContent;
+  if (inaraSaveBtn && window.electronAPI) {
+    inaraSaveBtn.addEventListener('click', function() {
+      var cmdrName = (document.getElementById('opt-inara-cmdr-name') || {}).value || '';
+      inaraSetStatus(inaraSaveStatus, 'Saving\u2026');
+      window.electronAPI.saveConfig({ inaraCommanderName: cmdrName.trim() })
+        .then(function() {
+          inaraSetStatus(inaraSaveStatus, '\u2713 Saved', 'var(--green)', 3000);
+          if (window.electronAPI.inaraSyncProfile) {
+            window.electronAPI.inaraSyncProfile(cmdrName.trim()).then(function(r) {
+              if (r && r.success) {
+                inaraSetStatus(inaraSyncStatus, '\u2713 Synced at ' + new Date().toLocaleTimeString(), 'var(--green)', 5000);
+              } else if (r && !r.skipped) {
+                inaraSetStatus(inaraSyncStatus, '\u26a0 ' + (r.error || 'Sync failed'), 'var(--gold)', 6000);
+              }
+            }).catch(function() {});
+          }
+        })
+        .catch(function(err) { inaraSetStatus(inaraSaveStatus, 'Error: ' + err.message, 'var(--red)', 5000); });
+    });
+  }
+  if (inaraSyncBtn && window.electronAPI && window.electronAPI.inaraSyncProfile) {
+    inaraSyncBtn.addEventListener('click', function() {
+      var cmdrName = (document.getElementById('opt-inara-cmdr-name') || {}).value || '';
+      inaraSetStatus(inaraSyncStatus, 'Syncing\u2026');
+      inaraSyncBtn.disabled = true;
+      window.electronAPI.inaraSyncProfile(cmdrName.trim()).then(function(r) {
+        inaraSyncBtn.disabled = false;
+        if (!r) { inaraSetStatus(inaraSyncStatus, 'No response', 'var(--red)', 4000); return; }
+        if (r.skipped) {
+          inaraSetStatus(inaraSyncStatus, 'Rate limited \u2014 try again later', 'var(--text-mute)', 5000);
+        } else if (r.success) {
+          inaraSetStatus(inaraSyncStatus, '\u2713 Synced at ' + new Date().toLocaleTimeString(), 'var(--green)', 5000);
+        } else {
+          inaraSetStatus(inaraSyncStatus, '\u26a0 ' + (r.error || 'Failed'), 'var(--gold)', 6000);
+        }
+      }).catch(function(err) {
+        inaraSyncBtn.disabled = false;
+        inaraSetStatus(inaraSyncStatus, 'Error: ' + err.message, 'var(--red)', 5000);
+      });
+    });
+  }
+})();
+
+// ─── FRONTIER cAPI BUTTONS (spansh page) ────────────────────────────────────
+function capiUpdateUI(status) {
+  var dot       = document.getElementById('capi-dot');
+  var label     = document.getElementById('capi-status-label');
+  var expiryRow = document.getElementById('capi-expiry-row');
+  var expiryVal = document.getElementById('capi-expiry-val');
+  var loginBtn  = document.getElementById('capi-login-btn');
+  var logoutBtn = document.getElementById('capi-logout-btn');
+  var loginSub  = document.getElementById('capi-login-sub');
+  if (!dot) return;
+  if (status && status.isLoggedIn && status.tokenValid) {
+    dot.style.background = 'var(--green)';
+    label.textContent    = 'AUTHENTICATED';
+    label.style.color    = 'var(--green)';
+    if (status.tokenExpiry) { expiryVal.textContent = new Date(status.tokenExpiry).toLocaleString(); expiryRow.style.display = ''; }
+    if (loginBtn)  loginBtn.style.display  = 'none';
+    if (logoutBtn) logoutBtn.style.display = '';
+  } else if (status && status.isLoggedIn && !status.tokenValid) {
+    dot.style.background = 'var(--gold)';
+    label.textContent    = 'TOKEN EXPIRED \u2014 re-login required';
+    label.style.color    = 'var(--gold)';
+    if (status.tokenExpiry) { expiryVal.textContent = new Date(status.tokenExpiry).toLocaleString() + ' (expired)'; expiryRow.style.display = ''; }
+    if (loginSub)  loginSub.textContent  = 'Re-authenticate to refresh token';
+    if (loginBtn)  loginBtn.style.display  = '';
+    if (logoutBtn) logoutBtn.style.display = '';
+  } else {
+    dot.style.background = 'var(--border2)';
+    label.textContent    = 'NOT AUTHENTICATED';
+    label.style.color    = 'var(--text-mute)';
+    if (expiryRow) expiryRow.style.display = 'none';
+    if (loginSub)  loginSub.textContent  = 'Opens Frontier auth in your browser';
+    if (loginBtn)  loginBtn.style.display  = '';
+    if (logoutBtn) logoutBtn.style.display = 'none';
   }
 }
-
-function sliderFillOpt(input) {
-  var min = parseFloat(input.min), max = parseFloat(input.max), v = parseFloat(input.value);
-  input.style.setProperty('--fill', Math.round(((v-min)/(max-min))*100) + '%');
-}
-function updateSliderUI(key, v) {
-  var el = document.getElementById('sv-' + key);
-  if (!el) return;
-  switch (key) {
-    case 'scale':  el.textContent = Math.round(v) + '%'; break;
-    case 'font':   el.textContent = v + 'px'; break;
-    case 'bright': el.textContent = v + '%'; break;
-    case 'scan':   el.textContent = SCAN_LABELS[v] || v; break;
-    case 'glow':   el.textContent = v + '%'; break;
+var capiClientIdInputS = document.getElementById('capi-client-id');
+if (capiClientIdInputS) capiClientIdInputS.addEventListener('change', async function() {
+  if (!window.electronAPI) return;
+  try { await window.electronAPI.saveConfig({ capiClientId: capiClientIdInputS.value.trim() }); } catch {}
+});
+var capiLoginBtnS = document.getElementById('capi-login-btn');
+if (capiLoginBtnS) capiLoginBtnS.addEventListener('click', async function() {
+  if (!window.electronAPI) return;
+  var clientIdEl = document.getElementById('capi-client-id');
+  if (clientIdEl && clientIdEl.value.trim()) {
+    try { await window.electronAPI.saveConfig({ capiClientId: clientIdEl.value.trim() }); } catch {}
   }
-}
-function loadDisplaySettings() {
-  var saved = {};
-  try { saved = JSON.parse(localStorage.getItem('ee-display') || '{}'); } catch {}
-  Object.keys(SLIDER_DEFAULTS).forEach(function(key) {
-    var v   = saved[key] != null ? saved[key] : SLIDER_DEFAULTS[key];
-    var inp = document.getElementById('sl-' + key);
-    if (inp) { inp.value = v; sliderFillOpt(inp); }
-    updateSliderUI(key, v);
-    applyDisplay(key, v);
-  });
-}
-function saveDisplaySettings() {
-  var data = {};
-  Object.keys(SLIDER_DEFAULTS).forEach(function(key) {
-    var inp = document.getElementById('sl-' + key);
-    if (inp) data[key] = parseFloat(inp.value);
-  });
-  localStorage.setItem('ee-display', JSON.stringify(data));
-}
-Object.keys(SLIDER_DEFAULTS).forEach(function(key) {
-  var inp = document.getElementById('sl-' + key);
-  if (!inp) return;
-  inp.addEventListener('input', function() {
-    var v = parseFloat(inp.value);
-    sliderFillOpt(inp);
-    updateSliderUI(key, v);
-    applyDisplay(key, v);
-    saveDisplaySettings();
-  });
+  var sub = document.getElementById('capi-login-sub');
+  if (sub) sub.textContent = 'Waiting for browser login\u2026';
+  capiLoginBtnS.disabled = true;
+  try {
+    var result = await window.electronAPI.capiLogin();
+    if (result && result.success) {
+      var status = await window.electronAPI.capiGetStatus();
+      capiUpdateUI(status);
+    } else {
+      if (sub) sub.textContent = (result && result.error) ? result.error : 'Login failed';
+      setTimeout(function() { if (sub) sub.textContent = 'Opens Frontier auth in your browser'; }, 4000);
+    }
+  } catch (err) {
+    if (sub) sub.textContent = 'Error \u2014 check log';
+    setTimeout(function() { if (sub) sub.textContent = 'Opens Frontier auth in your browser'; }, 4000);
+  } finally { capiLoginBtnS.disabled = false; }
 });
-var resetBtn = document.getElementById('sl-reset-all');
-if (resetBtn) resetBtn.addEventListener('click', function() {
-  Object.keys(SLIDER_DEFAULTS).forEach(function(key) {
-    var inp = document.getElementById('sl-' + key);
-    if (inp) { inp.value = SLIDER_DEFAULTS[key]; sliderFillOpt(inp); }
-    updateSliderUI(key, SLIDER_DEFAULTS[key]);
-    applyDisplay(key, SLIDER_DEFAULTS[key]);
-  });
-  localStorage.removeItem('ee-display');
+var capiLogoutBtnS = document.getElementById('capi-logout-btn');
+if (capiLogoutBtnS) capiLogoutBtnS.addEventListener('click', async function() {
+  if (!window.electronAPI) return;
+  try { await window.electronAPI.capiLogout(); capiUpdateUI({ isLoggedIn: false, tokenValid: false }); } catch {}
 });
-loadDisplaySettings();
+
+// Theme swatches and display sliders (font/density/brightness/opacity/
+// scanlines/glow/border) are handled by display-settings.js, shared by
+// every page — see that file for the single implementation.
 
 // Initialise carrier mass panel state (disabled unless on Fleet Carrier tab)
 updateCarrierMassPanel();

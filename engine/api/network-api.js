@@ -71,9 +71,9 @@
     } catch {}
   }
 
-  // Initial fetch immediately on load, then every 3 seconds
+  // Initial fetch immediately on load, then every second
   pollState();
-  setInterval(pollState, 3000);
+  setInterval(pollState, 1000);
 
   // ── fetch helper ─────────────────────────────────────────────────────────
   async function api(endpoint, body) {
@@ -131,11 +131,15 @@
     openExternal: url => { if (url) window.open(url, '_blank', 'noopener'); return Promise.resolve(); },
 
     checkEdsmDiscoveryBulk: names  => api('/api/check-edsm-discovery-bulk', { systemNames: names }),
+    enrichHistoryBulk:      systems => api('/api/enrich-history-bulk',       { systems }),
     edsmSyncLogs:           jumps  => api('/api/edsm-sync-logs',            { localJumps: jumps }),
     importStarsFile:        jumps  => api('/api/import-stars-file',         { localJumps: jumps }).then(r => {
       if (r.__networkUnsupported) { alert(r.message); return { success: false, canceled: true }; }
       return r;
     }),
+
+    inaraSyncProfile:    name => api('/api/inara-sync-profile',    { commanderName: name }),
+    inaraGetSyncStatus:  ()   => api('/api/inara-get-sync-status'),
 
     capiLogin:       ()   => api('/api/capi-login',       {}),
     capiLogout:      ()   => api('/api/capi-logout',      {}),

@@ -13,6 +13,7 @@ contextBridge.exposeInMainWorld('electronAPI', {
   onLiveData:           (cb) => on('live-data',             cb),
   onProfileData:        (cb) => on('profile-data',          cb),
   onBodiesData:         (cb) => on('bodies-data',           cb),
+  onMissionsData:       (cb) => on('missions-data',         cb),
   onLocation:           (cb) => on('location-data',         cb),
   onProgress:           (cb) => on('scan-progress',         cb),
   onScanAll:            (cb) => on('scan-all-journals',     cb),
@@ -60,6 +61,11 @@ contextBridge.exposeInMainWorld('electronAPI', {
   capiGetStatus:     ()          => ipcRenderer.invoke('capi-get-status'),
   capiGetProfile:    ()          => ipcRenderer.invoke('capi-get-profile'),
   capiGetMarket:     (id)        => ipcRenderer.invoke('capi-get-market',        id),
+
+  // Inara
+  inaraSyncProfile:    (name)     => ipcRenderer.invoke('inara-sync-profile',    name),
+  inaraGetSyncStatus:  ()         => ipcRenderer.invoke('inara-get-sync-status'),
+  onInaraSyncResult:   (cb)       => on('inara-sync-result', cb),
 
   // Auto-updater
   onUpdateStatus:      (cb)      => on('update-status', cb),

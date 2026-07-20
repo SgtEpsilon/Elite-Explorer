@@ -14,9 +14,11 @@ const { Worker } = require('worker_threads');
 
 const { app: electronApp } = (() => { try { return require('electron'); } catch { return {}; } })();
 
-let mainWindow  = null;
-let isScanning  = false;
-let cachedJumps = null; // last successful result, replayed on page load
+let mainWindow    = null;
+let isScanning    = false;
+let cachedJumps   = null;  // last successful result, replayed on page load
+let scanComplete  = false; // true once the initial full scan has finished
+let pendingJumps  = [];    // appendJump calls that arrived before scan completed
 
 function setMainWindow(win) { mainWindow = win; }
 
@@ -117,10 +119,21 @@ function scan() {
         break;
 
       case 'done':
-        cachedJumps = msg.jumps;
+        cachedJumps  = msg.jumps;
+        isScanning   = false;
+        scanComplete = true;
         console.log('[history] Scan complete —', cachedJumps.length, 'jumps found');
+
+        // Flush any live jumps that arrived while the scan was running.
+        // These are genuinely new jumps (jumped during the scan window);
+        // dedup them against the freshly-built cache before inserting.
+        if (pendingJumps.length) {
+          console.log('[history] Flushing', pendingJumps.length, 'pending live jump(s)');
+          for (const entry of pendingJumps) _doAppendJump(entry);
+          pendingJumps = [];
+        }
+
         send('history-data', cachedJumps);
-        isScanning = false;
         break;
 
       case 'error':
@@ -144,4 +157,56 @@ function scan() {
 
 function getCache() { return { jumps: cachedJumps }; }
 
-module.exports = { scan, replayToPage, setMainWindow, getCache };
+// ── Internal: build a jump object from a raw journal FSDJump entry ────────────
+function _makeJump(entry) {
+  return {
+    system:         entry.StarSystem,
+    timestamp:      entry.timestamp || new Date().toISOString(),
+    jumpDist:       entry.JumpDist  != null ? +entry.JumpDist.toFixed(2) : null,
+    starClass:      entry.StarClass || entry.StarType || null,
+    bodyCount:      entry.Body_count != null ? entry.Body_count : null,
+    wasDiscovered:  entry.SystemAlreadyDiscovered !== false,
+    fromEdsm:       false,
+    isImportedStar: false,
+  };
+}
+
+// ── Internal: insert one jump into cachedJumps if it isn't already there ──────
+// Builds a dedup Set on every call — O(n) but only called for live jumps (rare).
+function _doAppendJump(entry) {
+  if (!entry || !entry.StarSystem) return;
+  const newJump = _makeJump(entry);
+
+  // Build a set of existing system+timestamp keys for O(1) lookup
+  const existing = new Set(
+    (cachedJumps || []).map(j => j.system + '|' + j.timestamp)
+  );
+  if (existing.has(newJump.system + '|' + newJump.timestamp)) {
+    console.log('[history] FSDJump duplicate skipped:', newJump.system, newJump.timestamp);
+    return;
+  }
+
+  cachedJumps = [newJump, ...(cachedJumps || [])];
+  console.log('[history] FSDJump appended:', newJump.system, '— total', cachedJumps.length);
+  send('history-data', cachedJumps);
+}
+
+// ── Public: called by main.js on every journal.raw.FSDJump event ──────────────
+// Jumps that arrive before the initial full scan completes are queued and
+// flushed (with dedup) once the scan finishes — so they are never lost but
+// also never doubled up with what the scan already collected.
+function appendJump(entry) {
+  if (!entry || !entry.StarSystem) return;
+
+  if (!scanComplete) {
+    // Scan still running — queue for later. The scan will collect this jump
+    // from the journal file itself; we keep the entry so we catch the rare
+    // case where the player jumps in the gap between scan-end and watcher-start.
+    pendingJumps.push(entry);
+    return;
+  }
+
+  _doAppendJump(entry);
+}
+
+module.exports = { scan, replayToPage, setMainWindow, getCache, appendJump };
