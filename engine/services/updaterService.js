@@ -72,17 +72,21 @@ function applyChannel(channel) {
   // Point autoUpdater at the correct YAML manifest for this channel.
   // electron-updater fetches:  https://github.com/<owner>/<repo>/releases/latest/download/<channel>.yml
   // Stable publishes latest.yml;  beta builds publish beta.yml (via -c.publish.channel=beta).
+  //
+  // NOTE: Do NOT pass `releaseType` here — that is an electron-builder publish
+  // config key, not a valid electron-updater runtime option. Passing it to
+  // setFeedURL() corrupts internal URL resolution on electron-updater >=6.x and
+  // causes "Could not reach the update server" even when the .yml file exists.
   autoUpdater.setFeedURL({
-    provider:        'github',
-    owner:           GITHUB_OWNER,
-    repo:            GITHUB_REPO,
-    channel:         isBeta ? 'beta' : 'latest',
-    releaseType:     isBeta ? 'prerelease' : 'release',
+    provider: 'github',
+    owner:    GITHUB_OWNER,
+    repo:     GITHUB_REPO,
+    channel:  isBeta ? 'beta' : 'latest',
   });
 
-  // Also set the flag so electron-updater won't filter out prerelease entries
-  // when reading a beta manifest.
+  // Allow electron-updater to see prerelease builds when on the beta channel.
   autoUpdater.allowPrerelease = isBeta;
+  autoUpdater.allowDowngrade  = false;
 
   console.log(`[updater] feed set → channel="${isBeta ? 'beta' : 'latest'}" allowPrerelease=${isBeta}`);
 }
