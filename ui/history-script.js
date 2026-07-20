@@ -587,7 +587,6 @@ function openOptions() {
     el = document.getElementById('opt-edsm-enabled'); if (el) el.checked = !!cfg.edsmEnabled;
     el = document.getElementById('opt-edsm-cmdr');    if (el) el.value   = cfg.edsmCommanderName   || '';
     el = document.getElementById('opt-edsm-key');     if (el) el.value   = cfg.edsmApiKey          || '';
-    el = document.getElementById('capi-client-id');   if (el) el.value   = cfg.capiClientId        || '';
     el = document.getElementById('opt-inara-cmdr-name'); if (el) el.value = cfg.inaraCommanderName || '';
     el = document.getElementById('opt-network-enabled'); if (el) el.checked = !!cfg.networkServerEnabled;
     el = document.getElementById('opt-network-port');    if (el) el.value   = cfg.networkServerPort || 3722;
@@ -656,19 +655,11 @@ if (journalPathInput) journalPathInput.addEventListener('change', async function
 });
 
 // ─── FRONTIER cAPI BUTTONS (history page) ─────────────────────────────────────
-var capiClientIdInputH = document.getElementById('capi-client-id');
-if (capiClientIdInputH) capiClientIdInputH.addEventListener('change', async function() {
-  if (!window.electronAPI) return;
-  try { await window.electronAPI.saveConfig({ capiClientId: capiClientIdInputH.value.trim() }); } catch {}
-});
+// (Client ID is baked into the app — no user-facing field anymore.)
 
 var capiLoginBtnH = document.getElementById('capi-login-btn');
 if (capiLoginBtnH) capiLoginBtnH.addEventListener('click', async function() {
   if (!window.electronAPI) return;
-  var clientIdEl = document.getElementById('capi-client-id');
-  if (clientIdEl && clientIdEl.value.trim()) {
-    try { await window.electronAPI.saveConfig({ capiClientId: clientIdEl.value.trim() }); } catch {}
-  }
   var sub = document.getElementById('capi-login-sub');
   if (sub) sub.textContent = 'Waiting for browser login\u2026';
   capiLoginBtnH.disabled = true;

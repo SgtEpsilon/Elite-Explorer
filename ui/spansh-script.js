@@ -1250,7 +1250,6 @@ function openOptions() {
     el = document.getElementById('opt-edsm-enabled'); if (el) el.checked = !!cfg.edsmEnabled;
     el = document.getElementById('opt-edsm-cmdr');    if (el) el.value   = cfg.edsmCommanderName   || '';
     el = document.getElementById('opt-edsm-key');     if (el) el.value   = cfg.edsmApiKey          || '';
-    el = document.getElementById('capi-client-id');   if (el) el.value   = cfg.capiClientId        || '';
     el = document.getElementById('opt-inara-cmdr-name'); if (el) el.value = cfg.inaraCommanderName || '';
     el = document.getElementById('opt-network-enabled'); if (el) el.checked = !!cfg.networkServerEnabled;
     el = document.getElementById('opt-network-port');    if (el) el.value   = cfg.networkServerPort || 3722;
@@ -1272,6 +1271,10 @@ function openOptions() {
           urlsDiv.style.display = 'none';
         }
       }).catch(function() {});
+    }
+    // Reflect current cAPI login status (was missing here — other pages already do this)
+    if (window.electronAPI.capiGetStatus) {
+      window.electronAPI.capiGetStatus().then(capiUpdateUI).catch(function() {});
     }
   }).catch(function() {});
 }
@@ -1439,18 +1442,10 @@ function capiUpdateUI(status) {
     if (logoutBtn) logoutBtn.style.display = 'none';
   }
 }
-var capiClientIdInputS = document.getElementById('capi-client-id');
-if (capiClientIdInputS) capiClientIdInputS.addEventListener('change', async function() {
-  if (!window.electronAPI) return;
-  try { await window.electronAPI.saveConfig({ capiClientId: capiClientIdInputS.value.trim() }); } catch {}
-});
+// (Client ID is baked into the app — no user-facing field anymore.)
 var capiLoginBtnS = document.getElementById('capi-login-btn');
 if (capiLoginBtnS) capiLoginBtnS.addEventListener('click', async function() {
   if (!window.electronAPI) return;
-  var clientIdEl = document.getElementById('capi-client-id');
-  if (clientIdEl && clientIdEl.value.trim()) {
-    try { await window.electronAPI.saveConfig({ capiClientId: clientIdEl.value.trim() }); } catch {}
-  }
   var sub = document.getElementById('capi-login-sub');
   if (sub) sub.textContent = 'Waiting for browser login\u2026';
   capiLoginBtnS.disabled = true;

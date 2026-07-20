@@ -4,6 +4,19 @@ const { app, BrowserWindow, ipcMain, shell, dialog, protocol, Menu } = require('
 const path   = require('path');
 const fs     = require('fs');
 
+// ── Single-instance lock — MUST be checked first, before anything else runs ──
+// If this is a second launch, quit immediately and return. Doing this before
+// requiring the engine/services or registering app.whenReady() means the
+// second process never gets far enough to try binding the REST API (3721) or
+// network UI (3722) ports — which is what was causing EADDRINUSE crashes
+// when the app was already running and got launched again.
+const gotLock = app.requestSingleInstanceLock();
+if (!gotLock) {
+  app.quit();
+  return; // no-op if this file is ever required rather than run directly, but
+           // under normal `electron .` / npm start execution this stops here.
+}
+
 // ── Engine / service imports ──────────────────────────────────────────────────
 const logger           = require('./engine/core/logger');
 const journalProvider  = require('./engine/providers/journalProvider');
@@ -183,7 +196,19 @@ app.whenReady().then(async () => {
     node: process.versions.node,
   });
 
-  app.setAsDefaultProtocolClient('eliteexplorer');
+  // In a packaged build, Windows/macOS can launch the app directly and this
+  // one-liner is enough. When running from source with `npm start` / `electron .`
+  // (process.defaultApp is true), the OS would otherwise register bare
+  // "electron.exe" as the protocol handler with no arguments, so a callback
+  // URI reopens a blank Electron process instead of this app. Passing execPath
+  // + this script's path as the registered launch command fixes that.
+  if (process.defaultApp) {
+    if (process.argv.length >= 2) {
+      app.setAsDefaultProtocolClient('eliteexplorer', process.execPath, [path.resolve(process.argv[1])]);
+    }
+  } else {
+    app.setAsDefaultProtocolClient('eliteexplorer');
+  }
 
   buildMenu();
   createWindow();
@@ -297,10 +322,11 @@ app.whenReady().then(async () => {
     }
 
     // ── Frontier cAPI ────────────────────────────────────────────────────────
-    if (!cfg.capiClientId) {
-      logger.warn('STARTUP', 'Frontier cAPI Client ID is not set — cAPI features unavailable. Register at https://user.frontierstore.net/developer/docs');
+    const capiStatus = capiService.getStatus();
+    if (!capiStatus.hasClientId) {
+      logger.error('STARTUP', 'This build has no Frontier Client ID baked in — cAPI features unavailable. This is a packaging issue, not something the end user can fix.');
     } else if (!cfg.capiAccessToken) {
-      logger.info('STARTUP', 'Frontier cAPI Client ID set but not logged in');
+      logger.info('STARTUP', 'Frontier cAPI ready — not logged in yet');
     } else {
       const now = Date.now();
       const tokenOk   = cfg.capiTokenExpiry   && now < cfg.capiTokenExpiry   - 60000;
@@ -332,19 +358,14 @@ app.on('open-url', (event, url) => {
 });
 
 // ── Windows: second-instance carries the custom URI as a CLI arg ──────────────
-const gotLock = app.requestSingleInstanceLock();
-if (!gotLock) {
-  app.quit();
-} else {
-  app.on('second-instance', (_e, argv) => {
-    const url = argv.find(a => a.startsWith('eliteexplorer://'));
-    if (url) capiService.handleCallback(url).catch(console.error);
-    if (mainWindow) {
-      if (mainWindow.isMinimized()) mainWindow.restore();
-      mainWindow.focus();
-    }
-  });
-}
+app.on('second-instance', (_e, argv) => {
+  const url = argv.find(a => a.startsWith('eliteexplorer://'));
+  if (url) capiService.handleCallback(url).catch(console.error);
+  if (mainWindow) {
+    if (mainWindow.isMinimized()) mainWindow.restore();
+    mainWindow.focus();
+  }
+});
 
 app.on('window-all-closed', () => {
   if (process.platform !== 'darwin') app.quit();

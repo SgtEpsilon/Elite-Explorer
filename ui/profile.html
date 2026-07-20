@@ -275,7 +275,7 @@
 
       <div id="capi-tab-no-login" style="padding:40px 20px;text-align:center;color:var(--text-mute);">
         <div style="font-size:0.9em;">Not connected to Frontier cAPI.</div>
-        <div style="font-size:0.78em;margin-top:6px;">Add your Client ID and log in from Options &#9881;.</div>
+        <div style="font-size:0.78em;margin-top:6px;">Log in from Options &#9881;.</div>
       </div>
 
       <div id="capi-tab-content" style="display:none;">
@@ -397,13 +397,7 @@
     <div class="opt-section">
       <div class="opt-section-title">Frontier cAPI &#8212; Companion API</div>
       <div class="opt-hint" style="margin-bottom:8px;">
-        Connects to Frontier's servers directly for exact credits, fleet carrier, community goals, and last-docked station market/outfitting data.
-        <a href="#" onclick="if(window.electronAPI&amp;&amp;window.electronAPI.openExternal){event.preventDefault();window.electronAPI.openExternal('https://user.frontierstore.net/developer/docs');}" style="color:var(--cyan);">Register an app &#8599;</a>
-        to get a Client ID (redirect URI: <code>eliteexplorer://capi/callback</code>).
-      </div>
-      <div style="margin-top:6px;">
-        <label style="font-size:0.72em;color:var(--text-dim);display:block;margin-bottom:3px;">Client ID</label>
-        <input class="opt-input" id="capi-client-id" type="text" placeholder="Paste your Frontier app Client ID" spellcheck="false"/>
+        Connects to Frontier's servers directly for exact credits, fleet carrier, community goals, and last-docked station market/outfitting data. Just log in with your Frontier/Steam/Xbox/PSN account below.
       </div>
       <div style="display:flex;align-items:center;gap:8px;margin-top:10px;">
         <span id="capi-dot" style="width:8px;height:8px;border-radius:50%;background:var(--border2);display:inline-block;flex-shrink:0;"></span>

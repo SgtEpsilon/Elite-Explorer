@@ -41,9 +41,32 @@ const path   = require('path');
 const https  = require('https');
 const crypto = require('crypto');
 const { app, shell } = require('electron');
-const logger = require('../core/logger');
+const logger   = require('../core/logger');
+const eventBus = require('../core/eventBus');
 
-const CONFIG_PATH = path.join(__dirname, '../../config.json');
+// IMPORTANT: this must be the SAME file main.js reads/writes (app.getPath
+// ('userData')/config.json), not the bundled repo config.json under
+// __dirname. The Options UI's Client ID field is saved via main.js's
+// 'save-config' IPC handler, which writes to userData. If this file used
+// __dirname/../../config.json instead (as it originally did), the Client ID
+// entered in the UI would never be visible here — every login attempt would
+// fail with "No Client ID saved" even after saving one. This also matters in
+// packaged builds: __dirname points inside app.asar, which is read-only, so
+// writeConfig() would throw when saving tokens.
+// ── Frontier Client ID ─────────────────────────────────────────────────────────
+// This belongs to the APPLICATION (registered once by the developer at
+// https://user.frontierstore.net/developer/docs), not to each person who runs
+// it. Every install of Elite Explorer uses this same Client ID — end users
+// never see or enter one, they just click "Log in with Frontier".
+//
+// Fill this in with the Client ID from your Frontier Developer Zone
+// registration (redirect URI registered as eliteexplorer://capi/callback).
+// The "Shared Key" Frontier also gives you is NOT used here — this app uses
+// the PKCE public-client flow, which never sends a client secret.
+const CLIENT_ID = 'a6fc6dc8-50bd-4253-ad85-d7f6e41fb66d';
+
+const userDataDir = (app && app.getPath) ? app.getPath('userData') : path.join(__dirname, '../..');
+const CONFIG_PATH  = path.join(userDataDir, 'config.json');
 
 // ── Frontier endpoints (from official docs) ───────────────────────────────────
 const AUTH_BASE = 'https://auth.frontierstore.net';
@@ -201,8 +224,8 @@ function capiStatusError(status) {
 // ── Token refresh ─────────────────────────────────────────────────────────────
 async function refreshToken() {
   const cfg = readConfig();
-  if (!cfg.capiRefreshToken || !cfg.capiClientId) {
-    throw new Error('No refresh token or Client ID — please log in again.');
+  if (!cfg.capiRefreshToken) {
+    throw new Error('No refresh token — please log in again.');
   }
   if (!hasValidRefreshToken()) {
     clearTokens();
@@ -212,7 +235,7 @@ async function refreshToken() {
   logger.debug('CAPI', 'Refreshing access token...');
   const { status, body } = await httpsPost('auth.frontierstore.net', '/token', {
     grant_type:    'refresh_token',
-    client_id:     cfg.capiClientId,
+    client_id:     CLIENT_ID,
     refresh_token: cfg.capiRefreshToken,
   });
 
@@ -240,10 +263,8 @@ let _loginTimeout  = null;
 
 function startOAuthLogin() {
   return new Promise((resolve) => {
-    const cfg = readConfig();
-
-    if (!cfg.capiClientId) {
-      resolve({ success: false, error: 'No Client ID saved. Enter your Frontier Client ID in Options and try again.' });
+    if (!CLIENT_ID || CLIENT_ID === 'YOUR_FRONTIER_CLIENT_ID_HERE') {
+      resolve({ success: false, error: 'App is not configured with a Frontier Client ID. This is a bug in the app itself, not something you can fix from Options — please report it.' });
       return;
     }
 
@@ -272,7 +293,7 @@ function startOAuthLogin() {
     // Change to audience=frontier to restrict to Frontier accounts only.
     const loginUrl = AUTH_BASE + '/auth?' + new URLSearchParams({
       response_type:         'code',
-      client_id:             cfg.capiClientId,
+      client_id:             CLIENT_ID,
       redirect_uri:          REDIRECT_URI,
       scope:                 'auth capi',
       audience:              'all',
@@ -342,10 +363,9 @@ async function handleCallback(callbackUrl) {
       return;
     }
 
-    const cfg = readConfig();
     const { status, body } = await httpsPost('auth.frontierstore.net', '/token', {
       grant_type:    'authorization_code',
-      client_id:     cfg.capiClientId,
+      client_id:     CLIENT_ID,
       code,
       redirect_uri:  REDIRECT_URI,
       code_verifier: verifier,
@@ -356,11 +376,21 @@ async function handleCallback(callbackUrl) {
       saveTokens(body.access_token, body.refresh_token, expiresAt);
       logger.info('CAPI', 'Login successful — access token saved', { expires: new Date(expiresAt).toISOString() });
 
-      // Push profile to renderer right away
-      try {
-        const profileResult = await getProfile();
-        if (profileResult.success) send('capi-data', { type: 'profile', data: profileResult.data });
-      } catch {}
+      // Bring the app back to the foreground — the browser handed off to us
+      // via the custom protocol, but on most OS/browser combos the browser
+      // tab itself stays open (we don't control that page; it's hosted by
+      // Frontier). Surfacing our own window is the part we CAN do to make
+      // the "come back to the app" handoff feel immediate.
+      if (mainWindow && !mainWindow.isDestroyed()) {
+        if (mainWindow.isMinimized()) mainWindow.restore();
+        mainWindow.show();
+        mainWindow.focus();
+      }
+
+      // Let capiProvider (or anything else listening) know login just
+      // succeeded, so it can sync profile/market/shipyard/fleetcarrier/
+      // communitygoals immediately instead of waiting on its own timer.
+      eventBus.emit('capi.login.success');
 
       resolve({ success: true });
     } else {
@@ -382,7 +412,7 @@ function logout() {
 function getStatus() {
   const cfg = readConfig();
   return {
-    hasClientId:       !!cfg.capiClientId,
+    hasClientId:       !!(CLIENT_ID && CLIENT_ID !== 'YOUR_FRONTIER_CLIENT_ID_HERE'),
     isLoggedIn:        !!cfg.capiAccessToken,
     tokenValid:        hasValidToken(),
     tokenExpiry:       cfg.capiTokenExpiry   || null,
@@ -481,20 +511,25 @@ async function getCommunityGoals() {
 }
 
 // ── Startup ───────────────────────────────────────────────────────────────────
+// NOTE: protocol client registration (app.setAsDefaultProtocolClient) is done
+// ONCE, in main.js, before this function runs — and it's dev-mode aware
+// (passes process.execPath + the app path as launch args when running
+// unpackaged via `npm start`/`electron .`). Do NOT re-register it here: an
+// earlier version of this file called app.setAsDefaultProtocolClient(PROTOCOL)
+// with no extra args, which ran AFTER main.js's registration and silently
+// overwrote the correct Windows registry entry with a bare one — the entry
+// then pointed at plain "electron.exe" with no project path, so a callback
+// URI launched electron.exe with the URL as its only argument. Electron's
+// default_app bootstrap then tried to treat that URL as the app path to load,
+// producing "Unable to find Electron app at ...\callback?code=...".
 function start() {
-  if (app.isReady()) {
-    app.setAsDefaultProtocolClient(PROTOCOL);
-  } else {
-    app.whenReady().then(() => app.setAsDefaultProtocolClient(PROTOCOL));
-  }
-
   const cfg = readConfig();
 
   // ── Startup diagnostics ──────────────────────────────────────────────────
-  if (!cfg.capiClientId) {
-    logger.warn('CAPI', 'No Frontier Client ID configured — cAPI features will be unavailable. Set one in Options > Frontier cAPI.');
+  if (!CLIENT_ID || CLIENT_ID === 'YOUR_FRONTIER_CLIENT_ID_HERE') {
+    logger.error('CAPI', 'No Frontier Client ID baked into the app — this build is misconfigured, cAPI features will be unavailable. (Set the CLIENT_ID constant in capiService.js before shipping.)');
   } else {
-    logger.info('CAPI', 'Frontier Client ID is set');
+    logger.info('CAPI', 'Frontier Client ID is configured');
   }
 
   if (!cfg.capiAccessToken) {

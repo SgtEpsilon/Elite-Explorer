@@ -1199,7 +1199,6 @@ function openOptions() {
     el = document.getElementById('opt-edsm-enabled'); if (el) el.checked = !!cfg.edsmEnabled;
     el = document.getElementById('opt-edsm-cmdr');    if (el) el.value  = cfg.edsmCommanderName || '';
     el = document.getElementById('opt-edsm-key');     if (el) el.value  = cfg.edsmApiKey        || '';
-    el = document.getElementById('capi-client-id');   if (el) el.value  = cfg.capiClientId      || '';
     // Inara settings
     el = document.getElementById('opt-inara-cmdr-name');  if (el) el.value = cfg.inaraCommanderName || '';
     // Network server settings
@@ -1377,24 +1376,13 @@ if (networkSaveBtn) networkSaveBtn.addEventListener('click', async function() {
 });
 
 // ─── FRONTIER cAPI BUTTONS ────────────────────────────────────────
-// Save Client ID whenever it changes (needed before login)
-var capiClientIdInput = document.getElementById('capi-client-id');
-if (capiClientIdInput) capiClientIdInput.addEventListener('change', async function() {
-  if (!window.electronAPI) return;
-  var val = capiClientIdInput.value.trim();
-  try { await window.electronAPI.saveConfig({ capiClientId: val }); }
-  catch { log('Failed to save cAPI Client ID', 'error'); }
-});
+// (Client ID is baked into the app itself — see capiService.js — so there's
+// no user-facing Client ID field to save anymore.)
 
 // Login button — starts the OAuth2 flow in capiService.js
 var capiLoginBtn = document.getElementById('capi-login-btn');
 if (capiLoginBtn) capiLoginBtn.addEventListener('click', async function() {
   if (!window.electronAPI) return;
-  // Save the client ID field first (in case user just typed it)
-  var clientIdEl = document.getElementById('capi-client-id');
-  if (clientIdEl && clientIdEl.value.trim()) {
-    try { await window.electronAPI.saveConfig({ capiClientId: clientIdEl.value.trim() }); } catch {}
-  }
   var sub = document.getElementById('capi-login-sub');
   if (sub) sub.textContent = 'Waiting for browser login\u2026';
   capiLoginBtn.disabled = true;
@@ -1408,7 +1396,7 @@ if (capiLoginBtn) capiLoginBtn.addEventListener('click', async function() {
     } else {
       var errMsg = (result && result.error) ? result.error : 'Login failed';
       log('cAPI: ' + errMsg, 'error');
-      if (sub) sub.textContent = 'Login failed \u2014 check Client ID and try again';
+      if (sub) sub.textContent = 'Login failed \u2014 see log';
       // Reset after a moment
       setTimeout(function() { if (sub) sub.textContent = 'Opens Frontier auth in your browser'; }, 4000);
     }

@@ -27,6 +27,7 @@
  */
 
 const logger      = require('../core/logger');
+const eventBus    = require('../core/eventBus');
 const capiService = require('../services/capiService');
 
 // Minimum time between refreshAll() runs, regardless of trigger source.
@@ -161,11 +162,26 @@ async function refreshAll(opts) {
 
 function getCache() { return cache; }
 
-// ── Startup — auto-refresh on a timer while logged in ─────────────────────────
+// Immediately sync everything right after a successful login, instead of
+// waiting for the next 5-minute interval tick.
+eventBus.on('capi.login.success', () => {
+  refreshAll({ force: true }).catch((err) => logger.error('CAPI', 'Post-login refresh failed', err));
+});
+
+// ── Startup — refresh immediately if already logged in, then on a timer ──────
 function start() {
+  // The cache above is in-memory only and resets on every app restart. Without
+  // an immediate refresh here, a user who's already logged in would see the
+  // Profile tab's cAPI subtab empty for up to AUTO_REFRESH_INTERVAL_MS (5 min)
+  // after every launch, waiting on the interval below to fire for the first time.
+  const status = capiService.getStatus();
+  if (status.isLoggedIn) {
+    refreshAll().catch((err) => logger.error('CAPI', 'Initial refresh on startup failed', err));
+  }
+
   setInterval(() => {
-    const status = capiService.getStatus();
-    if (status.isLoggedIn) {
+    const s = capiService.getStatus();
+    if (s.isLoggedIn) {
       refreshAll().catch((err) => logger.error('CAPI', 'Auto-refresh error', err));
     }
   }, AUTO_REFRESH_INTERVAL_MS);
