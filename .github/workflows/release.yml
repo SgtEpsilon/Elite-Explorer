@@ -44,7 +44,7 @@ jobs:
       version: ${{ steps.compute.outputs.version }}
     steps:
       - name: Check out repo
-        uses: actions/checkout@v4
+        uses: actions/checkout@v5
 
       - name: Read version from package.json
         id: compute
@@ -100,14 +100,14 @@ jobs:
 
     steps:
       - name: Check out repo at the release tag
-        uses: actions/checkout@v4
+        uses: actions/checkout@v5
         with:
           ref: ${{ needs.prepare.outputs.tag }}
 
       - name: Set up Node.js
-        uses: actions/setup-node@v4
+        uses: actions/setup-node@v6
         with:
-          node-version: 20
+          node-version: 22
 
       - name: Install dependencies
         run: npm install
