@@ -699,6 +699,15 @@ if (capiLogoutBtnH) capiLogoutBtnH.addEventListener('click', async function() {
   } catch {}
 });
 
+var capiRefreshBtnH = document.getElementById('capi-refresh-btn');
+if (capiRefreshBtnH) capiRefreshBtnH.addEventListener('click', async function() {
+  if (!window.electronAPI || !window.electronAPI.capiRefreshAll) return;
+  capiRefreshBtnH.disabled = true;
+  try { await window.electronAPI.capiRefreshAll(); }
+  catch {}
+  finally { capiRefreshBtnH.disabled = false; }
+});
+
 // --- EDDN / EDSM SAVE BUTTON (history page) -----------------------------------
 var saveApiBtnH = document.getElementById('opt-save-api-btn');
 if (saveApiBtnH) saveApiBtnH.addEventListener('click', async function() {

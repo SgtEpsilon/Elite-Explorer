@@ -454,6 +454,32 @@ async function getShipyard() {
   }
 }
 
+// ── Fetch fleet carrier data ───────────────────────────────────────────────────
+// 200 = has a carrier, 204 = doesn't own one (not an error).
+async function getFleetCarrier() {
+  try {
+    const token = await getToken();
+    const { status, body } = await httpsGet('companion.orerve.net', '/fleetcarrier', token);
+    if (status === 200) return { success: true, data: body };
+    if (status === 204) return { success: true, data: null }; // no carrier owned
+    return { success: false, error: capiStatusError(status) };
+  } catch (err) {
+    return { success: false, error: err.message };
+  }
+}
+
+// ── Fetch active Community Goals ──────────────────────────────────────────────
+async function getCommunityGoals() {
+  try {
+    const token = await getToken();
+    const { status, body } = await httpsGet('companion.orerve.net', '/communitygoals', token);
+    if (status === 200) return { success: true, data: body };
+    return { success: false, error: capiStatusError(status) };
+  } catch (err) {
+    return { success: false, error: err.message };
+  }
+}
+
 // ── Startup ───────────────────────────────────────────────────────────────────
 function start() {
   if (app.isReady()) {
@@ -505,4 +531,5 @@ module.exports = {
   startOAuthLogin, handleCallback,
   logout, getStatus,
   getProfile, getMarket, getShipyard,
+  getFleetCarrier, getCommunityGoals,
 };

@@ -1432,6 +1432,42 @@ if (capiLogoutBtn) capiLogoutBtn.addEventListener('click', async function() {
   } catch { log('cAPI logout failed', 'error'); }
 });
 
+// Refresh button — manually triggers capiProvider.refreshAll() (profile,
+// market/shipyard if docked, fleet carrier, community goals)
+var capiRefreshBtn = document.getElementById('capi-refresh-btn');
+if (capiRefreshBtn) capiRefreshBtn.addEventListener('click', async function() {
+  if (!window.electronAPI || !window.electronAPI.capiRefreshAll) return;
+  var sub = document.getElementById('capi-refresh-sub');
+  capiRefreshBtn.disabled = true;
+  if (sub) sub.textContent = 'Refreshing\u2026';
+  try {
+    var result = await window.electronAPI.capiRefreshAll();
+    if (result && result.success) {
+      log('cAPI data refreshed', 'good');
+      if (sub) sub.textContent = 'Fetch profile, fleet carrier & community goals';
+    } else {
+      var errMsg = (result && result.error) ? result.error : 'Refresh failed';
+      log('cAPI: ' + errMsg, 'error');
+      if (sub) sub.textContent = errMsg;
+      setTimeout(function() { if (sub) sub.textContent = 'Fetch profile, fleet carrier & community goals'; }, 4000);
+    }
+  } catch (err) {
+    log('cAPI refresh error: ' + (err.message || err), 'error');
+  } finally {
+    capiRefreshBtn.disabled = false;
+  }
+});
+
+// ── cAPI push data — cache latest results for use by profile.html's cAPI subtab
+window._capiCache = window._capiCache || {};
+if (window.electronAPI) {
+  if (window.electronAPI.onCapiProfileData) window.electronAPI.onCapiProfileData(function(data) { window._capiCache.profile = data; });
+  if (window.electronAPI.onCapiMarketData) window.electronAPI.onCapiMarketData(function(data) { window._capiCache.market = data; });
+  if (window.electronAPI.onCapiShipyardData) window.electronAPI.onCapiShipyardData(function(data) { window._capiCache.shipyard = data; });
+  if (window.electronAPI.onCapiFleetCarrierData) window.electronAPI.onCapiFleetCarrierData(function(data) { window._capiCache.fleetCarrier = data; });
+  if (window.electronAPI.onCapiCommunityGoalsData) window.electronAPI.onCapiCommunityGoalsData(function(data) { window._capiCache.communityGoals = data; });
+}
+
 // --- EDSM FLIGHT LOG SYNC (from index/profile options panel) ---
 if (window.electronAPI && window.electronAPI.onEdsmSyncProgress) {
   window.electronAPI.onEdsmSyncProgress(function(p) {

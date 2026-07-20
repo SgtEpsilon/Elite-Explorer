@@ -12,6 +12,7 @@ const edsmClient       = require('./engine/services/edsmClient');
 const eddnRelay        = require('./engine/services/eddnRelay');
 const edsmSyncService  = require('./engine/services/edsmSyncService');
 const capiService      = require('./engine/services/capiService');
+const capiProvider     = require('./engine/providers/capiProvider');
 const updaterService   = require('./engine/services/updaterService');
 const inaraService     = require('./engine/services/inaraService');
 const engine           = require('./engine/core/engine');
@@ -155,6 +156,7 @@ function createWindow() {
   eddnRelay       .setMainWindow(mainWindow);
   edsmSyncService .setMainWindow(mainWindow);
   capiService     .setMainWindow(mainWindow);
+  capiProvider    .setMainWindow(mainWindow);
   updaterService  .setMainWindow(mainWindow);
 
   // ── Replay cached data whenever any page (re)loads ────────────────────────
@@ -165,6 +167,7 @@ function createWindow() {
     historyProvider.replayToPage();      // → history-data
     journalProvider.replayToPage();      // → live-data, profile-data, bodies-data
     edsmClient.replayToPage();           // → edsm-system, edsm-bodies
+    capiProvider.replayToPage();         // → capi-profile-data, capi-market-data, capi-shipyard-data, capi-fleetcarrier-data, capi-communitygoals-data
   });
 
   mainWindow.on('closed', () => { mainWindow = null; });
@@ -234,6 +237,7 @@ app.whenReady().then(async () => {
   historyProvider.scan();
 
   await capiService.start();
+  capiProvider.start();
 
   // Start auto-updater (checks after 5s, then every 4 hours)
   updaterService.start();
@@ -564,6 +568,10 @@ ipcMain.handle('capi-logout',      ()       => capiService.logout());
 ipcMain.handle('capi-get-status',  ()       => capiService.getStatus());
 ipcMain.handle('capi-get-profile', ()       => capiService.getProfile());
 ipcMain.handle('capi-get-market',  (_e, id) => capiService.getMarket(id));
+ipcMain.handle('capi-get-shipyard',        () => capiService.getShipyard());
+ipcMain.handle('capi-get-fleetcarrier',    () => capiService.getFleetCarrier());
+ipcMain.handle('capi-get-communitygoals',  () => capiService.getCommunityGoals());
+ipcMain.handle('capi-refresh-all',  (_e, opts) => capiProvider.refreshAll(opts));
 
 // ── Inara sync ────────────────────────────────────────────────────────────────
 // inara-sync-profile: rate-limited (5 min) batched sync with Inara.

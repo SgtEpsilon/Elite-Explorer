@@ -1474,6 +1474,15 @@ if (capiLogoutBtnS) capiLogoutBtnS.addEventListener('click', async function() {
   try { await window.electronAPI.capiLogout(); capiUpdateUI({ isLoggedIn: false, tokenValid: false }); } catch {}
 });
 
+var capiRefreshBtnS = document.getElementById('capi-refresh-btn');
+if (capiRefreshBtnS) capiRefreshBtnS.addEventListener('click', async function() {
+  if (!window.electronAPI || !window.electronAPI.capiRefreshAll) return;
+  capiRefreshBtnS.disabled = true;
+  try { await window.electronAPI.capiRefreshAll(); }
+  catch {}
+  finally { capiRefreshBtnS.disabled = false; }
+});
+
 // Theme swatches and display sliders (font/density/brightness/opacity/
 // scanlines/glow/border) are handled by display-settings.js, shared by
 // every page — see that file for the single implementation.
