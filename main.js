@@ -165,13 +165,14 @@ app.whenReady().then(async () => {
   eventBus.on('journal.raw.FSDJump', (entry) => {
     historyProvider.appendJump(entry);
   });
-  api.start();         // REST API on :3721
-  logger.info('API', 'REST API started on :3721');
+  const cfg = readConfig();
+  const apiPort = cfg.apiPort || 3721;
+  api.start(apiPort);  // REST API, port from live config (fallback 3721)
+  logger.info('API', 'REST API started on :' + apiPort);
 
   // ── Network UI server (optional) ─────────────────────────────────────────
   // Enabled via config.json networkServerEnabled=true (or --network CLI flag).
   // Allows any device on the LAN to open the UI in a browser.
-  const cfg = readConfig();
   if (cfg.networkServerEnabled || process.argv.includes('--network')) {
     const netPort = cfg.networkServerPort || 3722;
     networkServer.start({
