@@ -118,6 +118,36 @@ function createWindow() {
 
   mainWindow.loadFile(path.join(__dirname, 'ui', 'index.html'));
 
+  // ── Editable-field context menu (Cut/Copy/Paste/Select All) ───────────────
+  // Electron shows no context menu at all by default. On Windows/macOS this
+  // mostly goes unnoticed because Ctrl/Cmd+C/V still fire via the Edit menu
+  // accelerators above, but Linux users routinely right-click to paste a
+  // custom journal path — and get nothing. Wire it up explicitly.
+  mainWindow.webContents.on('context-menu', (_event, params) => {
+    if (!params.isEditable) return;
+
+    const template = [];
+    if (params.misspelledWord) {
+      for (const suggestion of params.dictionarySuggestions.slice(0, 5)) {
+        template.push({
+          label: suggestion,
+          click: () => mainWindow.webContents.replaceMisspelling(suggestion),
+        });
+      }
+      if (params.dictionarySuggestions.length) template.push({ type: 'separator' });
+    }
+
+    template.push(
+      { label: 'Cut',        role: 'cut',       enabled: params.editFlags.canCut },
+      { label: 'Copy',       role: 'copy',      enabled: params.editFlags.canCopy },
+      { label: 'Paste',      role: 'paste',     enabled: params.editFlags.canPaste },
+      { type: 'separator' },
+      { label: 'Select All', role: 'selectAll', enabled: params.editFlags.canSelectAll },
+    );
+
+    Menu.buildFromTemplate(template).popup({ window: mainWindow });
+  });
+
   // ── Wire mainWindow into every service that sends to the renderer ─────────
   journalProvider .setMainWindow(mainWindow);
   historyProvider .setMainWindow(mainWindow);
