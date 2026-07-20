@@ -11,6 +11,7 @@
   "inaraCommanderName": "",
   "inaraEnabled": true,
   "updateChannel": "stable",
+  "apiPort": 3721,
   "networkServerEnabled": false,
   "networkServerPort": 3722,
   "fuelAlertThresholdPct": 25,
