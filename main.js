@@ -353,14 +353,29 @@ app.whenReady().then(async () => {
 
 // ── macOS / Linux: custom URI scheme for cAPI OAuth callback ──────────────────
 app.on('open-url', (event, url) => {
+  // DIAGNOSTIC: unconditional — proves whether macOS/Linux ever delivered
+  // the callback URL to this process at all, independent of OAuth state.
+  logger.info('CAPI-DIAG', 'open-url event fired', { url });
   event.preventDefault();
   capiService.handleCallback(url).catch(console.error);
 });
 
 // ── Windows: second-instance carries the custom URI as a CLI arg ──────────────
 app.on('second-instance', (_e, argv) => {
+  // DIAGNOSTIC: unconditional — logs the full argv Windows handed us, so we
+  // can see whether a second-instance launch happened at all during login,
+  // and if it did, exactly what string it carried (in case the URL got
+  // mangled/quoted in a way the startsWith('eliteexplorer://') check misses).
+  logger.info('CAPI-DIAG', 'second-instance event fired', { argv });
+
   const url = argv.find(a => a.startsWith('eliteexplorer://'));
-  if (url) capiService.handleCallback(url).catch(console.error);
+  if (url) {
+    logger.info('CAPI-DIAG', 'Found eliteexplorer:// URL in argv — calling handleCallback', { url });
+    capiService.handleCallback(url).catch(console.error);
+  } else {
+    logger.warn('CAPI-DIAG', 'second-instance fired but no eliteexplorer:// URL found in argv');
+  }
+
   if (mainWindow) {
     if (mainWindow.isMinimized()) mainWindow.restore();
     mainWindow.focus();

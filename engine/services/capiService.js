@@ -61,9 +61,28 @@ const eventBus = require('../core/eventBus');
 //
 // Fill this in with the Client ID from your Frontier Developer Zone
 // registration (redirect URI registered as eliteexplorer://capi/callback).
-// The "Shared Key" Frontier also gives you is NOT used here — this app uses
-// the PKCE public-client flow, which never sends a client secret.
-const CLIENT_ID = 'a6fc6dc8-50bd-4253-ad85-d7f6e41fb66d';
+// See SHARED_KEY_RAW below for the optional client secret.
+const CLIENT_ID_RAW = 'a6fc6dc8-50bd-4253-ad85-d7f6e41fb66d';
+
+// ── Frontier "Shared Key" (client secret) ──────────────────────────────────
+// PKCE clients normally do NOT need this — see EDCD's community oAuth2 notes
+// (github.com/EDCD/FDevIDs): the authorization_code exchange is documented
+// as code_verifier + client_id only, and the refresh_token exchange only
+// needs client_secret "if using non-PKCE Authorization." Some Frontier app
+// registrations reject the exchange without it anyway (HTTP 401 "Incorrect
+// client credentials"), so it's supported here as optional: leave it as ''
+// to send neither request with a client_secret (pure PKCE), or fill it in
+// if your registration requires it. Get it from the same "View" screen on
+// user.frontierstore.net/developer that shows your Client ID.
+const SHARED_KEY_RAW = '91da827b-35e5-4bff-a403-e7a687d17168';
+
+// Copy-pasting from Frontier's developer portal can easily drag along a
+// stray tab, space, or newline character that isn't visible on screen but
+// makes the value not match what Frontier has on file — producing exactly
+// an HTTP 401 "Incorrect client credentials" response. Trim both here so
+// that class of mistake can't cause a silent mismatch.
+const CLIENT_ID  = CLIENT_ID_RAW.trim();
+const SHARED_KEY = SHARED_KEY_RAW.trim();
 
 const userDataDir = (app && app.getPath) ? app.getPath('userData') : path.join(__dirname, '../..');
 const CONFIG_PATH  = path.join(userDataDir, 'config.json');
@@ -233,11 +252,13 @@ async function refreshToken() {
   }
 
   logger.debug('CAPI', 'Refreshing access token...');
-  const { status, body } = await httpsPost('auth.frontierstore.net', '/token', {
+  const refreshParams = {
     grant_type:    'refresh_token',
     client_id:     CLIENT_ID,
     refresh_token: cfg.capiRefreshToken,
-  });
+  };
+  if (SHARED_KEY) refreshParams.client_secret = SHARED_KEY;
+  const { status, body } = await httpsPost('auth.frontierstore.net', '/token', refreshParams);
 
   if (body.access_token) {
     const expiresAt = Date.now() + (body.expires_in || 7200) * 1000;
@@ -363,13 +384,15 @@ async function handleCallback(callbackUrl) {
       return;
     }
 
-    const { status, body } = await httpsPost('auth.frontierstore.net', '/token', {
+    const codeParams = {
       grant_type:    'authorization_code',
       client_id:     CLIENT_ID,
       code,
       redirect_uri:  REDIRECT_URI,
       code_verifier: verifier,
-    });
+    };
+    if (SHARED_KEY) codeParams.client_secret = SHARED_KEY;
+    const { status, body } = await httpsPost('auth.frontierstore.net', '/token', codeParams);
 
     if (body.access_token) {
       const expiresAt = Date.now() + (body.expires_in || 7200) * 1000;
