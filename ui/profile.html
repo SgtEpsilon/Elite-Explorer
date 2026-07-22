@@ -44,6 +44,7 @@
       <button class="prof-subtab active" data-subtab="overview">Overview</button>
       <button class="prof-subtab" data-subtab="engineers">Engineers</button>
       <button class="prof-subtab" data-subtab="materials">Materials</button>
+      <button class="prof-subtab" data-subtab="capi">Frontier cAPI</button>
     </div>
 
     <!-- ════════════════════════════════════════════════════════════════════ -->
@@ -259,6 +260,69 @@
       <div id="prof-materials-by-grade"></div>
     </div><!-- /prof-subpage-materials -->
 
+    <!-- ════════════════════════════════════════════════════════════════════ -->
+    <!-- FRONTIER cAPI SUB-PAGE                                              -->
+    <!-- Data sourced directly from Frontier's Companion API — exact        -->
+    <!-- credits, fleet carrier, community goals, stored ships, and the     -->
+    <!-- last-docked station's market/outfitting stock.                     -->
+    <!-- ════════════════════════════════════════════════════════════════════ -->
+    <div id="prof-subpage-capi" class="prof-subpage">
+
+      <div class="prof-section" style="background:var(--panel);border-bottom:1px solid var(--border);display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap;">
+        <div class="prof-title">Frontier cAPI</div>
+        <div style="font-size:0.72em;color:var(--text-mute);font-family:var(--mono);" id="capi-tab-last-refresh">Not yet refreshed</div>
+      </div>
+
+      <div id="capi-tab-no-login" style="padding:40px 20px;text-align:center;color:var(--text-mute);">
+        <div style="font-size:0.9em;">Not connected to Frontier cAPI.</div>
+        <div style="font-size:0.78em;margin-top:6px;">Log in from Options &#9881;.</div>
+      </div>
+
+      <div id="capi-tab-content" style="display:none;">
+
+        <!-- Stored Ships -->
+        <div class="prof-section" style="border-bottom:1px solid var(--border);">
+          <div class="prof-title" style="font-size:0.85em;">Stored Ships</div>
+          <div id="capi-stored-ships-list" class="eng-grid"></div>
+        </div>
+
+        <!-- Fleet Carrier -->
+        <div class="prof-section" style="border-bottom:1px solid var(--border);">
+          <div class="prof-title" style="font-size:0.85em;">Fleet Carrier</div>
+          <div id="capi-carrier-none" style="color:var(--text-mute);font-size:0.8em;">No fleet carrier owned.</div>
+          <div id="capi-carrier-content" style="display:none;">
+            <div class="stats-cols" id="capi-carrier-stats"></div>
+            <div style="margin-top:12px;">
+              <div class="prof-title" style="font-size:0.78em;color:var(--text-dim);">Cargo &amp; Orders</div>
+              <div id="capi-carrier-orders"></div>
+            </div>
+          </div>
+        </div>
+
+        <!-- Community Goals -->
+        <div class="prof-section" style="border-bottom:1px solid var(--border);">
+          <div class="prof-title" style="font-size:0.85em;">Active Community Goals</div>
+          <div id="capi-cg-list"></div>
+        </div>
+
+        <!-- Last Docked Station: Market & Outfitting -->
+        <div class="prof-section">
+          <div class="prof-title" style="font-size:0.85em;">Last Station &#8212; Market &amp; Outfitting</div>
+          <div id="capi-station-none" style="color:var(--text-mute);font-size:0.8em;">No station data yet &#8212; dock and use Options &#9881; &rarr; Refresh cAPI Data.</div>
+          <div id="capi-station-content" style="display:none;">
+            <div style="font-size:0.78em;color:var(--text-dim);margin-bottom:6px;" id="capi-station-name"></div>
+            <div class="prof-title" style="font-size:0.75em;color:var(--text-mute);">Commodities</div>
+            <div id="capi-market-table"></div>
+            <div class="prof-title" style="font-size:0.75em;color:var(--text-mute);margin-top:10px;">Outfitting</div>
+            <div id="capi-outfitting-table"></div>
+            <div class="prof-title" style="font-size:0.75em;color:var(--text-mute);margin-top:10px;">Shipyard</div>
+            <div id="capi-shipyard-table"></div>
+          </div>
+        </div>
+
+      </div><!-- /capi-tab-content -->
+    </div><!-- /prof-subpage-capi -->
+
   </div><!-- /prof-content -->
 </div><!-- /view-profile -->
 </div><!-- /app-wrapper -->
@@ -328,6 +392,32 @@
       <button class="opt-action-btn" id="opt-save-api-btn" style="margin-top:10px;">
         <span class="opt-btn-icon">&#10003;</span>
         <div><div class="opt-btn-label">Save API Settings</div><div class="opt-btn-sub" id="opt-api-hint">Changes take effect immediately</div></div>
+      </button>
+    </div>
+    <div class="opt-section">
+      <div class="opt-section-title">Frontier cAPI &#8212; Companion API</div>
+      <div class="opt-hint" style="margin-bottom:8px;">
+        Connects to Frontier's servers directly for exact credits, fleet carrier, community goals, and last-docked station market/outfitting data. Just log in with your Frontier/Steam/Xbox/PSN account below.
+      </div>
+      <div style="display:flex;align-items:center;gap:8px;margin-top:10px;">
+        <span id="capi-dot" style="width:8px;height:8px;border-radius:50%;background:var(--border2);display:inline-block;flex-shrink:0;"></span>
+        <span id="capi-status-label" style="font-size:0.75em;font-family:var(--mono);color:var(--text-mute);">NOT AUTHENTICATED</span>
+        <span id="capi-cmdr-badge" style="display:none;font-size:0.72em;color:var(--text-dim);"></span>
+      </div>
+      <div id="capi-expiry-row" style="display:none;font-size:0.7em;color:var(--text-mute);margin-top:4px;">
+        Token expires: <span id="capi-expiry-val">&#8212;</span>
+      </div>
+      <button class="opt-action-btn" id="capi-login-btn" style="margin-top:10px;">
+        <span class="opt-btn-icon">&#8594;</span>
+        <div><div class="opt-btn-label">Log in with Frontier</div><div class="opt-btn-sub" id="capi-login-sub">Opens Frontier auth in your browser</div></div>
+      </button>
+      <button class="opt-action-btn" id="capi-logout-btn" style="margin-top:6px;display:none;">
+        <span class="opt-btn-icon">&#10005;</span>
+        <div><div class="opt-btn-label">Log Out</div><div class="opt-btn-sub">Clears saved cAPI tokens</div></div>
+      </button>
+      <button class="opt-action-btn" id="capi-refresh-btn" style="margin-top:6px;">
+        <span class="opt-btn-icon">&#8635;</span>
+        <div><div class="opt-btn-label">Refresh cAPI Data Now</div><div class="opt-btn-sub" id="capi-refresh-sub">Fetch profile, fleet carrier &amp; community goals</div></div>
       </button>
     </div>
     <div class="opt-section">
@@ -1105,6 +1195,270 @@
       if (p.engineers) renderEngineers(p.engineers);
       if (p.materials) renderMaterials(p.materials);
     });
+  }
+
+  // ═══════════════════════════════════════════════════════════════════════════
+  // FRONTIER cAPI SUB-TAB
+  // ═══════════════════════════════════════════════════════════════════════════
+
+  function fmtCr(n) { return (n == null ? 0 : n).toLocaleString() + ' cr'; }
+
+  // Fleet carrier vanity names come back hex-encoded per Frontier's docs.
+  function hexToStr(hex) {
+    if (!hex) return '';
+    try {
+      var out = '';
+      for (var i = 0; i + 1 < hex.length; i += 2) out += String.fromCharCode(parseInt(hex.substr(i, 2), 16));
+      return out;
+    } catch { return ''; }
+  }
+
+  function statRow(key, val, cls) {
+    return '<div class="stat-row"><span class="stat-key">' + esc(key) + '</span>' +
+           '<span class="stat-val' + (cls ? ' ' + cls : '') + '">' + val + '</span></div>';
+  }
+
+  function showCapiTab(loggedIn) {
+    var noLogin = document.getElementById('capi-tab-no-login');
+    var content = document.getElementById('capi-tab-content');
+    if (noLogin) noLogin.style.display = loggedIn ? 'none' : '';
+    if (content)  content.style.display = loggedIn ? '' : 'none';
+  }
+
+  // ── Stored Ships (from /profile → ships) ────────────────────────────────────
+  function renderStoredShips(profileData) {
+    var el = document.getElementById('capi-stored-ships-list');
+    if (!el) return;
+    var raw = profileData && profileData.rawProfile;
+    if (!raw || !raw.ships) {
+      el.innerHTML = '<div style="color:var(--text-mute);font-size:0.8em;padding:8px 4px;">No stored ship data yet.</div>';
+      return;
+    }
+    var currentId = raw.commander ? raw.commander.currentShipId : null;
+    var ships = Array.isArray(raw.ships) ? raw.ships : Object.values(raw.ships || {});
+    var html = '';
+    ships.forEach(function (s) {
+      if (!s) return;
+      var isCurrent = currentId != null && String(s.id) === String(currentId);
+      html += '<div class="eng-card' + (isCurrent ? ' progress-Unlocked' : '') + '">';
+      html += '<div class="eng-name">' + esc(s.shipName || s.name || 'Unnamed') +
+              (isCurrent ? ' <span style="color:var(--green);">&#9679; current</span>' : '') + '</div>';
+      html += '<div class="eng-status">' + esc(s.name || '') + '</div>';
+      if (s.station && s.station.name) {
+        html += '<div style="font-size:0.72em;color:var(--text-mute);margin-top:4px;">at ' + esc(s.station.name) + '</div>';
+      }
+      if (s.value && s.value.total != null) {
+        html += '<div style="font-size:0.72em;color:var(--gold);margin-top:2px;">' + fmtCr(s.value.total) + '</div>';
+      }
+      html += '</div>';
+    });
+    el.innerHTML = html || '<div style="color:var(--text-mute);font-size:0.8em;padding:8px 4px;">Only one ship on record.</div>';
+  }
+
+  // ── Fleet Carrier ────────────────────────────────────────────────────────────
+  function renderFleetCarrier(fc) {
+    var noneEl    = document.getElementById('capi-carrier-none');
+    var contentEl = document.getElementById('capi-carrier-content');
+    if (!fc) {
+      if (noneEl)    noneEl.style.display = '';
+      if (contentEl) contentEl.style.display = 'none';
+      return;
+    }
+    if (noneEl)    noneEl.style.display = 'none';
+    if (contentEl) contentEl.style.display = '';
+
+    var statsEl = document.getElementById('capi-carrier-stats');
+    if (statsEl) {
+      var vanity = hexToStr(fc.name && fc.name.vanityName);
+      var callsign = (fc.name && fc.name.callsign) || '\u2014';
+      var html = '<div class="stat-group" style="grid-column:1/-1;">' +
+        '<div class="stat-group-title">' + esc(vanity ? vanity + ' \u2014 ' + callsign : callsign) + '</div>';
+      html += statRow('System', esc(fc.currentStarSystem || '\u2014'));
+      html += statRow('Balance', fmtCr(fc.balance), 'gold');
+      html += statRow('Fuel (Tritium)', (fc.fuel != null ? fc.fuel : '\u2014') + ' / 1000');
+      html += statRow('State', esc(fc.state || '\u2014'));
+      html += statRow('Docking Access', esc(fc.dockingAccess || '\u2014'));
+      html += '</div>';
+      if (fc.finance) {
+        html += '<div class="stat-group">' +
+          '<div class="stat-group-title">Finance</div>' +
+          statRow('Bank Balance', fmtCr(fc.finance.bankBalance)) +
+          statRow('Weekly Upkeep', fmtCr(fc.finance.coreCost)) +
+          statRow('Services Cost', fmtCr(fc.finance.servicesCost)) +
+          statRow('Jumps (7d)', fc.finance.numJumps != null ? fc.finance.numJumps : '\u2014') +
+          '</div>';
+      }
+      if (fc.capacity) {
+        html += '<div class="stat-group">' +
+          '<div class="stat-group-title">Capacity</div>' +
+          statRow('Free Space', fc.capacity.freeSpace != null ? fc.capacity.freeSpace + ' t' : '\u2014') +
+          statRow('Cargo (for sale)', fc.capacity.cargoForSale != null ? fc.capacity.cargoForSale + ' t' : '\u2014') +
+          statRow('Ship Packs', fc.capacity.shipPacks != null ? fc.capacity.shipPacks : '\u2014') +
+          statRow('Module Packs', fc.capacity.modulePacks != null ? fc.capacity.modulePacks : '\u2014') +
+          '</div>';
+      }
+      statsEl.innerHTML = html;
+    }
+
+    var ordersEl = document.getElementById('capi-carrier-orders');
+    if (ordersEl) {
+      var oh = '';
+      var commodOrders = fc.orders && fc.orders.commodities;
+      if (commodOrders && commodOrders.sales && commodOrders.sales.length) {
+        oh += '<div style="font-size:0.72em;color:var(--text-dim);margin-top:6px;">Selling</div>';
+        commodOrders.sales.forEach(function (o) {
+          oh += statRow(o.name, fmtCr(o.price) + ' &times; ' + o.stock + (o.blackmarket ? ' &#9679;' : ''));
+        });
+      }
+      if (commodOrders && commodOrders.purchases && commodOrders.purchases.length) {
+        oh += '<div style="font-size:0.72em;color:var(--text-dim);margin-top:6px;">Buying</div>';
+        commodOrders.purchases.forEach(function (o) {
+          oh += statRow(o.name, fmtCr(o.price) + ' \u2014 ' + o.outstanding + '/' + o.total + ' remaining');
+        });
+      }
+      ordersEl.innerHTML = oh || '<div style="color:var(--text-mute);font-size:0.78em;">No active buy/sell orders.</div>';
+    }
+  }
+
+  // ── Community Goals ──────────────────────────────────────────────────────────
+  function renderCommunityGoals(cg) {
+    var el = document.getElementById('capi-cg-list');
+    if (!el) return;
+    var goals = (cg && (cg.communitygoals || cg.CommunityGoals || cg.goals)) || [];
+    if (!Array.isArray(goals) || !goals.length) {
+      el.innerHTML = '<div style="color:var(--text-mute);font-size:0.8em;padding:8px 4px;">No active Community Goals.</div>';
+      return;
+    }
+    var html = '<div class="eng-grid">';
+    goals.forEach(function (g) {
+      var name    = g.title || g.name || 'Community Goal';
+      var system  = g.systemName || g.system || '';
+      var station = g.marketName || g.station || '';
+      var contrib = g.playerContribution != null ? g.playerContribution : null;
+      var total   = g.currentTotal != null ? g.currentTotal : null;
+      var tier    = g.tierReached || g.currentTier || null;
+      var expiry  = g.expiry ? new Date(g.expiry).toLocaleString() : null;
+      html += '<div class="eng-card">';
+      html += '<div class="eng-name">' + esc(name) + '</div>';
+      if (system)  html += '<div class="eng-status">' + esc(system) + (station ? ' \u2014 ' + esc(station) : '') + '</div>';
+      if (total != null)   html += '<div style="font-size:0.72em;color:var(--text-mute);margin-top:4px;">Total contributed: ' + total.toLocaleString() + '</div>';
+      if (contrib != null) html += '<div style="font-size:0.72em;color:var(--cyan);">Your contribution: ' + contrib.toLocaleString() + '</div>';
+      if (tier)    html += '<div style="font-size:0.72em;color:var(--gold);">Tier: ' + esc(String(tier)) + '</div>';
+      if (expiry)  html += '<div style="font-size:0.7em;color:var(--text-mute);margin-top:4px;">Ends: ' + esc(expiry) + '</div>';
+      html += '</div>';
+    });
+    html += '</div>';
+    el.innerHTML = html;
+  }
+
+  // ── Last-Docked Station: Market / Outfitting / Shipyard ─────────────────────
+  function renderCapiMarket(market) {
+    var noneEl = document.getElementById('capi-station-none');
+    var contentEl = document.getElementById('capi-station-content');
+    if (!market || !market.commodities) return; // wait for shipyard to also arrive before deciding "none"
+    if (noneEl)    noneEl.style.display = 'none';
+    if (contentEl) contentEl.style.display = '';
+
+    var nameEl = document.getElementById('capi-station-name');
+    if (nameEl) nameEl.textContent = market.name || '';
+
+    var tableEl = document.getElementById('capi-market-table');
+    if (tableEl) {
+      var commods = market.commodities.slice().sort(function (a, b) {
+        return (b.demand || 0) - (a.demand || 0);
+      }).slice(0, 40);
+      var html = '';
+      commods.forEach(function (c) {
+        html += statRow(
+          c.locName || c.name,
+          'Buy ' + fmtCr(c.buyPrice) + ' / Sell ' + fmtCr(c.sellPrice) +
+          ' (stock ' + c.stock + ', demand ' + c.demand + ')'
+        );
+      });
+      tableEl.innerHTML = html || '<div style="color:var(--text-mute);font-size:0.78em;">No commodities.</div>';
+    }
+  }
+
+  function renderCapiShipyard(shipyard) {
+    var noneEl = document.getElementById('capi-station-none');
+    var contentEl = document.getElementById('capi-station-content');
+    if (!shipyard) return;
+    if (noneEl)    noneEl.style.display = 'none';
+    if (contentEl) contentEl.style.display = '';
+
+    var nameEl = document.getElementById('capi-station-name');
+    if (nameEl && !nameEl.textContent) nameEl.textContent = shipyard.name || '';
+
+    var outfitEl = document.getElementById('capi-outfitting-table');
+    if (outfitEl) {
+      var modules = shipyard.modules ? Object.values(shipyard.modules) : [];
+      var html = '';
+      modules.slice(0, 60).forEach(function (m) {
+        html += statRow(m.name || m.category, fmtCr(m.cost) + (m.stock === -1 ? ' (unlimited)' : ' (stock ' + m.stock + ')'));
+      });
+      outfitEl.innerHTML = html || '<div style="color:var(--text-mute);font-size:0.78em;">No outfitting stock.</div>';
+    }
+
+    var shipEl = document.getElementById('capi-shipyard-table');
+    if (shipEl) {
+      var list = (shipyard.ships && shipyard.ships.shipyard_list)
+        ? Object.values(shipyard.ships.shipyard_list) : [];
+      var html2 = '';
+      list.forEach(function (s) {
+        html2 += statRow(s.name, fmtCr(s.basevalue));
+      });
+      shipEl.innerHTML = html2 || '<div style="color:var(--text-mute);font-size:0.78em;">No ships for sale.</div>';
+    }
+  }
+
+  function refreshCapiLastRefreshLabel(status) {
+    var el = document.getElementById('capi-tab-last-refresh');
+    if (!el) return;
+    if (status && status.refreshing) { el.textContent = 'Refreshing\u2026'; return; }
+    if (status && status.lastRefresh) {
+      el.textContent = 'Last refreshed ' + new Date(status.lastRefresh).toLocaleTimeString();
+    } else if (status && status.lastError) {
+      el.textContent = status.lastError;
+    }
+  }
+
+  // ── Wire up push listeners + replay cache already collected by script.js ────
+  if (window.electronAPI) {
+    if (window.electronAPI.onCapiProfileData) {
+      window.electronAPI.onCapiProfileData(function (data) {
+        showCapiTab(true);
+        renderStoredShips(data);
+      });
+    }
+    if (window.electronAPI.onCapiFleetCarrierData) {
+      window.electronAPI.onCapiFleetCarrierData(function (data) { showCapiTab(true); renderFleetCarrier(data); });
+    }
+    if (window.electronAPI.onCapiCommunityGoalsData) {
+      window.electronAPI.onCapiCommunityGoalsData(function (data) { showCapiTab(true); renderCommunityGoals(data); });
+    }
+    if (window.electronAPI.onCapiMarketData) {
+      window.electronAPI.onCapiMarketData(function (data) { showCapiTab(true); renderCapiMarket(data); });
+    }
+    if (window.electronAPI.onCapiShipyardData) {
+      window.electronAPI.onCapiShipyardData(function (data) { showCapiTab(true); renderCapiShipyard(data); });
+    }
+    if (window.electronAPI.onCapiRefreshStatus) {
+      window.electronAPI.onCapiRefreshStatus(refreshCapiLastRefreshLabel);
+    }
+    // script.js (loaded earlier in this page) may already have cached data
+    // from a replay that fired before this script ran — pick it up immediately.
+    if (window._capiCache) {
+      if (window._capiCache.profile)        { showCapiTab(true); renderStoredShips(window._capiCache.profile); }
+      if (window._capiCache.fleetCarrier !== undefined) { showCapiTab(true); renderFleetCarrier(window._capiCache.fleetCarrier); }
+      if (window._capiCache.communityGoals) { showCapiTab(true); renderCommunityGoals(window._capiCache.communityGoals); }
+      if (window._capiCache.market)         { showCapiTab(true); renderCapiMarket(window._capiCache.market); }
+      if (window._capiCache.shipyard)       { showCapiTab(true); renderCapiShipyard(window._capiCache.shipyard); }
+    }
+    if (window.electronAPI.capiGetStatus) {
+      window.electronAPI.capiGetStatus().then(function (status) {
+        if (status && status.isLoggedIn) showCapiTab(true);
+      }).catch(function () {});
+    }
   }
 
 }());

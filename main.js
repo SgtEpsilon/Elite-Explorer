@@ -4,6 +4,19 @@ const { app, BrowserWindow, ipcMain, shell, dialog, protocol, Menu } = require('
 const path   = require('path');
 const fs     = require('fs');
 
+// ── Single-instance lock — MUST be checked first, before anything else runs ──
+// If this is a second launch, quit immediately and return. Doing this before
+// requiring the engine/services or registering app.whenReady() means the
+// second process never gets far enough to try binding the REST API (3721) or
+// network UI (3722) ports — which is what was causing EADDRINUSE crashes
+// when the app was already running and got launched again.
+const gotLock = app.requestSingleInstanceLock();
+if (!gotLock) {
+  app.quit();
+  return; // no-op if this file is ever required rather than run directly, but
+           // under normal `electron .` / npm start execution this stops here.
+}
+
 // ── Engine / service imports ──────────────────────────────────────────────────
 const logger           = require('./engine/core/logger');
 const journalProvider  = require('./engine/providers/journalProvider');
@@ -12,6 +25,7 @@ const edsmClient       = require('./engine/services/edsmClient');
 const eddnRelay        = require('./engine/services/eddnRelay');
 const edsmSyncService  = require('./engine/services/edsmSyncService');
 const capiService      = require('./engine/services/capiService');
+const capiProvider     = require('./engine/providers/capiProvider');
 const updaterService   = require('./engine/services/updaterService');
 const inaraService     = require('./engine/services/inaraService');
 const engine           = require('./engine/core/engine');
@@ -155,6 +169,7 @@ function createWindow() {
   eddnRelay       .setMainWindow(mainWindow);
   edsmSyncService .setMainWindow(mainWindow);
   capiService     .setMainWindow(mainWindow);
+  capiProvider    .setMainWindow(mainWindow);
   updaterService  .setMainWindow(mainWindow);
 
   // ── Replay cached data whenever any page (re)loads ────────────────────────
@@ -165,6 +180,7 @@ function createWindow() {
     historyProvider.replayToPage();      // → history-data
     journalProvider.replayToPage();      // → live-data, profile-data, bodies-data
     edsmClient.replayToPage();           // → edsm-system, edsm-bodies
+    capiProvider.replayToPage();         // → capi-profile-data, capi-market-data, capi-shipyard-data, capi-fleetcarrier-data, capi-communitygoals-data
   });
 
   mainWindow.on('closed', () => { mainWindow = null; });
@@ -180,7 +196,19 @@ app.whenReady().then(async () => {
     node: process.versions.node,
   });
 
-  app.setAsDefaultProtocolClient('eliteexplorer');
+  // In a packaged build, Windows/macOS can launch the app directly and this
+  // one-liner is enough. When running from source with `npm start` / `electron .`
+  // (process.defaultApp is true), the OS would otherwise register bare
+  // "electron.exe" as the protocol handler with no arguments, so a callback
+  // URI reopens a blank Electron process instead of this app. Passing execPath
+  // + this script's path as the registered launch command fixes that.
+  if (process.defaultApp) {
+    if (process.argv.length >= 2) {
+      app.setAsDefaultProtocolClient('eliteexplorer', process.execPath, [path.resolve(process.argv[1])]);
+    }
+  } else {
+    app.setAsDefaultProtocolClient('eliteexplorer');
+  }
 
   buildMenu();
   createWindow();
@@ -234,6 +262,7 @@ app.whenReady().then(async () => {
   historyProvider.scan();
 
   await capiService.start();
+  capiProvider.start();
 
   // Start auto-updater (checks after 5s, then every 4 hours)
   updaterService.start();
@@ -293,10 +322,11 @@ app.whenReady().then(async () => {
     }
 
     // ── Frontier cAPI ────────────────────────────────────────────────────────
-    if (!cfg.capiClientId) {
-      logger.warn('STARTUP', 'Frontier cAPI Client ID is not set — cAPI features unavailable. Register at https://user.frontierstore.net/developer/docs');
+    const capiStatus = capiService.getStatus();
+    if (!capiStatus.hasClientId) {
+      logger.error('STARTUP', 'This build has no Frontier Client ID baked in — cAPI features unavailable. This is a packaging issue, not something the end user can fix.');
     } else if (!cfg.capiAccessToken) {
-      logger.info('STARTUP', 'Frontier cAPI Client ID set but not logged in');
+      logger.info('STARTUP', 'Frontier cAPI ready — not logged in yet');
     } else {
       const now = Date.now();
       const tokenOk   = cfg.capiTokenExpiry   && now < cfg.capiTokenExpiry   - 60000;
@@ -323,24 +353,34 @@ app.whenReady().then(async () => {
 
 // ── macOS / Linux: custom URI scheme for cAPI OAuth callback ──────────────────
 app.on('open-url', (event, url) => {
+  // DIAGNOSTIC: unconditional — proves whether macOS/Linux ever delivered
+  // the callback URL to this process at all, independent of OAuth state.
+  logger.info('CAPI-DIAG', 'open-url event fired', { url });
   event.preventDefault();
   capiService.handleCallback(url).catch(console.error);
 });
 
 // ── Windows: second-instance carries the custom URI as a CLI arg ──────────────
-const gotLock = app.requestSingleInstanceLock();
-if (!gotLock) {
-  app.quit();
-} else {
-  app.on('second-instance', (_e, argv) => {
-    const url = argv.find(a => a.startsWith('eliteexplorer://'));
-    if (url) capiService.handleCallback(url).catch(console.error);
-    if (mainWindow) {
-      if (mainWindow.isMinimized()) mainWindow.restore();
-      mainWindow.focus();
-    }
-  });
-}
+app.on('second-instance', (_e, argv) => {
+  // DIAGNOSTIC: unconditional — logs the full argv Windows handed us, so we
+  // can see whether a second-instance launch happened at all during login,
+  // and if it did, exactly what string it carried (in case the URL got
+  // mangled/quoted in a way the startsWith('eliteexplorer://') check misses).
+  logger.info('CAPI-DIAG', 'second-instance event fired', { argv });
+
+  const url = argv.find(a => a.startsWith('eliteexplorer://'));
+  if (url) {
+    logger.info('CAPI-DIAG', 'Found eliteexplorer:// URL in argv — calling handleCallback', { url });
+    capiService.handleCallback(url).catch(console.error);
+  } else {
+    logger.warn('CAPI-DIAG', 'second-instance fired but no eliteexplorer:// URL found in argv');
+  }
+
+  if (mainWindow) {
+    if (mainWindow.isMinimized()) mainWindow.restore();
+    mainWindow.focus();
+  }
+});
 
 app.on('window-all-closed', () => {
   if (process.platform !== 'darwin') app.quit();
@@ -564,6 +604,10 @@ ipcMain.handle('capi-logout',      ()       => capiService.logout());
 ipcMain.handle('capi-get-status',  ()       => capiService.getStatus());
 ipcMain.handle('capi-get-profile', ()       => capiService.getProfile());
 ipcMain.handle('capi-get-market',  (_e, id) => capiService.getMarket(id));
+ipcMain.handle('capi-get-shipyard',        () => capiService.getShipyard());
+ipcMain.handle('capi-get-fleetcarrier',    () => capiService.getFleetCarrier());
+ipcMain.handle('capi-get-communitygoals',  () => capiService.getCommunityGoals());
+ipcMain.handle('capi-refresh-all',  (_e, opts) => capiProvider.refreshAll(opts));
 
 // ── Inara sync ────────────────────────────────────────────────────────────────
 // inara-sync-profile: rate-limited (5 min) batched sync with Inara.

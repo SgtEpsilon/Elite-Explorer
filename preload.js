@@ -61,6 +61,18 @@ contextBridge.exposeInMainWorld('electronAPI', {
   capiGetStatus:     ()          => ipcRenderer.invoke('capi-get-status'),
   capiGetProfile:    ()          => ipcRenderer.invoke('capi-get-profile'),
   capiGetMarket:     (id)        => ipcRenderer.invoke('capi-get-market',        id),
+  capiGetShipyard:      ()      => ipcRenderer.invoke('capi-get-shipyard'),
+  capiGetFleetCarrier:  ()      => ipcRenderer.invoke('capi-get-fleetcarrier'),
+  capiGetCommunityGoals:()      => ipcRenderer.invoke('capi-get-communitygoals'),
+  capiRefreshAll:       (opts)  => ipcRenderer.invoke('capi-refresh-all', opts),
+
+  // cAPI: inbound push data (profile/market/shipyard/fleetcarrier/communitygoals + refresh status)
+  onCapiProfileData:        (cb) => on('capi-profile-data',        cb),
+  onCapiMarketData:         (cb) => on('capi-market-data',         cb),
+  onCapiShipyardData:       (cb) => on('capi-shipyard-data',       cb),
+  onCapiFleetCarrierData:   (cb) => on('capi-fleetcarrier-data',   cb),
+  onCapiCommunityGoalsData: (cb) => on('capi-communitygoals-data',cb),
+  onCapiRefreshStatus:      (cb) => on('capi-refresh-status',      cb),
 
   // Inara
   inaraSyncProfile:    (name)     => ipcRenderer.invoke('inara-sync-profile',    name),

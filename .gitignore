@@ -1,4 +1,6 @@
 node_modules/
+.env
+engine/config/frontier-client.local.json
 buildernotes.txt
 Elite-Explorer.zip
 dist/

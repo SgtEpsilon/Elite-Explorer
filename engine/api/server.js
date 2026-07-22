@@ -21,7 +21,21 @@ function start(port) {
     }
   });
 
-  app.listen(listenPort, () => console.log('API running on port', listenPort));
+  const server = app.listen(listenPort, () => console.log('API running on port', listenPort));
+
+  // A failed listen() (e.g. EADDRINUSE from a leftover instance still running)
+  // emits an 'error' event on the server object. Without this handler that
+  // event is unhandled and crashes the entire Electron main process. Log it
+  // and carry on instead — the REST API just won't be available this run.
+  server.on('error', (err) => {
+    if (err && err.code === 'EADDRINUSE') {
+      console.error(`REST API: port ${listenPort} is already in use — is another copy of Elite Explorer already running? Skipping REST API startup.`);
+    } else {
+      console.error('REST API failed to start:', err);
+    }
+  });
+
+  return server;
 }
 
 module.exports = { start };

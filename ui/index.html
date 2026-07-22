@@ -282,6 +282,32 @@
       </button>
     </div>
     <div class="opt-section">
+      <div class="opt-section-title">Frontier cAPI &#8212; Companion API</div>
+      <div class="opt-hint" style="margin-bottom:8px;">
+        Connects to Frontier's servers directly for exact credits, fleet carrier, community goals, and last-docked station market/outfitting data. Just log in with your Frontier/Steam/Xbox/PSN account below.
+      </div>
+      <div style="display:flex;align-items:center;gap:8px;margin-top:10px;">
+        <span id="capi-dot" style="width:8px;height:8px;border-radius:50%;background:var(--border2);display:inline-block;flex-shrink:0;"></span>
+        <span id="capi-status-label" style="font-size:0.75em;font-family:var(--mono);color:var(--text-mute);">NOT AUTHENTICATED</span>
+        <span id="capi-cmdr-badge" style="display:none;font-size:0.72em;color:var(--text-dim);"></span>
+      </div>
+      <div id="capi-expiry-row" style="display:none;font-size:0.7em;color:var(--text-mute);margin-top:4px;">
+        Token expires: <span id="capi-expiry-val">&#8212;</span>
+      </div>
+      <button class="opt-action-btn" id="capi-login-btn" style="margin-top:10px;">
+        <span class="opt-btn-icon">&#8594;</span>
+        <div><div class="opt-btn-label">Log in with Frontier</div><div class="opt-btn-sub" id="capi-login-sub">Opens Frontier auth in your browser</div></div>
+      </button>
+      <button class="opt-action-btn" id="capi-logout-btn" style="margin-top:6px;display:none;">
+        <span class="opt-btn-icon">&#10005;</span>
+        <div><div class="opt-btn-label">Log Out</div><div class="opt-btn-sub">Clears saved cAPI tokens</div></div>
+      </button>
+      <button class="opt-action-btn" id="capi-refresh-btn" style="margin-top:6px;">
+        <span class="opt-btn-icon">&#8635;</span>
+        <div><div class="opt-btn-label">Refresh cAPI Data Now</div><div class="opt-btn-sub" id="capi-refresh-sub">Fetch profile, fleet carrier &amp; community goals</div></div>
+      </button>
+    </div>
+    <div class="opt-section">
       <div class="opt-section-title">Inara &#8212; Commander Profile</div>
       <div style="font-size:0.78em;color:var(--text-mute);margin-bottom:8px;line-height:1.5;">Syncs your CMDR profile from Inara every 5 minutes.</div>
       <div style="margin-top:6px;">

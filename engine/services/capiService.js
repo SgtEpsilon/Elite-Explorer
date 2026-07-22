@@ -26,13 +26,28 @@
  *   Electron's custom protocol handler lets us use eliteexplorer:// which
  *   Frontier accepts as a registered native application URI scheme.
  *
- * ONE-TIME SETUP (register at Frontier developer portal):
+ * WHY ONE SHARED CLIENT ID (same model as EDDiscovery's CAPI submodule)?
+ *   The Client ID identifies the APPLICATION to Frontier, not the person
+ *   running it. Every install of Elite Explorer — everyone who downloads
+ *   the official release — uses the same one Client ID, registered once by
+ *   the maintainer. End users never see a Client ID field anywhere in the
+ *   UI and never register anything themselves; they just click "Log in
+ *   with Frontier" and it works, exactly like EDDiscovery's official builds.
+ *
+ * MAINTAINER ONE-TIME SETUP (not needed by end users, only whoever builds
+ * official releases):
  *   1. Go to https://user.frontierstore.net/developer/docs
- *   2. Register a new application
- *   3. Set the redirect URI to exactly: eliteexplorer://capi/callback
- *   4. Copy the Client ID they give you
- *   5. Enter it in Options > Frontier cAPI > Client ID field
+ *   2. Register an application with redirect URI: eliteexplorer://capi/callback
+ *   3. Copy the Client ID they give you into a local `.env` file (see
+ *      .env.example) as FRONTIER_CLIENT_ID=... — or set it as a real
+ *      environment variable when building in CI. Never commit it (see
+ *      .gitignore) — same reasoning as EDDiscovery keeping its client ID
+ *      out of the CAPI repo's version control entirely.
  *   (No client secret needed — this uses the PKCE public client flow)
+ *
+ * If FRONTIER_CLIENT_ID isn't set, `hasClientId` below is false and cAPI
+ * features are simply unavailable in that build — there is deliberately no
+ * fallback UI asking the user to supply their own.
  * ─────────────────────────────────────────────────────────────────────────────
  */
 
@@ -41,9 +56,67 @@ const path   = require('path');
 const https  = require('https');
 const crypto = require('crypto');
 const { app, shell } = require('electron');
-const logger = require('../core/logger');
+const logger   = require('../core/logger');
+const eventBus = require('../core/eventBus');
+const env      = require('../core/env');
 
-const CONFIG_PATH = path.join(__dirname, '../../config.json');
+// IMPORTANT: this must be the SAME file main.js reads/writes (app.getPath
+// ('userData')/config.json), not the bundled repo config.json under
+// __dirname. The access/refresh tokens saved after a successful login go
+// through this same file via saveTokens() below. If this file used
+// __dirname/../../config.json instead (as it originally did), a token saved
+// here would never be visible to the rest of the app, and vice versa. This
+// also matters in packaged builds: __dirname points inside app.asar, which
+// is read-only, so writeConfig() would throw when saving tokens.
+// writeConfig() would throw when saving tokens.
+// ── Frontier Client ID ─────────────────────────────────────────────────────────
+// This belongs to the APPLICATION (registered once by the developer at
+// https://user.frontierstore.net/developer/docs), not to each person who runs
+// it. Every install of Elite Explorer uses this same Client ID — end users
+// never see or enter one, they just click "Log in with Frontier".
+//
+// IMPORTANT: this is intentionally NOT a literal string in source. A PKCE
+// public client's ID still has to ship inside the built app (there's no way
+// around that — the app needs it to talk to Frontier), but there's no reason
+// for it to also sit in plain text in this file's git history, where anyone
+// browsing the repo can lift it and build a lookalike app that shows *our*
+// registered app identity on Frontier's login screen. Keeping it out of
+// source control at least stops that casual copy-paste path.
+//
+// Loaded from (in order): a real FRONTIER_CLIENT_ID environment variable
+// (e.g. set by CI when building releases), or a .env file in the project
+// root (gitignored — see .env.example for the template). See engine/core/env.js.
+const CLIENT_ID_RAW = env.get('FRONTIER_CLIENT_ID') || '';
+
+// Copy-pasting from Frontier's developer portal can easily drag along a
+// stray tab, space, or newline character that isn't visible on screen but
+// makes the value not match what Frontier has on file — producing exactly
+// an HTTP 401 "Incorrect client credentials" response. Trim it here so
+// that class of mistake can't cause a silent mismatch.
+const CLIENT_ID = CLIENT_ID_RAW.trim();
+
+// ── Diagnostic: confirm what's actually loaded, without printing the whole
+// ID to logs. Catches the two most common setup mistakes: forgetting to
+// replace the placeholder in .env, and hidden whitespace/quote characters
+// that survived copy-paste. If you're getting "Invalid client ID" from
+// Frontier, check this log line first.
+if (!CLIENT_ID) {
+  logger.warn('CAPI', 'FRONTIER_CLIENT_ID is empty or not set — see .env.example');
+} else if (CLIENT_ID === 'your-frontier-client-id-here') {
+  logger.error('CAPI', 'FRONTIER_CLIENT_ID is still the placeholder value from .env.example — edit .env and put your real Client ID in it.');
+} else if (CLIENT_ID_RAW !== CLIENT_ID) {
+  logger.warn('CAPI', 'FRONTIER_CLIENT_ID had leading/trailing whitespace that was trimmed', {
+    rawLength: CLIENT_ID_RAW.length, trimmedLength: CLIENT_ID.length,
+  });
+} else {
+  logger.info('CAPI', 'FRONTIER_CLIENT_ID loaded', {
+    length: CLIENT_ID.length,
+    preview: CLIENT_ID.slice(0, 4) + '...' + CLIENT_ID.slice(-4),
+  });
+}
+
+const userDataDir = (app && app.getPath) ? app.getPath('userData') : path.join(__dirname, '../..');
+const CONFIG_PATH  = path.join(userDataDir, 'config.json');
 
 // ── Frontier endpoints (from official docs) ───────────────────────────────────
 const AUTH_BASE = 'https://auth.frontierstore.net';
@@ -122,23 +195,49 @@ function getAccessToken() { return readConfig().capiAccessToken || null; }
 function generatePKCE() {
   const verifierBytes = crypto.randomBytes(32);
 
-  // Verifier: base64url-encode the bytes, keep trailing =
+  // Verifier: base64url-encode the bytes, strip ALL padding. RFC 7636 restricts
+  // code_verifier to [A-Za-z0-9-._~] — "=" is not a legal character in it.
+  // (Confirmed against EDDiscovery's CAPI.cs, the reference implementation this
+  // login flow is modelled on: its base64UrlEncode() strips "=" unconditionally
+  // and is used for both the verifier and the challenge.)
   const codeVerifier = verifierBytes.toString('base64')
     .replace(/\+/g, '-')
-    .replace(/\//g, '_');
-  // (trailing = intentionally kept)
+    .replace(/\//g, '_')
+    .replace(/=/g, '');
 
-  // Challenge: SHA-256 of the RAW BYTES, then base64url WITHOUT trailing =
-  const challengeDigest = crypto.createHash('sha256').update(verifierBytes).digest();
+  // Challenge: SHA-256 of the ASCII bytes of the code_verifier STRING itself —
+  // NOT of the original random bytes it was derived from. This is what RFC 7636
+  // actually specifies (code_challenge = BASE64URL(SHA256(ASCII(code_verifier)))),
+  // and it's what EDDiscovery does: it hashes Encoding.ASCII.GetBytes(verifier)
+  // where `verifier` is already the encoded string, not the raw bytes. Hashing
+  // verifierBytes instead (as this code previously did) produces a challenge
+  // that Frontier can never match against the verifier sent at token-exchange
+  // time, since it recomputes the hash from the string you sent, not from bytes
+  // it never saw.
+  const challengeDigest = crypto.createHash('sha256').update(codeVerifier, 'ascii').digest();
   const codeChallenge = challengeDigest.toString('base64')
     .replace(/\+/g, '-')
     .replace(/\//g, '_')
-    .replace(/=/g, '');  // must strip = from challenge
+    .replace(/=/g, '');
 
   return { codeVerifier, codeChallenge };
 }
 
 // ── HTTPS helpers ─────────────────────────────────────────────────────────────
+// NOTE ON REDIRECTS: Node's `https` module does NOT follow redirects
+// automatically. EDDiscovery's C# implementation uses HttpWebRequest with
+// AllowAutoRedirect = true and explicitly guards for HttpStatusCode.Found on
+// its GET endpoints — meaning Frontier's cAPI genuinely does 3xx redirect in
+// practice. Without following it ourselves here, those responses show up as
+// an empty body with a 3xx status and get reported as a confusing generic
+// error instead of being handled. httpsGet() below follows a bounded number
+// of redirects, same as a browser would.
+const MAX_REDIRECTS = 5;
+
+// EDDiscovery's token-exchange call explicitly sets `KeepAlive = false`
+// (see URLCallBack in CAPI.cs) — a fix for connection-reuse issues talking to
+// Frontier's auth server specifically. We mirror that here with
+// `Connection: close` on every POST to /token.
 function httpsPost(hostname, urlPath, data) {
   return new Promise((resolve, reject) => {
     const body = new URLSearchParams(data).toString();
@@ -148,6 +247,7 @@ function httpsPost(hostname, urlPath, data) {
         'Content-Type':   'application/x-www-form-urlencoded',
         'Content-Length': Buffer.byteLength(body),
         'User-Agent':     'EliteExplorer/1.0',
+        'Connection':     'close',
       },
     }, (res) => {
       let raw = '';
@@ -164,7 +264,9 @@ function httpsPost(hostname, urlPath, data) {
   });
 }
 
-function httpsGet(hostname, urlPath, accessToken) {
+function httpsGet(hostname, urlPath, accessToken, _redirectCount) {
+  const redirectCount = _redirectCount || 0;
+
   return new Promise((resolve, reject) => {
     const req = https.request({
       hostname, port: 443, path: urlPath, method: 'GET',
@@ -173,6 +275,19 @@ function httpsGet(hostname, urlPath, accessToken) {
         'User-Agent':    'EliteExplorer/1.0',
       },
     }, (res) => {
+      // Follow redirects ourselves (see MAX_REDIRECTS comment above).
+      if ([301, 302, 303, 307, 308].includes(res.statusCode) && res.headers.location) {
+        res.resume(); // discard the (usually empty) redirect body
+        if (redirectCount >= MAX_REDIRECTS) {
+          resolve({ status: res.statusCode, body: {}, _raw: 'Too many redirects' });
+          return;
+        }
+        const next = new URL(res.headers.location, `https://${hostname}${urlPath}`);
+        httpsGet(next.hostname, next.pathname + next.search, accessToken, redirectCount + 1)
+          .then(resolve, reject);
+        return;
+      }
+
       let raw = '';
       res.on('data', c => raw += c);
       res.on('end', () => {
@@ -189,20 +304,33 @@ function httpsGet(hostname, urlPath, accessToken) {
 // ── cAPI HTTP status → error string ──────────────────────────────────────────
 // 401/422 → expired/invalid token (clear and re-login)
 // 418     → Frontier maintenance ("I'm a teapot") — don't clear tokens
-function capiStatusError(status) {
+// Includes whatever body Frontier sent back — it's often a small JSON object
+// with real detail (e.g. {"error":"invalid_token"}), and swallowing it was
+// making every failure look identical and impossible to diagnose from logs.
+function capiStatusError(status, body) {
+  const detail = body && Object.keys(body).length ? ' — ' + JSON.stringify(body) : '';
   if (status === 401 || status === 422) {
     clearTokens();
-    return 'Token expired or invalid — please log in again.';
+    return 'Token expired or invalid — please log in again.' + detail;
   }
-  if (status === 418) return 'Frontier cAPI is in maintenance mode. Try again later.';
-  return 'cAPI returned HTTP ' + status;
+  if (status === 418) return 'Frontier cAPI is in maintenance mode. Try again later.' + detail;
+  return 'cAPI returned HTTP ' + status + detail;
 }
+
+// 204 = Frontier has nothing to return right now. This is NOT a failure — it's
+// the documented, very common state for /market and /shipyard for several
+// seconds right after docking, while Frontier's cache catches up (this is why
+// EDDiscovery retries market/shipyard up to 3 times, 10s apart, instead of
+// treating a single empty response as a hard error). We surface it as its own
+// outcome so callers (capiProvider) can retry instead of logging a false
+// failure.
+const NOT_READY = 'CAPI_NOT_READY';
 
 // ── Token refresh ─────────────────────────────────────────────────────────────
 async function refreshToken() {
   const cfg = readConfig();
-  if (!cfg.capiRefreshToken || !cfg.capiClientId) {
-    throw new Error('No refresh token or Client ID — please log in again.');
+  if (!cfg.capiRefreshToken) {
+    throw new Error('No refresh token — please log in again.');
   }
   if (!hasValidRefreshToken()) {
     clearTokens();
@@ -210,11 +338,12 @@ async function refreshToken() {
   }
 
   logger.debug('CAPI', 'Refreshing access token...');
-  const { status, body } = await httpsPost('auth.frontierstore.net', '/token', {
+  const refreshParams = {
     grant_type:    'refresh_token',
-    client_id:     cfg.capiClientId,
+    client_id:     CLIENT_ID,
     refresh_token: cfg.capiRefreshToken,
-  });
+  };
+  const { status, body } = await httpsPost('auth.frontierstore.net', '/token', refreshParams);
 
   if (body.access_token) {
     const expiresAt = Date.now() + (body.expires_in || 7200) * 1000;
@@ -240,10 +369,8 @@ let _loginTimeout  = null;
 
 function startOAuthLogin() {
   return new Promise((resolve) => {
-    const cfg = readConfig();
-
-    if (!cfg.capiClientId) {
-      resolve({ success: false, error: 'No Client ID saved. Enter your Frontier Client ID in Options and try again.' });
+    if (!CLIENT_ID) {
+      resolve({ success: false, error: 'App is not configured with a Frontier Client ID. This is a bug in the app itself, not something you can fix from Options — please report it.' });
       return;
     }
 
@@ -272,7 +399,7 @@ function startOAuthLogin() {
     // Change to audience=frontier to restrict to Frontier accounts only.
     const loginUrl = AUTH_BASE + '/auth?' + new URLSearchParams({
       response_type:         'code',
-      client_id:             cfg.capiClientId,
+      client_id:             CLIENT_ID,
       redirect_uri:          REDIRECT_URI,
       scope:                 'auth capi',
       audience:              'all',
@@ -342,25 +469,35 @@ async function handleCallback(callbackUrl) {
       return;
     }
 
-    const cfg = readConfig();
-    const { status, body } = await httpsPost('auth.frontierstore.net', '/token', {
+    const codeParams = {
       grant_type:    'authorization_code',
-      client_id:     cfg.capiClientId,
+      client_id:     CLIENT_ID,
       code,
       redirect_uri:  REDIRECT_URI,
       code_verifier: verifier,
-    });
+    };
+    const { status, body } = await httpsPost('auth.frontierstore.net', '/token', codeParams);
 
     if (body.access_token) {
       const expiresAt = Date.now() + (body.expires_in || 7200) * 1000;
       saveTokens(body.access_token, body.refresh_token, expiresAt);
       logger.info('CAPI', 'Login successful — access token saved', { expires: new Date(expiresAt).toISOString() });
 
-      // Push profile to renderer right away
-      try {
-        const profileResult = await getProfile();
-        if (profileResult.success) send('capi-data', { type: 'profile', data: profileResult.data });
-      } catch {}
+      // Bring the app back to the foreground — the browser handed off to us
+      // via the custom protocol, but on most OS/browser combos the browser
+      // tab itself stays open (we don't control that page; it's hosted by
+      // Frontier). Surfacing our own window is the part we CAN do to make
+      // the "come back to the app" handoff feel immediate.
+      if (mainWindow && !mainWindow.isDestroyed()) {
+        if (mainWindow.isMinimized()) mainWindow.restore();
+        mainWindow.show();
+        mainWindow.focus();
+      }
+
+      // Let capiProvider (or anything else listening) know login just
+      // succeeded, so it can sync profile/market/shipyard/fleetcarrier/
+      // communitygoals immediately instead of waiting on its own timer.
+      eventBus.emit('capi.login.success');
 
       resolve({ success: true });
     } else {
@@ -382,7 +519,7 @@ function logout() {
 function getStatus() {
   const cfg = readConfig();
   return {
-    hasClientId:       !!cfg.capiClientId,
+    hasClientId:       !!CLIENT_ID,
     isLoggedIn:        !!cfg.capiAccessToken,
     tokenValid:        hasValidToken(),
     tokenExpiry:       cfg.capiTokenExpiry   || null,
@@ -424,19 +561,23 @@ async function getProfile() {
         },
       };
     }
-    return { success: false, error: capiStatusError(status) };
+    return { success: false, error: capiStatusError(status, body) };
   } catch (err) {
     return { success: false, error: err.message };
   }
 }
 
 // ── Fetch market data ─────────────────────────────────────────────────────────
+// 204 = docked but Frontier's market cache isn't warm yet — not an error.
+// notReady:true tells capiProvider it's worth a short retry, same as
+// EDDiscovery's 3-tries/10s-apart loop for this exact endpoint.
 async function getMarket() {
   try {
     const token = await getToken();
     const { status, body } = await httpsGet('companion.orerve.net', '/market', token);
     if (status === 200) return { success: true, data: body };
-    return { success: false, error: capiStatusError(status) };
+    if (status === 204) return { success: false, notReady: true, error: 'Market data not ready yet.' };
+    return { success: false, error: capiStatusError(status, body) };
   } catch (err) {
     return { success: false, error: err.message };
   }
@@ -448,27 +589,59 @@ async function getShipyard() {
     const token = await getToken();
     const { status, body } = await httpsGet('companion.orerve.net', '/shipyard', token);
     if (status === 200) return { success: true, data: body };
-    return { success: false, error: capiStatusError(status) };
+    if (status === 204) return { success: false, notReady: true, error: 'Shipyard data not ready yet.' };
+    return { success: false, error: capiStatusError(status, body) };
+  } catch (err) {
+    return { success: false, error: err.message };
+  }
+}
+
+// ── Fetch fleet carrier data ───────────────────────────────────────────────────
+// 200 = has a carrier, 204 = doesn't own one (not an error).
+async function getFleetCarrier() {
+  try {
+    const token = await getToken();
+    const { status, body } = await httpsGet('companion.orerve.net', '/fleetcarrier', token);
+    if (status === 200) return { success: true, data: body };
+    if (status === 204) return { success: true, data: null }; // no carrier owned
+    return { success: false, error: capiStatusError(status, body) };
+  } catch (err) {
+    return { success: false, error: err.message };
+  }
+}
+
+// ── Fetch active Community Goals ──────────────────────────────────────────────
+async function getCommunityGoals() {
+  try {
+    const token = await getToken();
+    const { status, body } = await httpsGet('companion.orerve.net', '/communitygoals', token);
+    if (status === 200) return { success: true, data: body };
+    return { success: false, error: capiStatusError(status, body) };
   } catch (err) {
     return { success: false, error: err.message };
   }
 }
 
 // ── Startup ───────────────────────────────────────────────────────────────────
+// NOTE: protocol client registration (app.setAsDefaultProtocolClient) is done
+// ONCE, in main.js, before this function runs — and it's dev-mode aware
+// (passes process.execPath + the app path as launch args when running
+// unpackaged via `npm start`/`electron .`). Do NOT re-register it here: an
+// earlier version of this file called app.setAsDefaultProtocolClient(PROTOCOL)
+// with no extra args, which ran AFTER main.js's registration and silently
+// overwrote the correct Windows registry entry with a bare one — the entry
+// then pointed at plain "electron.exe" with no project path, so a callback
+// URI launched electron.exe with the URL as its only argument. Electron's
+// default_app bootstrap then tried to treat that URL as the app path to load,
+// producing "Unable to find Electron app at ...\callback?code=...".
 function start() {
-  if (app.isReady()) {
-    app.setAsDefaultProtocolClient(PROTOCOL);
-  } else {
-    app.whenReady().then(() => app.setAsDefaultProtocolClient(PROTOCOL));
-  }
-
   const cfg = readConfig();
 
   // ── Startup diagnostics ──────────────────────────────────────────────────
-  if (!cfg.capiClientId) {
-    logger.warn('CAPI', 'No Frontier Client ID configured — cAPI features will be unavailable. Set one in Options > Frontier cAPI.');
+  if (!CLIENT_ID) {
+    logger.error('CAPI', 'No Frontier Client ID found — cAPI features will be unavailable. Copy .env.example to .env and fill in FRONTIER_CLIENT_ID (dev), or set the FRONTIER_CLIENT_ID environment variable when building a release.');
   } else {
-    logger.info('CAPI', 'Frontier Client ID is set');
+    logger.info('CAPI', 'Frontier Client ID is configured');
   }
 
   if (!cfg.capiAccessToken) {
@@ -505,4 +678,5 @@ module.exports = {
   startOAuthLogin, handleCallback,
   logout, getStatus,
   getProfile, getMarket, getShipyard,
+  getFleetCarrier, getCommunityGoals,
 };
