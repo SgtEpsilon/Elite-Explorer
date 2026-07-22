@@ -54,6 +54,7 @@ var _edsmBodies     = [];  // array of EDSM body objects
 var _edsmStations   = [];  // array of EDSM station objects
 var _currentSystem  = null;
 var _showStations   = true; // toggle: show stations/settlements in bodies table
+var _expandedBodyGroups = new Set(); // bodyKey (lowercased body name) → expanded in the bodies table
 
 // Map journal scan data → icon type
 function bodyIconType(b) {
@@ -199,6 +200,74 @@ function buildMergedBodies(system) {
   });
 }
 
+// Group EDSM stations by the planetary body they belong to.
+// EDSM includes a "body" field ({name, id, ...}) on stations/settlements
+// that sit on or orbit a specific body. Stations with no body field are
+// system-wide (e.g. most orbital starports) and are listed separately.
+function groupStationsByBody(stations) {
+  var byBody    = {}; // lowercased body name → [station, ...]
+  var unassigned = [];
+  (stations || []).forEach(function(st) {
+    var bodyName = st.body && st.body.name;
+    if (bodyName) {
+      var key = bodyName.toLowerCase();
+      if (!byBody[key]) byBody[key] = [];
+      byBody[key].push(st);
+    } else {
+      unassigned.push(st);
+    }
+  });
+  return { byBody: byBody, unassigned: unassigned };
+}
+
+// Build a single <tr> for one station/settlement/carrier.
+// extraClass lets callers mark a row as a hidden child of a body group.
+function buildStationRowHtml(st, extraClass) {
+  var stType = st.type || 'Station';
+  var isSettlement = /settlement|surface|planetary|installation/i.test(stType);
+  var isCarrier    = /fleet carrier/i.test(stType);
+  var iconCls      = isSettlement ? 'settlement' : isCarrier ? 'carrier' : 'station';
+  var rowCls       = 'body-station' + (isSettlement ? ' body-settlement' : '') + (extraClass ? ' ' + extraClass : '');
+
+  var distDisplay = st.distanceToArrival != null ? fmtLS(st.distanceToArrival) : '\u2014';
+
+  var services = st.otherServices || [];
+  var serviceHtml = '';
+  if (st.haveMarket)   serviceHtml += '<span class="info-tag poi">Market</span>';
+  if (st.haveShipyard) serviceHtml += '<span class="info-tag poi">Shipyard</span>';
+  if (st.haveOutfitting) serviceHtml += '<span class="info-tag poi">Outfitting</span>';
+  if (services.indexOf('Black Market') !== -1) serviceHtml += '<span class="info-tag alien">B.Market</span>';
+  if (services.indexOf('Material Trader') !== -1) serviceHtml += '<span class="info-tag geo">Materials</span>';
+  if (services.indexOf('Technology Broker') !== -1) serviceHtml += '<span class="info-tag geo">Tech Broker</span>';
+  if (services.indexOf('Interstellar Factors Contact') !== -1) serviceHtml += '<span class="info-tag human">I.Factors</span>';
+
+  var factionHtml = st.controllingFaction && st.controllingFaction.name
+    ? '<div style="font-size:0.75em;color:var(--text-mute);margin-top:1px">' + st.controllingFaction.name + '</div>'
+    : '';
+
+  return (
+    '<tr class="' + rowCls + '">' +
+      '<td style="text-align:center;padding:4px;">' +
+        '<div style="display:flex;justify-content:center;">' +
+          '<div class="body-icon ' + iconCls + '"></div>' +
+        '</div>' +
+      '</td>' +
+      '<td class="body-indent">' +
+        '<div class="body-name-cell">' +
+          '<span class="station-indicator"></span>' +
+          '<span style="font-size:0.9em;font-weight:400;color:var(--text)">' + (st.name || '?') + '</span>' +
+        '</div>' +
+        factionHtml +
+      '</td>' +
+      '<td class="body-class" style="color:var(--text-dim)">' + stType + '</td>' +
+      '<td style="font-size:0.75em;color:var(--text-dim);white-space:nowrap">' + distDisplay + '</td>' +
+      '<td>' + (serviceHtml ? '<div style="margin-top:2px">' + serviceHtml + '</div>' : '') + '</td>' +
+      '<td class="val-cell">\u2014</td>' +
+      '<td class="val-cell muted" style="font-size:0.75em">\u2014</td>' +
+    '</tr>'
+  );
+}
+
 function renderBodies(system) {
   var tbody = document.getElementById('bodies-tbody');
   if (!tbody) return;
@@ -215,6 +284,8 @@ function renderBodies(system) {
   var stars = 0, planets = 0, moons = 0;
   var rows = [];
 
+  var stationGroups = _showStations ? groupStationsByBody(_edsmStations) : { byBody: {}, unassigned: [] };
+
   bodies.forEach(function(entry) {
     var jb  = entry.journal;
     var eb  = entry.edsm;
@@ -225,6 +296,11 @@ function renderBodies(system) {
     var shortName    = shortBodyName(name, sys);
     var isMain       = jb ? (jb.type === 'Star' || !isMoonBody(jb, sys)) : (eb ? eb.type === 'Star' || !isMoonBody(eb, sys) : true);
     var isStar       = (jb && jb.type === 'Star') || (eb && eb.type === 'Star');
+
+    // ── Stations/settlements attached to this body ──
+    var bodyKey          = name.toLowerCase();
+    var attachedStations = stationGroups.byBody[bodyKey] || [];
+    var groupExpanded    = _expandedBodyGroups.has(bodyKey);
 
     var displayClass;
     if (jb && jb.type === 'Star') {
@@ -323,6 +399,17 @@ function renderBodies(system) {
 
     var infoHtml = infoLines.map(function(l) { return '<div>' + l + '</div>'; }).join('');
 
+    // Clickable "N stations ▾/▸" badge shown inline next to the body name,
+    // only when this body actually has stations/settlements attached.
+    var stationBadgeHtml = '';
+    if (attachedStations.length) {
+      stationBadgeHtml =
+        '<span class="body-station-toggle' + (groupExpanded ? ' expanded' : '') + '" data-group="' + bodyKey.replace(/"/g, '&quot;') + '">' +
+          '<span class="body-station-toggle-arrow">' + (groupExpanded ? '\u25be' : '\u25b8') + '</span>' +
+          ' ' + attachedStations.length + ' station' + (attachedStations.length !== 1 ? 's' : '') +
+        '</span>';
+    }
+
     rows.push(
       '<tr class="' + rowClass + '">' +
         '<td style="text-align:center;padding:4px;">' +
@@ -334,6 +421,7 @@ function renderBodies(system) {
           '<div class="body-name-cell">' +
             (!isMain ? '<span class="moon-indicator"></span>' : '') +
             '<span style="font-size:' + (isMain ? '1em' : '0.9em') + ';font-weight:' + (isMain ? '600' : '400') + ';color:' + (isMain ? 'var(--text)' : 'var(--text-dim)') + '">' + shortName + '</span>' +
+            stationBadgeHtml +
           '</div>' +
         '</td>' +
         '<td class="body-class">' + displayClass + '</td>' +
@@ -346,56 +434,23 @@ function renderBodies(system) {
         '<td class="val-cell muted" style="font-size:0.75em">' + (maxValue ? maxValue.toLocaleString() + ' cr' : '—') + '</td>' +
       '</tr>'
     );
+
+    // Hidden-until-expanded rows for this body's stations/settlements.
+    if (attachedStations.length) {
+      attachedStations.forEach(function(st) {
+        rows.push(buildStationRowHtml(st, 'body-station-child' + (groupExpanded ? ' expanded' : '')));
+      });
+    }
   });
 
-  // ── Station / Settlement rows ────────────────────────────────────────────
-  if (_showStations && _edsmStations.length) {
-    _edsmStations.forEach(function(st) {
-      var stType = st.type || 'Station';
-      // Classify: settlement vs station
-      var isSettlement = /settlement|surface|planetary|installation/i.test(stType);
-      var isCarrier    = /fleet carrier/i.test(stType);
-      var isMegaship   = /megaship|dockable/i.test(stType);
-      var iconCls      = isSettlement ? 'settlement' : isCarrier ? 'carrier' : 'station';
-      var rowCls       = 'body-station' + (isSettlement ? ' body-settlement' : '');
-
-      var distDisplay = st.distanceToArrival != null ? fmtLS(st.distanceToArrival) : '—';
-
-      // Services as small tags
-      var services = st.otherServices || [];
-      var serviceHtml = '';
-      if (st.haveMarket)   serviceHtml += '<span class="info-tag poi">Market</span>';
-      if (st.haveShipyard) serviceHtml += '<span class="info-tag poi">Shipyard</span>';
-      if (st.haveOutfitting) serviceHtml += '<span class="info-tag poi">Outfitting</span>';
-      if (services.indexOf('Black Market') !== -1) serviceHtml += '<span class="info-tag alien">B.Market</span>';
-      if (services.indexOf('Material Trader') !== -1) serviceHtml += '<span class="info-tag geo">Materials</span>';
-      if (services.indexOf('Technology Broker') !== -1) serviceHtml += '<span class="info-tag geo">Tech Broker</span>';
-      if (services.indexOf('Interstellar Factors Contact') !== -1) serviceHtml += '<span class="info-tag human">I.Factors</span>';
-
-      var factionHtml = st.controllingFaction && st.controllingFaction.name
-        ? '<div style="font-size:0.75em;color:var(--text-mute);margin-top:1px">' + st.controllingFaction.name + '</div>'
-        : '';
-
-      rows.push(
-        '<tr class="' + rowCls + '">' +
-          '<td style="text-align:center;padding:4px;">' +
-            '<div style="display:flex;justify-content:center;">' +
-              '<div class="body-icon ' + iconCls + '"></div>' +
-            '</div>' +
-          '</td>' +
-          '<td>' +
-            '<div class="body-name-cell">' +
-              '<span style="font-size:0.9em;font-weight:400;color:var(--text)">' + (st.name || '?') + '</span>' +
-            '</div>' +
-            factionHtml +
-          '</td>' +
-          '<td class="body-class" style="color:var(--text-dim)">' + stType + '</td>' +
-          '<td style="font-size:0.75em;color:var(--text-dim);white-space:nowrap">' + distDisplay + '</td>' +
-          '<td>' + (serviceHtml ? '<div style="margin-top:2px">' + serviceHtml + '</div>' : '') + '</td>' +
-          '<td class="val-cell">—</td>' +
-          '<td class="val-cell muted" style="font-size:0.75em">—</td>' +
-        '</tr>'
-      );
+  // ── Stations EDSM didn't attach to any specific body ──────────────────────
+  // (mostly plain orbital starports that just orbit the system, not a body)
+  if (_showStations && stationGroups.unassigned.length) {
+    rows.push(
+      '<tr class="body-section-header"><td colspan="7">Other Stations (Orbital / No Body Data)</td></tr>'
+    );
+    stationGroups.unassigned.forEach(function(st) {
+      rows.push(buildStationRowHtml(st, ''));
     });
   }
 
@@ -410,6 +465,18 @@ function renderBodies(system) {
   set('sum-moons',   moons);
   set('sum-total',   stars + planets + moons);
 }
+
+// One delegated listener handles every "N stations ▸" badge, in every body
+// row, forever — even after the table is fully rebuilt by renderBodies().
+document.addEventListener('click', function(e) {
+  var toggle = e.target.closest && e.target.closest('.body-station-toggle');
+  if (!toggle) return;
+  var key = toggle.getAttribute('data-group');
+  if (!key) return;
+  if (_expandedBodyGroups.has(key)) _expandedBodyGroups.delete(key);
+  else _expandedBodyGroups.add(key);
+  renderBodies();
+});
 
 function populateBodies() {
   renderBodies(_currentSystem);
@@ -829,6 +896,7 @@ if (window.electronAPI) {
       _edsmBodies     = [];
       _edsmStations   = [];
       _scanEntries    = {};
+      _expandedBodyGroups = new Set();
       renderBodiesDebounced(data.system);
       renderScans();
 

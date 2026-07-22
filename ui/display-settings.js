@@ -24,6 +24,12 @@ var THEMES = {
     '--cyan':'#ffd24d', '--cyan2':'#ffe08a',
     '--cyan-dim':'rgba(255,210,77,0.10)', '--cyan-rgb':'255,210,77',
   },
+  cyan: {
+    '--gold':'#2fb8ff', '--gold2':'#8fe0ff', '--gold-dim':'#145a80',
+    '--gold-glow':'rgba(47,184,255,0.18)', '--gold-rgb':'47,184,255',
+    '--cyan':'#6df0ff', '--cyan2':'#b3f7ff',
+    '--cyan-dim':'rgba(109,240,255,0.10)', '--cyan-rgb':'109,240,255',
+  },
   red: {
     '--gold':'#ff4d3d', '--gold2':'#ff8a7a', '--gold-dim':'#8a221a',
     '--gold-glow':'rgba(255,77,61,0.18)', '--gold-rgb':'255,77,61',

@@ -541,6 +541,61 @@ tr.body-settlement td {
 }
 tr.body-settlement:hover { background: rgba(var(--gold-rgb),0.025); }
 
+/* ── Inline "N stations ▸" badge on a body row, click to expand/collapse ── */
+.body-station-toggle {
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  margin-left: 8px;
+  padding: 1px 7px;
+  font-family: var(--mono);
+  font-size: 0.75em;
+  letter-spacing: 0.03em;
+  color: var(--cyan);
+  background: rgba(var(--cyan-rgb),0.08);
+  border: 1px solid rgba(var(--cyan-rgb),0.3);
+  border-radius: 10px;
+  cursor: pointer;
+  user-select: none;
+  transition: background 0.15s, color 0.15s;
+}
+.body-station-toggle:hover {
+  background: rgba(var(--cyan-rgb),0.16);
+  color: var(--cyan2);
+}
+.body-station-toggle.expanded {
+  background: rgba(var(--cyan-rgb),0.18);
+}
+.body-station-toggle-arrow {
+  display: inline-block;
+  font-size: 0.85em;
+}
+
+/* Station/settlement rows nested under a body: hidden until expanded */
+tr.body-station-child { display: none; }
+tr.body-station-child.expanded { display: table-row; }
+.station-indicator {
+  display: inline-block;
+  width: 10px;
+  height: 1px;
+  background: var(--border2);
+  margin-right: 4px;
+  margin-left: 8px;
+  vertical-align: middle;
+}
+
+/* Small header row for the leftover "no body data" stations block */
+tr.body-section-header td {
+  padding: 8px 10px 4px;
+  font-family: var(--display);
+  font-size: 0.7em;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: var(--text-mute);
+  border-bottom: 1px solid var(--border);
+  background: transparent;
+}
+
 /* ═══════════════════════════════════════════════════════
    MISSIONS PANEL
 ═══════════════════════════════════════════════════════ */
