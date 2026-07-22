@@ -11,8 +11,8 @@
     "build:win": "node scripts/check-client-id.js && electron-builder --win",
     "build:mac": "node scripts/check-client-id.js && electron-builder --mac",
     "build:linux": "node scripts/check-client-id.js && electron-builder --linux",
-    "publish:stable": "electron-builder --publish always",
-    "publish:beta": "electron-builder --publish always --config electron-builder.beta.json"
+    "publish:stable": "node scripts/check-client-id.js && electron-builder --publish always",
+    "publish:beta": "node scripts/check-client-id.js && electron-builder --publish always -c.publish.releaseType=prerelease -c.publish.channel=beta"
   },
   "author": "CMDR Epsilon",
   "license": "MIT",
@@ -30,7 +30,7 @@
   "build": {
     "appId": "com.cmdr-epsilon.elite-explorer",
     "productName": "Elite Explorer",
-    "copyright": "Copyright \u00a9 2025 CMDR Epsilon",
+    "copyright": "Copyright © 2025 CMDR Epsilon",
     "icon": "build/icon.png",
     "files": [
       "main.js",
