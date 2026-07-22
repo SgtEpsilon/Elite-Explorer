@@ -195,18 +195,30 @@ function getAccessToken() { return readConfig().capiAccessToken || null; }
 function generatePKCE() {
   const verifierBytes = crypto.randomBytes(32);
 
-  // Verifier: base64url-encode the bytes, keep trailing =
+  // Verifier: base64url-encode the bytes, strip ALL padding. RFC 7636 restricts
+  // code_verifier to [A-Za-z0-9-._~] — "=" is not a legal character in it.
+  // (Confirmed against EDDiscovery's CAPI.cs, the reference implementation this
+  // login flow is modelled on: its base64UrlEncode() strips "=" unconditionally
+  // and is used for both the verifier and the challenge.)
   const codeVerifier = verifierBytes.toString('base64')
     .replace(/\+/g, '-')
-    .replace(/\//g, '_');
-  // (trailing = intentionally kept)
+    .replace(/\//g, '_')
+    .replace(/=/g, '');
 
-  // Challenge: SHA-256 of the RAW BYTES, then base64url WITHOUT trailing =
-  const challengeDigest = crypto.createHash('sha256').update(verifierBytes).digest();
+  // Challenge: SHA-256 of the ASCII bytes of the code_verifier STRING itself —
+  // NOT of the original random bytes it was derived from. This is what RFC 7636
+  // actually specifies (code_challenge = BASE64URL(SHA256(ASCII(code_verifier)))),
+  // and it's what EDDiscovery does: it hashes Encoding.ASCII.GetBytes(verifier)
+  // where `verifier` is already the encoded string, not the raw bytes. Hashing
+  // verifierBytes instead (as this code previously did) produces a challenge
+  // that Frontier can never match against the verifier sent at token-exchange
+  // time, since it recomputes the hash from the string you sent, not from bytes
+  // it never saw.
+  const challengeDigest = crypto.createHash('sha256').update(codeVerifier, 'ascii').digest();
   const codeChallenge = challengeDigest.toString('base64')
     .replace(/\+/g, '-')
     .replace(/\//g, '_')
-    .replace(/=/g, '');  // must strip = from challenge
+    .replace(/=/g, '');
 
   return { codeVerifier, codeChallenge };
 }
