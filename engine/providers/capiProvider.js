@@ -30,6 +30,30 @@ const logger      = require('../core/logger');
 const eventBus    = require('../core/eventBus');
 const capiService = require('../services/capiService');
 
+// Frontier's /market and /shipyard commonly return 204 for a few seconds
+// right after docking while its server-side cache catches up — this is not
+// a failure, just "not ready yet". EDDiscovery handles this with 3 tries,
+// 10 seconds apart; we mirror that here rather than giving up on the first
+// empty response and waiting a full 5 minutes for the next auto-refresh.
+const NOT_READY_RETRIES    = 3;
+const NOT_READY_RETRY_MS   = 10 * 1000;
+
+function sleep(ms) { return new Promise((resolve) => setTimeout(resolve, ms)); }
+
+// Calls fetchFn() up to NOT_READY_RETRIES times, waiting between attempts,
+// as long as it keeps coming back with { notReady: true }. Any other
+// success or failure returns immediately.
+async function fetchWithNotReadyRetry(fetchFn, label) {
+  let result;
+  for (let attempt = 1; attempt <= NOT_READY_RETRIES; attempt++) {
+    result = await fetchFn();
+    if (result.success || !result.notReady) return result;
+    logger.debug('CAPI', `${label} not ready yet (attempt ${attempt}/${NOT_READY_RETRIES})`);
+    if (attempt < NOT_READY_RETRIES) await sleep(NOT_READY_RETRY_MS);
+  }
+  return result;
+}
+
 // Minimum time between refreshAll() runs, regardless of trigger source.
 const MIN_REFRESH_INTERVAL_MS = 60 * 1000;
 // Auto-refresh cadence while logged in (station data goes stale fast, but we
@@ -109,7 +133,7 @@ async function refreshAll(opts) {
 
     // ── 2. Market + Shipyard/Outfitting — only meaningful while docked ──────
     if (docked) {
-      const marketResult = await capiService.getMarket();
+      const marketResult = await fetchWithNotReadyRetry(() => capiService.getMarket(), 'Market');
       if (marketResult.success) {
         cache.market = marketResult.data;
         send('capi-market-data', cache.market);
@@ -117,7 +141,7 @@ async function refreshAll(opts) {
         logger.warn('CAPI', 'Market refresh failed', { error: marketResult.error });
       }
 
-      const shipyardResult = await capiService.getShipyard();
+      const shipyardResult = await fetchWithNotReadyRetry(() => capiService.getShipyard(), 'Shipyard');
       if (shipyardResult.success) {
         cache.shipyard = shipyardResult.data;
         send('capi-shipyard-data', cache.shipyard);
