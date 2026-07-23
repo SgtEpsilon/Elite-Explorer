@@ -280,45 +280,59 @@
 
       <div id="capi-tab-content" style="display:none;">
 
-        <!-- Stored Ships -->
-        <div class="prof-section" style="border-bottom:1px solid var(--border);">
-          <div class="prof-title" style="font-size:0.85em;">Stored Ships</div>
-          <div id="capi-stored-ships-list" class="eng-grid"></div>
+        <!-- Nested sub-tabs within Frontier cAPI -->
+        <div class="capi-subtab-bar">
+          <button class="capi-subtab active" data-capisubtab="overview">Overview</button>
+          <button class="capi-subtab" data-capisubtab="carrier">Fleet Carrier</button>
         </div>
 
-        <!-- Fleet Carrier -->
-        <div class="prof-section" style="border-bottom:1px solid var(--border);">
-          <div class="prof-title" style="font-size:0.85em;">Fleet Carrier</div>
-          <div id="capi-carrier-none" style="color:var(--text-mute);font-size:0.8em;">No fleet carrier owned.</div>
-          <div id="capi-carrier-content" style="display:none;">
-            <div class="stats-cols" id="capi-carrier-stats"></div>
-            <div style="margin-top:12px;">
-              <div class="prof-title" style="font-size:0.78em;color:var(--text-dim);">Cargo &amp; Orders</div>
-              <div id="capi-carrier-orders"></div>
+        <div id="capi-subpage-overview" class="capi-subpage active">
+
+          <!-- Stored Ships -->
+          <div class="prof-section" style="border-bottom:1px solid var(--border);">
+            <div class="prof-title" style="font-size:0.85em;">Stored Ships</div>
+            <div id="capi-stored-ships-list" class="eng-grid"></div>
+          </div>
+
+          <!-- Community Goals -->
+          <div class="prof-section" style="border-bottom:1px solid var(--border);">
+            <div class="prof-title" style="font-size:0.85em;">Active Community Goals</div>
+            <div id="capi-cg-list"></div>
+          </div>
+
+          <!-- Last Docked Station: Market & Outfitting -->
+          <div class="prof-section">
+            <div class="prof-title" style="font-size:0.85em;">Last Station &#8212; Market &amp; Outfitting</div>
+            <div id="capi-station-none" style="color:var(--text-mute);font-size:0.8em;">No station data yet &#8212; dock and use Options &#9881; &rarr; Refresh cAPI Data.</div>
+            <div id="capi-station-content" style="display:none;">
+              <div style="font-size:0.78em;color:var(--text-dim);margin-bottom:6px;" id="capi-station-name"></div>
+              <div class="prof-title" style="font-size:0.75em;color:var(--text-mute);">Commodities</div>
+              <div id="capi-market-table"></div>
+              <div class="prof-title" style="font-size:0.75em;color:var(--text-mute);margin-top:10px;">Outfitting</div>
+              <div id="capi-outfitting-table"></div>
+              <div class="prof-title" style="font-size:0.75em;color:var(--text-mute);margin-top:10px;">Shipyard</div>
+              <div id="capi-shipyard-table"></div>
             </div>
           </div>
-        </div>
 
-        <!-- Community Goals -->
-        <div class="prof-section" style="border-bottom:1px solid var(--border);">
-          <div class="prof-title" style="font-size:0.85em;">Active Community Goals</div>
-          <div id="capi-cg-list"></div>
-        </div>
+        </div><!-- /capi-subpage-overview -->
 
-        <!-- Last Docked Station: Market & Outfitting -->
-        <div class="prof-section">
-          <div class="prof-title" style="font-size:0.85em;">Last Station &#8212; Market &amp; Outfitting</div>
-          <div id="capi-station-none" style="color:var(--text-mute);font-size:0.8em;">No station data yet &#8212; dock and use Options &#9881; &rarr; Refresh cAPI Data.</div>
-          <div id="capi-station-content" style="display:none;">
-            <div style="font-size:0.78em;color:var(--text-dim);margin-bottom:6px;" id="capi-station-name"></div>
-            <div class="prof-title" style="font-size:0.75em;color:var(--text-mute);">Commodities</div>
-            <div id="capi-market-table"></div>
-            <div class="prof-title" style="font-size:0.75em;color:var(--text-mute);margin-top:10px;">Outfitting</div>
-            <div id="capi-outfitting-table"></div>
-            <div class="prof-title" style="font-size:0.75em;color:var(--text-mute);margin-top:10px;">Shipyard</div>
-            <div id="capi-shipyard-table"></div>
+        <div id="capi-subpage-carrier" class="capi-subpage">
+
+          <!-- Fleet Carrier -->
+          <div class="prof-section">
+            <div class="prof-title" style="font-size:0.85em;">Fleet Carrier</div>
+            <div id="capi-carrier-none" style="color:var(--text-mute);font-size:0.8em;">No fleet carrier owned.</div>
+            <div id="capi-carrier-content" style="display:none;">
+              <div class="stats-cols" id="capi-carrier-stats"></div>
+              <div style="margin-top:12px;">
+                <div class="prof-title" style="font-size:0.78em;color:var(--text-dim);">Cargo &amp; Orders</div>
+                <div id="capi-carrier-orders"></div>
+              </div>
+            </div>
           </div>
-        </div>
+
+        </div><!-- /capi-subpage-carrier -->
 
       </div><!-- /capi-tab-content -->
     </div><!-- /prof-subpage-capi -->
@@ -902,6 +916,21 @@
       subpages.forEach(function (p) { p.classList.remove('active'); });
       btn.classList.add('active');
       var page = document.getElementById('prof-subpage-' + target);
+      if (page) page.classList.add('active');
+    });
+  });
+
+  // ── Nested sub-tab switching within Frontier cAPI (Overview / Fleet Carrier) ──
+  var capiTabs     = document.querySelectorAll('.capi-subtab');
+  var capiSubpages = document.querySelectorAll('.capi-subpage');
+
+  capiTabs.forEach(function (btn) {
+    btn.addEventListener('click', function () {
+      var target = btn.getAttribute('data-capisubtab');
+      capiTabs.forEach(function (t) { t.classList.remove('active'); });
+      capiSubpages.forEach(function (p) { p.classList.remove('active'); });
+      btn.classList.add('active');
+      var page = document.getElementById('capi-subpage-' + target);
       if (page) page.classList.add('active');
     });
   });

@@ -705,6 +705,26 @@ tr.body-section-header td {
 .prof-subpage { display: none; }
 .prof-subpage.active { display: block; }
 
+/* Nested sub-tabs within Frontier cAPI (Overview / Fleet Carrier) */
+.capi-subtab-bar {
+  display: flex; align-items: center; gap: 2px;
+  padding: 0 20px; background: var(--bg);
+  border-bottom: 1px solid var(--border);
+}
+.capi-subtab {
+  font-family: var(--mono); font-size: 0.6111em;
+  letter-spacing: 0.1em; text-transform: uppercase;
+  color: var(--text-mute); background: transparent;
+  border: none; border-bottom: 2px solid transparent;
+  padding: 8px 12px 7px; cursor: pointer;
+  transition: color 0.15s, border-color 0.15s;
+}
+.capi-subtab:hover { color: var(--text-dim); }
+.capi-subtab.active { color: var(--gold2); border-bottom-color: var(--gold2); }
+
+.capi-subpage { display: none; }
+.capi-subpage.active { display: block; }
+
 /* Engineers */
 .eng-grid {
   display: grid; grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
@@ -992,6 +1012,14 @@ tr.body-section-header td {
 @keyframes statusPulse { 0%,100%{opacity:1} 50%{opacity:0.4} }
 .status-text  { font-family: var(--mono); font-size: 0.75em; color: var(--text-dim); letter-spacing: 0.06em; flex: 1; }
 .status-meta  { font-family: var(--mono); font-size: 0.6667em; color: var(--text-mute); }
+
+#clear-cache-btn {
+  font-family: var(--mono); font-size: 0.6667em; letter-spacing: 0.1em;
+  text-transform: uppercase; color: var(--text-mute);
+  background: transparent; border: 1px solid var(--border2);
+  padding: 4px 10px; cursor: pointer; margin-left: auto; transition: all 0.15s;
+}
+#clear-cache-btn:hover { background: rgba(255,68,56,0.1); border-color: var(--red); color: var(--red); }
 
 #spansh-progress-bar-wrap { display: none; height: 2px; background: var(--border); flex-shrink: 0; }
 #spansh-progress-bar-fill { height: 100%; background: linear-gradient(to right, rgba(var(--gold-rgb),0.5), var(--gold)); width: 0%; transition: width 0.25s ease; }

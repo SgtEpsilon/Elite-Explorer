@@ -933,11 +933,22 @@ if (window.electronAPI) {
 
       var incomingSystem = data.system || _currentSystem;
 
-      // If the system changed, flush stale EDSM bodies and scan entries
+      // NOTE: the live journal worker re-parses the whole current journal
+      // file from scratch on every change, so a single in-game scan replays
+      // every earlier jump in that file, each re-posting bodies-data for the
+      // system it belonged to at the time. Treating each of those as a
+      // "system change" here is legitimate for _journalBodies itself (it's
+      // just chronological reconstruction and self-corrects by the final
+      // message), but EDSM/station data is a separate cache on the backend
+      // that's deduplicated by system name (see edsmClient.js lookupSystem)
+      // — it will NOT be re-sent once we're confirmed to already be in a
+      // system, so wiping it here on a same-session historical replay
+      // permanently blanks it with nothing to refill it. Real system
+      // changes are already handled correctly (and just once, in order) by
+      // onLocation's isNewSystem branch below, so we no longer touch EDSM
+      // state from this handler at all.
       if (incomingSystem && incomingSystem !== _currentSystem) {
-        _edsmBodies   = [];
-        _edsmStations = [];
-        _scanEntries  = {};
+        _scanEntries = {};
       }
 
       _currentSystem  = incomingSystem;
