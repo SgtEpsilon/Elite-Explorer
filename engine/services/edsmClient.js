@@ -98,10 +98,17 @@ function normalizeName(n) { return String(n || '').trim().toLowerCase(); }
 // changes to consume whichever source a given station came from.
 function spanshStationToEdsmShape(s, bodiesById) {
   const services = Array.isArray(s.services) ? s.services : [];
+  // Keep the numeric body id alongside the name (not just the name) —
+  // Spansh correlates a station to a body by id internally (bodiesById is
+  // keyed by that same id), and carrying it through lets the renderer match
+  // stations to bodies by id instead of by name string. Name strings can go
+  // stale relative to each other (a body or station renamed independently)
+  // in a way a stable internal id doesn't.
+  const bodyId = (s.body && s.body.id != null) ? s.body.id : (s.bodyId != null ? s.bodyId : null);
   const body = (s.body && s.body.name)
-    ? { name: s.body.name }
-    : (s.bodyId != null && bodiesById && bodiesById[s.bodyId])
-      ? { name: bodiesById[s.bodyId] }
+    ? { name: s.body.name, id: bodyId }
+    : (bodyId != null && bodiesById && bodiesById[bodyId])
+      ? { name: bodiesById[bodyId], id: bodyId }
       : null;
   return {
     name:              s.name || '?',
@@ -122,6 +129,7 @@ function spanshStationToEdsmShape(s, bodiesById) {
 
 function spanshBodyToEdsmShape(b) {
   return {
+    id:                b.id != null ? b.id : null,
     name:              b.name || '?',
     type:              b.type || null,
     subType:           b.subType || null,

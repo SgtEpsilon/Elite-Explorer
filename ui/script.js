@@ -46,6 +46,24 @@ function log(msg, type = 'info') {
   }
 }
 
+// ─── STATION/SETTLEMENT TYPE TABLES ───────────────────────────────
+// Authoritative station type strings, ported from ICARUS Terminal
+// (src/shared/consts.js), used to classify a station's icon/role instead of
+// guessing from a regex over the free-text `type` string.
+const SPACE_STATIONS = ['Coriolis Starport', 'Ocellus Starport', 'Orbis Starport', 'Asteroid base', 'Outpost'];
+const SURFACE_PORTS = ['Planetary Port', 'Planetary Outpost', 'Workshop'];
+const PLANETARY_OUTPOSTS = ['Military Outpost', 'Scientific Outpost', 'Commercial Outpost', 'Mining Outpost', 'Industrial Outpost', 'Civilian Outpost', 'Planetary Settlement'];
+const SETTLEMENTS = ['Odyssey Settlement', 'Planetary settlement']; // EDSM/Spansh both use various casings
+const PLANETARY_BASES = SURFACE_PORTS.concat(PLANETARY_OUTPOSTS).concat(SETTLEMENTS);
+const MEGASHIPS = ['Mega ship', 'Installation', 'Capital Ship Dock', 'Carrier Construction Dock'];
+// Every recognised station/settlement type. In-game, orbital starports and
+// outposts orbit one specific body just as much as a surface settlement
+// sits on one — EDSM/Spansh simply don't always say which. So the nearest-
+// body-by-distance fallback (see groupStationsByBody) applies to this whole
+// list, not just surface facilities, mirroring ICARUS's system-map.js scope
+// (`SPACE_STATIONS.concat(PLANETARY_BASES).concat(MEGASHIPS)`).
+const ALL_STATION_TYPES = SPACE_STATIONS.concat(PLANETARY_BASES).concat(MEGASHIPS);
+
 // ─── BODY RENDERING ───────────────────────────────────────────────
 // State: journal scan data + EDSM data are merged here.
 var _journalBodies = {};   // bodyName → journal Scan entry
@@ -211,23 +229,103 @@ function mergeAllStations(journalStations, edsmStations) {
   return Object.values(byName);
 }
 
-// Group EDSM stations by the planetary body they belong to.
-// EDSM includes a "body" field ({name, id, ...}) on stations/settlements
-// that sit on or orbit a specific body. Stations with no body field are
-// system-wide (e.g. most orbital starports) and are listed separately.
-function groupStationsByBody(stations) {
+// Group stations by the planetary body they belong to.
+// EDSM/Spansh include a "body" field ({name, id, ...}) on stations/settlements
+// that sit on or orbit a specific body, but in practice this field is often
+// missing entirely — EDSM's crowd-submitted station data frequently lacks it
+// (especially for entries no Spansh cross-reference has confirmed), and it's
+// also legitimately absent if the body itself has never been scanned by
+// anyone (a station can exist in EDSM/Spansh's static data before any
+// commander has ever scanned the body it sits on). Either way, id/name
+// matching alone can't place these.
+//
+// Matching happens in three stages, in order of trust:
+//   1. Body id (most reliable — stable even if display names drift or a
+//      body gets renamed). Mirrors ICARUS Terminal's system-map.js, which
+//      matches `systemObjectParent.id === systemObject.body.id`.
+//   2. Body name (fallback when only a bare name survived, no id).
+//   3. Nearest body by distanceToArrival — for surface-type stations only
+//      (settlements/outposts/ports; never plain orbital stations, which
+//      really don't have "a" body). This mirrors ICARUS's getNearestPlanet
+//      heuristic (system-map.js), used there to position stations with no
+//      known body on the system map. It's a best guess, not a confirmed
+//      placement, so these are tagged `_bodyMatchApprox: true` for the UI
+//      to flag as such.
+//
+// Ids are only ever compared within the same data source (EDSM ids and
+// Spansh ids are separate, unrelated numbering spaces — a raw numeric match
+// across the two would be a coincidence, not a real match).
+function groupStationsByBody(stations, bodies) {
   var byBody    = {}; // lowercased body name → [station, ...]
   var unassigned = [];
+
+  // sourceKey:id → lowercased body name
+  var idToBodyName = {};
+  // Candidates for the nearest-by-distance fallback: non-star bodies with a
+  // known distance from arrival (a settlement/outpost sits on a planet or
+  // moon, never directly on the star itself).
+  var planetCandidates = [];
+
+  (bodies || []).forEach(function(entry) {
+    var jb = entry.journal, eb = entry.edsm;
+    var name = (jb && jb.name) || (eb && eb.name);
+    if (!name) return;
+    var key = name.toLowerCase();
+
+    if (eb && eb.id != null) {
+      idToBodyName[(eb.source || 'edsm') + ':' + eb.id] = key;
+    }
+
+    var type = (jb && jb.type) || (eb && eb.type);
+    var distance = (jb && jb.distanceFromArrival) || (eb && eb.distanceToArrival);
+    if (type !== 'Star' && distance != null) {
+      planetCandidates.push({ key: key, distance: distance });
+    }
+  });
+
   (stations || []).forEach(function(st) {
-    var bodyName = st.body && st.body.name;
-    if (bodyName) {
-      var key = bodyName.toLowerCase();
+    var body = st.body;
+    var key = null;
+
+    if (body) {
+      if (body.id != null) {
+        var srcKey = (body.source || st.source || 'edsm') + ':' + body.id;
+        if (idToBodyName[srcKey]) key = idToBodyName[srcKey];
+      }
+      if (!key && body.name) key = body.name.toLowerCase();
+    }
+
+    // Fallback: nearest body by distance. Applies to any station type
+    // except Fleet Carriers (which move around and aren't meaningfully tied
+    // to one body). Deliberately not gated on an exact type-string match
+    // against ALL_STATION_TYPES — EDSM/Spansh don't always report the full
+    // type string consistently (e.g. a plain "Orbis" instead of "Orbis
+    // Starport" has been seen in practice), and every *real* station in the
+    // game does orbit or sit on something, even if that something is just
+    // the nearest star in a planet-less system. planetCandidates being
+    // empty (nothing to guess from) is what actually keeps a station
+    // unassigned, not its type string.
+    var isFleetCarrier = /fleet carrier/i.test(st.type || '');
+    if (!key && !isFleetCarrier && st.distanceToArrival != null && planetCandidates.length) {
+      var best = null, bestDiff = Infinity;
+      planetCandidates.forEach(function(c) {
+        var diff = Math.abs(c.distance - st.distanceToArrival);
+        if (diff < bestDiff) { bestDiff = diff; best = c; }
+      });
+      if (best) {
+        key = best.key;
+        st._bodyMatchApprox = true;
+      }
+    }
+
+    if (key) {
       if (!byBody[key]) byBody[key] = [];
       byBody[key].push(st);
     } else {
       unassigned.push(st);
     }
   });
+
   return { byBody: byBody, unassigned: unassigned };
 }
 
@@ -235,8 +333,14 @@ function groupStationsByBody(stations) {
 // extraClass lets callers mark a row as a hidden child of a body group.
 function buildStationRowHtml(st, extraClass) {
   var stType = st.type || 'Station';
-  var isSettlement = /settlement|surface|planetary|installation/i.test(stType);
   var isCarrier    = /fleet carrier/i.test(stType);
+  // Match against the ported ICARUS type tables first (exact, authoritative);
+  // fall back to the old regex for any type string EDSM/Spansh return that
+  // isn't in those tables yet, so nothing silently stops being flagged.
+  var isSettlement = !isCarrier && (
+    PLANETARY_BASES.some(function(t) { return t.toLowerCase() === stType.toLowerCase(); }) ||
+    /settlement|surface|planetary|installation/i.test(stType)
+  );
   var iconCls      = isSettlement ? 'settlement' : isCarrier ? 'carrier' : 'station';
   var rowCls       = 'body-station' + (isSettlement ? ' body-settlement' : '') + (extraClass ? ' ' + extraClass : '');
 
@@ -263,6 +367,14 @@ function buildStationRowHtml(st, extraClass) {
     ? '<span class="info-tag" title="Not confirmed by Spansh — may be stale" style="opacity:0.7">Unverified</span>'
     : '';
 
+  // Stations placed under a body via the nearest-by-distance fallback (no
+  // id or name match survived from the source data) are a best guess, not
+  // a confirmed placement — flag them the same way as "Unverified" so it's
+  // clear this row's body assignment could be wrong.
+  var approxHtml = st._bodyMatchApprox
+    ? '<span class="info-tag" title="No body data from source — placed under nearest body by distance" style="opacity:0.7">Approx</span>'
+    : '';
+
   return (
     '<tr class="' + rowCls + '">' +
       '<td style="text-align:center;padding:4px;">' +
@@ -278,8 +390,8 @@ function buildStationRowHtml(st, extraClass) {
         factionHtml +
       '</td>' +
       '<td class="body-class" style="color:var(--text-dim)">' + stType + '</td>' +
-      '<td style="font-size:0.75em;color:var(--text-dim);white-space:nowrap">' + distDisplay + '</td>' +
-      '<td>' + (serviceHtml || unverifiedHtml ? '<div style="margin-top:2px">' + serviceHtml + unverifiedHtml + '</div>' : '') + '</td>' +
+      '<td style="font-size:0.75em;color:var(--text-dim);overflow-wrap:break-word">' + distDisplay + '</td>' +
+      '<td>' + (serviceHtml || unverifiedHtml || approxHtml ? '<div style="margin-top:2px">' + serviceHtml + unverifiedHtml + approxHtml + '</div>' : '') + '</td>' +
       '<td class="val-cell">\u2014</td>' +
       '<td class="val-cell muted" style="font-size:0.75em">\u2014</td>' +
     '</tr>'
@@ -303,7 +415,7 @@ function renderBodies(system) {
   var rows = [];
 
   var mergedStations = mergeAllStations(_journalStations, _edsmStations);
-  var stationGroups = _showStations ? groupStationsByBody(mergedStations) : { byBody: {}, unassigned: [] };
+  var stationGroups = _showStations ? groupStationsByBody(mergedStations, bodies) : { byBody: {}, unassigned: [] };
 
   bodies.forEach(function(entry) {
     var jb  = entry.journal;
@@ -444,7 +556,7 @@ function renderBodies(system) {
           '</div>' +
         '</td>' +
         '<td class="body-class">' + displayClass + '</td>' +
-        '<td style="font-size:0.75em;color:var(--text-dim);white-space:nowrap">' + distDisplay + '</td>' +
+        '<td style="font-size:0.75em;color:var(--text-dim);overflow-wrap:break-word">' + distDisplay + '</td>' +
         '<td>' +
           '<div class="info-text">' + infoHtml + '</div>' +
           (tagHtml ? '<div style="margin-top:3px">' + tagHtml + '</div>' : '') +
