@@ -955,32 +955,32 @@ if (window.electronAPI) {
       // file from scratch on every journal write, so a single in-game scan
       // replays every earlier jump in that file too — each re-posting
       // bodies-data (bodies + stations) for whatever system it belonged to
-      // AT THE TIME. We used to accept every one of those and just
-      // reassign _currentSystem to match, on the theory that the final
-      // message in the replay always "self-corrects" back to the truth.
+      // AT THE TIME. That's fine for _journalBodies/_journalStations
+      // themselves: the final message in a replay always reflects the true
+      // current system, so accepting every message and letting the last one
+      // win is correct and self-correcting — we do that below, unguarded.
       //
-      // That was itself mostly harmless for _journalBodies, but it meant
-      // _currentSystem flickered through every system visited earlier this
-      // session while a replay was in progress. onEdsmBodies (below) uses
-      // _currentSystem to decide whether an incoming EDSM/Spansh response
-      // is stale — so a real, correct response for the system you're
-      // ACTUALLY in could land mid-flicker, get compared against the wrong
-      // (stale, replay-transient) _currentSystem, and get wrongly thrown
-      // away as "stale" — leaving old stations from a previous system on
-      // screen with nothing to replace them. That's the "stations that
-      // don't exist in the current system" bug.
-      //
-      // Fix: apply the exact same staleness guard here that onEdsmBodies
-      // already uses. _currentSystem is only ever advanced by onLocation
-      // (the real, non-replayed, one-shot signal for an actual jump) or by
-      // this handler when _currentSystem isn't known yet at all (cold
-      // boot). Any bodies-data payload for a system that doesn't match is
-      // historical replay noise and is ignored outright.
-      if (data.system && _currentSystem && data.system !== _currentSystem) {
-        return;
-      }
-
-      if (data.system && !_currentSystem) _currentSystem = data.system;
+      // What must NOT happen is this handler reassigning the shared
+      // _currentSystem to match whatever system a given replay message
+      // belongs to. location-data (onLocation, below) is buffered by the
+      // worker and only sent once, AFTER this entire replay finishes — so
+      // if this handler advanced _currentSystem mid-replay, it would
+      // usually be pointing at a stale, already-left system for the whole
+      // replay, right up until location-data finally arrives. onEdsmBodies
+      // relies on _currentSystem to decide whether an incoming EDSM/Spansh
+      // response is stale, so a real, correct response for the system
+      // you're actually in could arrive during that window, get compared
+      // against the wrong value, and get wrongly discarded — leaving stale
+      // stations on screen (the bug this was fixed for). Conversely, if we
+      // instead only accept bodies-data that already matches _currentSystem
+      // (as this handler briefly did), the very first replay message for a
+      // *new* system is rejected too — because it's posted before
+      // location-data has updated _currentSystem to match — leaving the
+      // panel blank until some later journal write happens to trigger
+      // another pass. Neither guard works; the fix is for this handler to
+      // just leave _currentSystem alone entirely and let onLocation be its
+      // sole owner.
+      var displaySystem = data.system || _currentSystem;
 
       _journalBodies  = {};
       _journalSignals = data.signals || {};
@@ -996,7 +996,7 @@ if (window.electronAPI) {
           };
         }
       });
-      renderBodiesDebounced(_currentSystem);
+      renderBodiesDebounced(displaySystem);
       renderScans();
     });
   }
