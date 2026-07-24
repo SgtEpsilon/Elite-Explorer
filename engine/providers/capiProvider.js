@@ -186,6 +186,84 @@ async function refreshAll(opts) {
 
 function getCache() { return cache; }
 
+// ── Journal-driven refresh triggers for the Fleet Carrier tab ─────────────────
+// The journal sees our OWN carrier actions — docking there, setting trade
+// orders, trading at its market, moving cargo — well before the next
+// scheduled /fleetcarrier poll would. We use those as a cue to refresh
+// sooner, and, for CarrierTradeOrder specifically (whose fields map 1:1 onto
+// the /fleetcarrier orders shape), patch the cache immediately so the Cargo &
+// Orders tab doesn't sit stale while a refresh (plus Frontier's own
+// server-side cache lag) catches up. This can never fully replace cAPI: it
+// has no visibility into other crew's trades or the carrier's true stock
+// while we're offline — it only ever reflects what our own client just did.
+eventBus.on('journal.carrierEvent', (data) => {
+  if (!data) return;
+
+  if (data.kind === 'docked') {
+    // Arriving at our own carrier is a natural, low-frequency checkpoint —
+    // worth jumping the queue for.
+    refreshAll({ force: true }).catch((err) => logger.error('CAPI', 'Post-dock carrier refresh failed', err));
+    return;
+  }
+
+  if (data.kind === 'tradeOrder') {
+    patchTradeOrder(data);
+    // Respect the normal cooldown — setting several orders in a row shouldn't
+    // fire a refresh per click, just eventually reconcile with ground truth.
+    refreshAll().catch((err) => logger.error('CAPI', 'Post-trade-order carrier refresh failed', err));
+    return;
+  }
+
+  if (data.kind === 'trade') {
+    // MarketBuy/MarketSell/CargoTransfer at our own carrier — no reliable way
+    // to infer the resulting stock from these alone, so just nudge a refresh.
+    refreshAll().catch((err) => logger.error('CAPI', 'Post-trade carrier refresh failed', err));
+  }
+});
+
+// Optimistically patches the cached /fleetcarrier orders.commodities lists
+// from a CarrierTradeOrder journal event, and re-sends the patched cache on
+// the existing capi-fleetcarrier-data channel — same shape carrier.html
+// already renders, so no renderer-side changes are needed for this to show up.
+function patchTradeOrder(data) {
+  const commodities = cache.fleetCarrier && cache.fleetCarrier.orders && cache.fleetCarrier.orders.commodities;
+  if (!commodities) return; // nothing cached yet to patch — the coming refreshAll() will populate it
+
+  commodities.sales     = commodities.sales     || [];
+  commodities.purchases = commodities.purchases || [];
+
+  const name    = data.commodityLocalised || data.commodity;
+  const matches = (o) => o.name && o.name.toLowerCase() === String(name).toLowerCase();
+
+  if (data.cancelTrade) {
+    commodities.sales     = commodities.sales.filter((o) => !matches(o));
+    commodities.purchases = commodities.purchases.filter((o) => !matches(o));
+  } else if (data.saleOrder != null) {
+    const existing = commodities.sales.find(matches);
+    if (existing) {
+      existing.stock       = data.saleOrder;
+      existing.price       = data.price != null ? data.price : existing.price;
+      existing.blackmarket = data.blackMarket;
+    } else {
+      commodities.sales.push({ name, stock: data.saleOrder, price: data.price, blackmarket: data.blackMarket });
+    }
+    // A commodity can't be both a sell and a buy order at the same time.
+    commodities.purchases = commodities.purchases.filter((o) => !matches(o));
+  } else if (data.purchaseOrder != null) {
+    const existing = commodities.purchases.find(matches);
+    if (existing) {
+      existing.total       = data.purchaseOrder;
+      existing.outstanding = Math.min(existing.outstanding != null ? existing.outstanding : data.purchaseOrder, data.purchaseOrder);
+      existing.price       = data.price != null ? data.price : existing.price;
+    } else {
+      commodities.purchases.push({ name, total: data.purchaseOrder, outstanding: data.purchaseOrder, price: data.price });
+    }
+    commodities.sales = commodities.sales.filter((o) => !matches(o));
+  }
+
+  send('capi-fleetcarrier-data', cache.fleetCarrier);
+}
+
 // Immediately sync everything right after a successful login, instead of
 // waiting for the next 5-minute interval tick.
 eventBus.on('capi.login.success', () => {

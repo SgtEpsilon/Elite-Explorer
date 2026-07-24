@@ -334,6 +334,53 @@ async function run() {
             }
           }
 
+          // ── Fleet Carrier — order/trade events ──────────────────────────
+          // These exist purely to give capiProvider an early, event-driven
+          // cue about our OWN carrier: journal data can't see other crew's
+          // actions or the carrier's true stock levels (that's still cAPI's
+          // job), but it sees our own docking, order changes, and trades
+          // instantly instead of on the next 5-minute /fleetcarrier poll.
+          if (ev === 'Docked' && entry.StationType === 'FleetCarrier') {
+            parentPort.postMessage({
+              type: 'carrier-event',
+              data: { kind: 'docked', carrierId: entry.MarketID, timestamp: entry.timestamp }
+            });
+          }
+
+          // CarrierTradeOrder fires only when *we* (the carrier owner) set or
+          // cancel a buy/sell order from the Carrier Management panel — its
+          // fields map 1:1 onto the /fleetcarrier orders.commodities shape,
+          // so capiProvider can patch its cache directly from this.
+          if (ev === 'CarrierTradeOrder') {
+            parentPort.postMessage({
+              type: 'carrier-event',
+              data: {
+                kind:               'tradeOrder',
+                carrierId:          entry.CarrierID,
+                commodity:          entry.Commodity,
+                commodityLocalised: entry.Commodity_Localised || entry.Commodity,
+                purchaseOrder:      entry.PurchaseOrder != null ? entry.PurchaseOrder : null,
+                saleOrder:          entry.SaleOrder      != null ? entry.SaleOrder      : null,
+                cancelTrade:        !!entry.CancelTrade,
+                price:              entry.Price != null ? entry.Price : null,
+                blackMarket:        !!entry.BlackMarket,
+                timestamp:          entry.timestamp,
+              }
+            });
+          }
+
+          // MarketBuy/MarketSell/CargoTransfer while docked at our own
+          // carrier change its hold contents, but — unlike CarrierTradeOrder
+          // — nothing here tells us the resulting stock number, so we only
+          // use these as a "go refresh soon" nudge rather than patching data.
+          if ((ev === 'MarketBuy' || ev === 'MarketSell' || ev === 'CargoTransfer') &&
+              liveData && liveData.dockedStationType === 'FleetCarrier') {
+            parentPort.postMessage({
+              type: 'carrier-event',
+              data: { kind: 'trade', event: ev, timestamp: entry.timestamp }
+            });
+          }
+
           if (ev === 'Loadout') {
             if (!liveData) liveData = {};
             liveData.ship          = entry.Ship_Localised || entry.Ship;

@@ -119,6 +119,12 @@ function runWorker(files, { mode = 'all', useLastProcessed = false, updateLastPr
           eventBus.emit('journal.profile', msg.data);
           break;
 
+        case 'carrier-event':
+          // Not cached/replayed — this is a one-shot trigger for capiProvider
+          // (docked-at-carrier / trade-order / trade), not renderer-facing data.
+          eventBus.emit('journal.carrierEvent', msg.data);
+          break;
+
         case 'done':
           if (updateLastProcessed) {
             lastProcessed = { ...lastProcessed, ...msg.updatedLastProcessed };
