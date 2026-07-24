@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
 <meta charset="UTF-8">
-<title>Elite Explorer — History</title>
+<title>Elite Explorer — Carrier</title>
 <link rel="stylesheet" href="styles.css">
 </head>
 <body>
@@ -17,8 +17,8 @@
     <a class="tab-btn" href="index.html">Live</a>
     <a class="tab-btn" href="ship.html">Ship</a>
     <a class="tab-btn" href="profile.html">Profile</a>
-    <a class="tab-btn" href="carrier.html">Carrier</a>
-    <a class="tab-btn active" href="history.html">History</a>
+    <a class="tab-btn active" href="carrier.html">Carrier</a>
+    <a class="tab-btn" href="history.html">History</a>
     <a class="tab-btn" href="spansh.html">Spansh</a>
   </div>
   <span class="tb-credits" id="tb-credits"></span>
@@ -28,81 +28,62 @@
 </div>
 
 <div id="app-wrapper">
+<div id="view-carrier" class="active">
 
-  <div id="view-history" class="active">
+  <!-- ════════════════════════════════════════════════════════════════════ -->
+  <!-- FLEET CARRIER PAGE                                                  -->
+  <!-- Data sourced directly from Frontier's Companion API.                -->
+  <!-- ════════════════════════════════════════════════════════════════════ -->
 
-    <!-- Toolbar -->
-    <div id="hist-toolbar">
-      <span style="font-family:var(--display);font-size:0.7em;letter-spacing:0.2em;color:var(--text-dim)">TRAVEL LOG</span>
-      <span id="hist-count" style="font-size:0.75em;color:var(--text-mute)">&#8212;</span>
-      <span id="hist-scan-status" style="font-size:0.72em;color:var(--text-mute);font-family:var(--mono);"></span>
-      <div style="flex:1"></div>
-      <label style="display:flex;align-items:center;gap:6px;font-size:0.75em;color:var(--text-dim);cursor:pointer;">
-        <input type="checkbox" id="hist-filter-disco" style="accent-color:var(--gold)"> First Discoveries Only
-      </label>
-      <input id="hist-search" type="text" placeholder="Filter systems&hellip;" spellcheck="false"
-        style="background:var(--bg);border:1px solid var(--border);color:var(--text);padding:4px 8px;font-size:0.75em;width:160px;border-radius:2px;font-family:var(--mono);">
-      <button id="hist-rescan-btn" title="Re-scan all journals">&#8635; Rescan</button>
+  <div class="prof-section" style="background:var(--panel);border-bottom:1px solid var(--border);display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap;">
+    <div class="prof-title">Fleet Carrier</div>
+    <div style="font-size:0.72em;color:var(--text-mute);font-family:var(--mono);" id="capi-tab-last-refresh">Not yet refreshed</div>
+  </div>
+
+  <div id="carrier-no-login" style="padding:40px 20px;text-align:center;color:var(--text-mute);">
+    <div style="font-size:0.9em;">Not connected to Frontier cAPI.</div>
+    <div style="font-size:0.78em;margin-top:6px;">Log in from Options &#9881;.</div>
+  </div>
+
+  <div id="carrier-tab-content" style="display:none;">
+
+    <div id="carrier-none" style="padding:40px 20px;text-align:center;color:var(--text-mute);">
+      <div style="font-size:0.9em;">No fleet carrier owned.</div>
     </div>
 
-    <!-- Progress bar (journal scan) -->
-    <div id="hist-progress-wrap">
-      <div id="hist-progress-track"><div id="hist-progress-bar"></div></div>
-    </div>
+    <div id="carrier-owned-content" style="display:none;">
 
-    <!-- EDSM progress bar (discovery check + star/body enrichment) -->
-    <div id="edsm-progress-wrap" style="display:none;align-items:center;gap:10px;padding:3px 12px;background:rgba(0,0,0,0.2);border-bottom:1px solid var(--border);">
-      <span id="edsm-check-status" style="font-family:var(--mono);font-size:0.68em;color:var(--text-mute);letter-spacing:0.05em;white-space:nowrap;"></span>
-      <div style="flex:1;height:2px;background:var(--border2);border-radius:1px;">
-        <div id="edsm-progress-bar-inner" style="height:100%;width:0%;background:var(--cyan);border-radius:1px;transition:width 0.4s;"></div>
-      </div>
-    </div>
-
-    <!-- Scrollable content -->
-    <div style="flex:1;overflow-y:auto;">
-
-      <!-- Empty / scanning state -->
-      <div id="hist-scanning">
-        <div style="font-size:2em;opacity:0.4">&#11041;</div>
-        <div style="font-family:var(--display);letter-spacing:0.15em;">SCANNING JOURNALS&hellip;</div>
-        <div style="font-size:0.8em;" id="hist-scanning-sub">Reading journal files</div>
+      <!-- Sub-tabs: Overview / Cargo & Orders -->
+      <div id="prof-subtab-bar">
+        <button class="prof-subtab active" data-subtab="overview">Overview</button>
+        <button class="prof-subtab" data-subtab="cargo-orders">Cargo &amp; Orders</button>
       </div>
 
-      <div id="hist-empty" style="display:flex;flex-direction:column;align-items:center;justify-content:center;height:60vh;gap:12px;color:var(--text-mute);">
-        <div style="font-size:2.5em;opacity:0.25">&#128336;</div>
-        <div style="font-family:var(--display);letter-spacing:0.15em;">NO HISTORY YET</div>
-        <div style="font-size:0.8em;">Journal data will appear here automatically on startup</div>
-      </div>
+      <div id="prof-subpage-overview" class="prof-subpage active">
+        <div class="prof-section">
+          <div class="stats-cols" id="capi-carrier-stats"></div>
+        </div>
+      </div><!-- /prof-subpage-overview -->
 
-      <table id="hist-table" style="display:none;">
-        <thead>
-          <tr>
-            <th></th>
-            <th>SYSTEM</th>
-            <th>TIMESTAMP</th>
-            <th style="text-align:right">JUMP DIST</th>
-            <th>STAR CLASS</th>
-            <th style="text-align:right">BODIES</th>
-          </tr>
-        </thead>
-        <tbody id="hist-tbody"></tbody>
-      </table>
+      <div id="prof-subpage-cargo-orders" class="prof-subpage">
+        <div class="prof-section" style="border-bottom:1px solid var(--border);">
+          <div class="prof-title" style="font-size:0.85em;">Cargo</div>
+          <div id="carrier-cargo-list"></div>
+        </div>
+        <div class="prof-section">
+          <div class="prof-title" style="font-size:0.85em;">Orders</div>
+          <div id="capi-carrier-orders"></div>
+        </div>
+      </div><!-- /prof-subpage-cargo-orders -->
 
-    </div><!-- /scroll -->
+    </div><!-- /carrier-owned-content -->
 
-    <!-- Stats bar -->
-    <div id="hist-stats-bar" style="display:none;">
-      <div><span style="color:var(--text-dim)">Total Jumps&nbsp;</span><span id="hstat-jumps" style="color:var(--cyan);font-family:var(--mono)">0</span></div>
-      <div><span style="color:var(--text-dim)">First Discoveries&nbsp;</span><span id="hstat-disco" style="color:var(--gold);font-family:var(--mono)">0</span></div>
-      <div><span style="color:var(--text-dim)">Distance Traveled&nbsp;</span><span id="hstat-dist" style="color:var(--cyan2);font-family:var(--mono)">0 ly</span></div>
-      <div><span style="color:var(--text-dim)">Farthest Single Jump&nbsp;</span><span id="hstat-farthest" style="color:var(--text);font-family:var(--mono)">0 ly</span></div>
-    </div>
+  </div><!-- /carrier-tab-content -->
 
-  </div><!-- /view-history -->
-
+</div><!-- /view-carrier -->
 </div><!-- /app-wrapper -->
 
-<!-- OPTIONS PANEL -->
+<!-- ── OPTIONS PANEL ─────────────────────────────────────────────────────── -->
 <div id="options-overlay"></div>
 <div id="options-panel">
   <div id="options-header">
@@ -246,23 +227,193 @@
       </div>
       <button class="sl-reset" id="sl-reset-all">&#8635; Reset All Display Settings</button>
     </div>
-    <div class="opt-section">
-      <div class="opt-section-title">EDSM &#8212; Flight Log</div>
-      <button class="opt-action-btn" id="opt-edsm-sync-btn">
-        <span class="opt-btn-icon">&#11015;</span>
-        <div><div class="opt-btn-label">Pull Data from EDSM</div><div class="opt-btn-sub" id="opt-edsm-sync-hint">Pull your EDSM history &amp; merge with local journals</div></div>
-      </button>
-      <button class="opt-action-btn" id="opt-import-stars-btn" style="margin-top:6px;">
-        <span class="opt-btn-icon">&#9733;</span>
-        <div><div class="opt-btn-label">Import First Discoveries (ImportStars.txt)</div><div class="opt-btn-sub" id="opt-import-stars-hint">Import your EDSM first-discovery list</div></div>
-      </button>
-    </div>
   </div>
 </div>
 
 <script src="display-settings.js"></script>
-<script src="history-script.js"></script>
+<script src="script.js"></script>
 <script src="update-modal.js"></script>
 <script src="prefs-modal.js"></script>
+<script>
+// ═════════════════════════════════════════════════════════════════════════════
+// Carrier page — Fleet Carrier overview + Cargo & Orders
+// ═════════════════════════════════════════════════════════════════════════════
+(function () {
+  'use strict';
+
+  // ── HTML escape ─────────────────────────────────────────────────────────────
+  function esc(s) {
+    return String(s || '').replace(/&/g,'&amp;').replace(/</g,'&lt;')
+      .replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+  }
+
+  function fmtCr(n) { return (n == null ? 0 : n).toLocaleString() + ' cr'; }
+
+  // Fleet carrier vanity names come back hex-encoded per Frontier's docs.
+  function hexToStr(hex) {
+    if (!hex) return '';
+    try {
+      var out = '';
+      for (var i = 0; i + 1 < hex.length; i += 2) out += String.fromCharCode(parseInt(hex.substr(i, 2), 16));
+      return out;
+    } catch { return ''; }
+  }
+
+  function statRow(key, val, cls) {
+    return '<div class="stat-row"><span class="stat-key">' + esc(key) + '</span>' +
+           '<span class="stat-val' + (cls ? ' ' + cls : '') + '">' + val + '</span></div>';
+  }
+
+  // ── Sub-tab switching (Overview / Cargo & Orders) ───────────────────────────
+  var tabs     = document.querySelectorAll('.prof-subtab');
+  var subpages = document.querySelectorAll('.prof-subpage');
+
+  tabs.forEach(function (btn) {
+    btn.addEventListener('click', function () {
+      var target = btn.getAttribute('data-subtab');
+      tabs.forEach(function (t) { t.classList.remove('active'); });
+      subpages.forEach(function (p) { p.classList.remove('active'); });
+      btn.classList.add('active');
+      var page = document.getElementById('prof-subpage-' + target);
+      if (page) page.classList.add('active');
+    });
+  });
+
+  function showCarrierTab(loggedIn) {
+    var noLogin = document.getElementById('carrier-no-login');
+    var content = document.getElementById('carrier-tab-content');
+    if (noLogin) noLogin.style.display = loggedIn ? 'none' : '';
+    if (content)  content.style.display = loggedIn ? '' : 'none';
+  }
+
+  function refreshCapiLastRefreshLabel(status) {
+    var el = document.getElementById('capi-tab-last-refresh');
+    if (!el) return;
+    if (status && status.refreshing) { el.textContent = 'Refreshing\u2026'; return; }
+    if (status && status.lastRefresh) {
+      el.textContent = 'Last refreshed ' + new Date(status.lastRefresh).toLocaleTimeString();
+    } else if (status && status.lastError) {
+      el.textContent = status.lastError;
+    }
+  }
+
+  // ── Fleet Carrier ────────────────────────────────────────────────────────────
+  // NOTE on Cargo & Orders: Frontier's /fleetcarrier response only tells us
+  // "physically in the hold" indirectly — via each commodity's current sell
+  // order (its stock is what's actually loaded and up for sale) and via each
+  // buy order's outstanding/total (total - outstanding = however much has been
+  // delivered into the hold so far against that order). We use those two
+  // fields rather than a separate raw cargo manifest, since the app doesn't
+  // fetch one:
+  //   - Cargo list / Selling list: only commodities with stock > 0 (i.e.
+  //     actually sitting in the carrier's hold right now) are shown.
+  //   - Buying list: shown as "<already in cargo>/<quantity wanted>" instead
+  //     of the old "<outstanding>/<total> remaining".
+  function renderFleetCarrier(fc) {
+    var noneEl    = document.getElementById('carrier-none');
+    var contentEl = document.getElementById('carrier-owned-content');
+    if (!fc) {
+      if (noneEl)    noneEl.style.display = '';
+      if (contentEl) contentEl.style.display = 'none';
+      return;
+    }
+    if (noneEl)    noneEl.style.display = 'none';
+    if (contentEl) contentEl.style.display = '';
+
+    var statsEl = document.getElementById('capi-carrier-stats');
+    if (statsEl) {
+      var vanity = hexToStr(fc.name && fc.name.vanityName);
+      var callsign = (fc.name && fc.name.callsign) || '\u2014';
+      var html = '<div class="stat-group" style="grid-column:1/-1;">' +
+        '<div class="stat-group-title">' + esc(vanity ? vanity + ' \u2014 ' + callsign : callsign) + '</div>';
+      html += statRow('System', esc(fc.currentStarSystem || '\u2014'));
+      html += statRow('Balance', fmtCr(fc.balance), 'gold');
+      html += statRow('Fuel (Tritium)', (fc.fuel != null ? fc.fuel : '\u2014') + ' / 1000');
+      html += statRow('State', esc(fc.state || '\u2014'));
+      html += statRow('Docking Access', esc(fc.dockingAccess || '\u2014'));
+      html += '</div>';
+      if (fc.finance) {
+        html += '<div class="stat-group">' +
+          '<div class="stat-group-title">Finance</div>' +
+          statRow('Bank Balance', fmtCr(fc.finance.bankBalance)) +
+          statRow('Weekly Upkeep', fmtCr(fc.finance.coreCost)) +
+          statRow('Services Cost', fmtCr(fc.finance.servicesCost)) +
+          statRow('Jumps (7d)', fc.finance.numJumps != null ? fc.finance.numJumps : '\u2014') +
+          '</div>';
+      }
+      if (fc.capacity) {
+        html += '<div class="stat-group">' +
+          '<div class="stat-group-title">Capacity</div>' +
+          statRow('Free Space', fc.capacity.freeSpace != null ? fc.capacity.freeSpace + ' t' : '\u2014') +
+          statRow('Cargo (for sale)', fc.capacity.cargoForSale != null ? fc.capacity.cargoForSale + ' t' : '\u2014') +
+          statRow('Ship Packs', fc.capacity.shipPacks != null ? fc.capacity.shipPacks : '\u2014') +
+          statRow('Module Packs', fc.capacity.modulePacks != null ? fc.capacity.modulePacks : '\u2014') +
+          '</div>';
+      }
+      statsEl.innerHTML = html;
+    }
+
+    var commodOrders  = fc.orders && fc.orders.commodities;
+    var sales         = (commodOrders && commodOrders.sales) || [];
+    var purchases     = (commodOrders && commodOrders.purchases) || [];
+    // Only commodities actually sitting in the carrier's hold (stock > 0).
+    var sellingInCargo = sales.filter(function (o) { return (o.stock || 0) > 0; });
+
+    // ── Cargo list ─────────────────────────────────────────────────────────
+    var cargoEl = document.getElementById('carrier-cargo-list');
+    if (cargoEl) {
+      var ch = '';
+      sellingInCargo.forEach(function (o) {
+        ch += statRow(o.name, o.stock + ' t' + (o.blackmarket ? ' &#9679;' : ''));
+      });
+      cargoEl.innerHTML = ch || '<div style="color:var(--text-mute);font-size:0.78em;">Nothing in the carrier\u2019s hold right now.</div>';
+    }
+
+    // ── Orders list ────────────────────────────────────────────────────────
+    var ordersEl = document.getElementById('capi-carrier-orders');
+    if (ordersEl) {
+      var oh = '';
+      if (sellingInCargo.length) {
+        oh += '<div style="font-size:0.72em;color:var(--text-dim);margin-top:6px;">Selling</div>';
+        sellingInCargo.forEach(function (o) {
+          oh += statRow(o.name, fmtCr(o.price) + ' &times; ' + o.stock + (o.blackmarket ? ' &#9679;' : ''));
+        });
+      }
+      if (purchases.length) {
+        oh += '<div style="font-size:0.72em;color:var(--text-dim);margin-top:6px;">Buying</div>';
+        purchases.forEach(function (o) {
+          var wanted    = o.total != null ? o.total : 0;
+          var remaining = o.outstanding != null ? o.outstanding : 0;
+          var inCargo   = Math.max(0, wanted - remaining);
+          oh += statRow(o.name, fmtCr(o.price) + ' \u2014 ' + inCargo + '/' + wanted + ' in cargo');
+        });
+      }
+      ordersEl.innerHTML = oh || '<div style="color:var(--text-mute);font-size:0.78em;">No active buy/sell orders.</div>';
+    }
+  }
+
+  // ── Wire up push listeners + replay cache already collected by script.js ────
+  if (window.electronAPI) {
+    if (window.electronAPI.onCapiFleetCarrierData) {
+      window.electronAPI.onCapiFleetCarrierData(function (data) { showCarrierTab(true); renderFleetCarrier(data); });
+    }
+    if (window.electronAPI.onCapiRefreshStatus) {
+      window.electronAPI.onCapiRefreshStatus(refreshCapiLastRefreshLabel);
+    }
+    // script.js (loaded earlier in this page) may already have cached data
+    // from a replay that fired before this script ran — pick it up immediately.
+    if (window._capiCache && window._capiCache.fleetCarrier !== undefined) {
+      showCarrierTab(true);
+      renderFleetCarrier(window._capiCache.fleetCarrier);
+    }
+    if (window.electronAPI.capiGetStatus) {
+      window.electronAPI.capiGetStatus().then(function (status) {
+        if (status && status.isLoggedIn) showCarrierTab(true);
+      }).catch(function () {});
+    }
+  }
+
+}());
+</script>
 </body>
 </html>

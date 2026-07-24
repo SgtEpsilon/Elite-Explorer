@@ -55,6 +55,14 @@ async function run() {
   let liveBodySystem = null; // system name these bodies belong to
   let liveSignals    = {};   // bodyName → array of signal strings (bio, geo, stations etc)
 
+  // Live stations accumulator — cleared on each FSDJump alongside liveBodies.
+  // Built from Docked (full detail) and ApproachSettlement (name/body only,
+  // for settlements seen but not landed at) events. A station you've
+  // actually docked at in the current system is ground truth, so this is
+  // treated as the highest-priority source when merged with EDSM/Spansh in
+  // the renderer.
+  let liveStations = {};   // stationName → station entry
+
   // Live missions accumulator — keyed by MissionID so updates overwrite cleanly.
   let liveMissions = {};  // missionID → mission object
 
@@ -134,9 +142,10 @@ async function run() {
               // so the panel populates on app boot when the game is already running.
               parentPort.postMessage({
                 type: 'bodies-data',
-                system:  liveBodySystem,
-                bodies:  Object.values(liveBodies),
-                signals: liveSignals,
+                system:   liveBodySystem,
+                bodies:   Object.values(liveBodies),
+                signals:  liveSignals,
+                stations: Object.values(liveStations),
               });
             }
           }
@@ -147,11 +156,12 @@ async function run() {
             liveData.pos           = entry.StarPos ? entry.StarPos.map(n => n.toFixed(2)).join(', ') : null;
             liveData.jumpRange     = entry.JumpDist ? entry.JumpDist.toFixed(2) + ' ly' : null;
             liveData.lastJumpWasFirstDiscovery = (entry.SystemAlreadyDiscovered === false);
-            // Clear bodies when entering a new system
+            // Clear bodies/stations when entering a new system
             liveBodies     = {};
             liveSignals    = {};
+            liveStations   = {};
             liveBodySystem = entry.StarSystem;
-            parentPort.postMessage({ type: 'bodies-data', system: liveBodySystem, bodies: [], signals: {} });
+            parentPort.postMessage({ type: 'bodies-data', system: liveBodySystem, bodies: [], signals: {}, stations: [] });
           }
 
           // ── Scan event → add/update body in the live bodies map ───────────
@@ -197,9 +207,10 @@ async function run() {
             };
             parentPort.postMessage({
               type: 'bodies-data',
-              system:  liveBodySystem,
-              bodies:  Object.values(liveBodies),
-              signals: liveSignals,
+              system:   liveBodySystem,
+              bodies:   Object.values(liveBodies),
+              signals:  liveSignals,
+              stations: Object.values(liveStations),
             });
           }
 
@@ -209,10 +220,11 @@ async function run() {
           if (ev === 'FSSDiscoveryScan') {
             liveBodySystem = entry.SystemName || liveBodySystem;
             parentPort.postMessage({
-              type:    'bodies-data',
-              system:  liveBodySystem,
-              bodies:  Object.values(liveBodies),
-              signals: liveSignals,
+              type:     'bodies-data',
+              system:   liveBodySystem,
+              bodies:   Object.values(liveBodies),
+              signals:  liveSignals,
+              stations: Object.values(liveStations),
             });
             parentPort.postMessage({
               type:  'event',
@@ -233,9 +245,10 @@ async function run() {
               liveSignals[bodyName] = sigs;
               parentPort.postMessage({
                 type: 'bodies-data',
-                system:  liveBodySystem,
-                bodies:  Object.values(liveBodies),
-                signals: liveSignals,
+                system:   liveBodySystem,
+                bodies:   Object.values(liveBodies),
+                signals:  liveSignals,
+                stations: Object.values(liveStations),
               });
             }
           }
@@ -254,9 +267,69 @@ async function run() {
               );
               parentPort.postMessage({
                 type: 'bodies-data',
-                system:  liveBodySystem,
-                bodies:  Object.values(liveBodies),
-                signals: liveSignals,
+                system:   liveBodySystem,
+                bodies:   Object.values(liveBodies),
+                signals:  liveSignals,
+                stations: Object.values(liveStations),
+              });
+            }
+          }
+
+          // ── Docked → full station detail, straight from the game ──────────
+          // A station you've actually docked at this session is ground truth —
+          // outranks both EDSM and Spansh when merged in the renderer.
+          if (ev === 'Docked') {
+            liveBodySystem = entry.StarSystem || liveBodySystem;
+            const services = entry.StationServices || [];
+            const key = entry.StationName || ('MarketID:' + entry.MarketID);
+            liveStations[key] = {
+              name:              entry.StationName || '?',
+              type:              entry.StationType || 'Station',
+              distanceToArrival: entry.DistFromStarLS != null ? entry.DistFromStarLS : null,
+              haveMarket:        services.indexOf('Commodities') !== -1 || services.indexOf('Market') !== -1,
+              haveShipyard:      services.indexOf('Shipyard') !== -1,
+              haveOutfitting:    services.indexOf('Outfitting') !== -1,
+              otherServices:     services,
+              controllingFaction: entry.StationFaction && entry.StationFaction.Name
+                ? { name: entry.StationFaction.Name } : null,
+              body: entry.BodyName ? { name: entry.BodyName } : null,
+              updateTime: entry.timestamp || null,
+              source: 'journal',
+            };
+            parentPort.postMessage({
+              type: 'bodies-data',
+              system:   liveBodySystem,
+              bodies:   Object.values(liveBodies),
+              signals:  liveSignals,
+              stations: Object.values(liveStations),
+            });
+          }
+
+          // ── ApproachSettlement → lightweight entry for settlements seen ───
+          // but not landed at. Only fills in if Docked hasn't already given us
+          // a richer record for the same name — never downgrades it.
+          if (ev === 'ApproachSettlement') {
+            const key = entry.Name || '';
+            if (key && !liveStations[key]) {
+              liveStations[key] = {
+                name:              key,
+                type:              'Settlement',
+                distanceToArrival: null,
+                haveMarket:        false,
+                haveShipyard:      false,
+                haveOutfitting:    false,
+                otherServices:     [],
+                controllingFaction: null,
+                body: entry.BodyName ? { name: entry.BodyName } : null,
+                updateTime: entry.timestamp || null,
+                source: 'journal',
+              };
+              parentPort.postMessage({
+                type: 'bodies-data',
+                system:   liveBodySystem,
+                bodies:   Object.values(liveBodies),
+                signals:  liveSignals,
+                stations: Object.values(liveStations),
               });
             }
           }

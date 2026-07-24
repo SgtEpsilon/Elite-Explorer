@@ -50,8 +50,9 @@ function log(msg, type = 'info') {
 // State: journal scan data + EDSM data are merged here.
 var _journalBodies = {};   // bodyName → journal Scan entry
 var _journalSignals = {};  // bodyName → [signal strings]
-var _edsmBodies     = [];  // array of EDSM body objects
-var _edsmStations   = [];  // array of EDSM station objects
+var _edsmBodies     = [];  // array of EDSM body objects (cross-referenced with Spansh in the main process)
+var _edsmStations   = [];  // array of EDSM/Spansh station objects (see edsmClient.js)
+var _journalStations = []; // array of stations docked at / approached this session — ground truth, highest priority
 var _currentSystem  = null;
 var _showStations   = true; // toggle: show stations/settlements in bodies table
 var _expandedBodyGroups = new Set(); // bodyKey (lowercased body name) → expanded in the bodies table
@@ -200,6 +201,16 @@ function buildMergedBodies(system) {
   });
 }
 
+// Merge all three station sources: journal (docked/approached this session —
+// ground truth) takes priority, then whatever edsmClient.js already merged
+// from EDSM+Spansh for anything the journal hasn't seen this session.
+function mergeAllStations(journalStations, edsmStations) {
+  var byName = {};
+  (edsmStations || []).forEach(function(s) { byName[(s.name || '').toLowerCase()] = s; });
+  (journalStations || []).forEach(function(s) { byName[(s.name || '').toLowerCase()] = s; });
+  return Object.values(byName);
+}
+
 // Group EDSM stations by the planetary body they belong to.
 // EDSM includes a "body" field ({name, id, ...}) on stations/settlements
 // that sit on or orbit a specific body. Stations with no body field are
@@ -245,6 +256,13 @@ function buildStationRowHtml(st, extraClass) {
     ? '<div style="font-size:0.75em;color:var(--text-mute);margin-top:1px">' + st.controllingFaction.name + '</div>'
     : '';
 
+  // Stations that only came from EDSM (Spansh didn't have/confirm them)
+  // are flagged — EDSM's crowd-submitted list is the one known to carry
+  // stale/incorrect entries, so this is a hint to double-check in game.
+  var unverifiedHtml = st.source === 'edsm'
+    ? '<span class="info-tag" title="Not confirmed by Spansh — may be stale" style="opacity:0.7">Unverified</span>'
+    : '';
+
   return (
     '<tr class="' + rowCls + '">' +
       '<td style="text-align:center;padding:4px;">' +
@@ -261,7 +279,7 @@ function buildStationRowHtml(st, extraClass) {
       '</td>' +
       '<td class="body-class" style="color:var(--text-dim)">' + stType + '</td>' +
       '<td style="font-size:0.75em;color:var(--text-dim);white-space:nowrap">' + distDisplay + '</td>' +
-      '<td>' + (serviceHtml ? '<div style="margin-top:2px">' + serviceHtml + '</div>' : '') + '</td>' +
+      '<td>' + (serviceHtml || unverifiedHtml ? '<div style="margin-top:2px">' + serviceHtml + unverifiedHtml + '</div>' : '') + '</td>' +
       '<td class="val-cell">\u2014</td>' +
       '<td class="val-cell muted" style="font-size:0.75em">\u2014</td>' +
     '</tr>'
@@ -284,7 +302,8 @@ function renderBodies(system) {
   var stars = 0, planets = 0, moons = 0;
   var rows = [];
 
-  var stationGroups = _showStations ? groupStationsByBody(_edsmStations) : { byBody: {}, unassigned: [] };
+  var mergedStations = mergeAllStations(_journalStations, _edsmStations);
+  var stationGroups = _showStations ? groupStationsByBody(mergedStations) : { byBody: {}, unassigned: [] };
 
   bodies.forEach(function(entry) {
     var jb  = entry.journal;
@@ -455,7 +474,7 @@ function renderBodies(system) {
   }
 
   tbody.innerHTML = rows.join('');
-  var stationCount = _showStations ? _edsmStations.length : 0;
+  var stationCount = _showStations ? mergedStations.length : 0;
   var bodyTotal    = bodies.length;
   var countLabel   = bodyTotal + ' bod' + (bodyTotal !== 1 ? 'ies' : 'y');
   if (stationCount) countLabel += ' · ' + stationCount + ' station' + (stationCount !== 1 ? 's' : '');
@@ -893,6 +912,7 @@ if (window.electronAPI) {
       _currentSystem  = data.system;
       _journalBodies  = {};
       _journalSignals = {};
+      _journalStations = [];
       _edsmBodies     = [];
       _edsmStations   = [];
       _scanEntries    = {};
@@ -931,29 +951,40 @@ if (window.electronAPI) {
     window.electronAPI.onBodiesData(function(data) {
       if (!data || !data.bodies) return;
 
-      var incomingSystem = data.system || _currentSystem;
-
-      // NOTE: the live journal worker re-parses the whole current journal
-      // file from scratch on every change, so a single in-game scan replays
-      // every earlier jump in that file, each re-posting bodies-data for the
-      // system it belonged to at the time. Treating each of those as a
-      // "system change" here is legitimate for _journalBodies itself (it's
-      // just chronological reconstruction and self-corrects by the final
-      // message), but EDSM/station data is a separate cache on the backend
-      // that's deduplicated by system name (see edsmClient.js lookupSystem)
-      // — it will NOT be re-sent once we're confirmed to already be in a
-      // system, so wiping it here on a same-session historical replay
-      // permanently blanks it with nothing to refill it. Real system
-      // changes are already handled correctly (and just once, in order) by
-      // onLocation's isNewSystem branch below, so we no longer touch EDSM
-      // state from this handler at all.
-      if (incomingSystem && incomingSystem !== _currentSystem) {
-        _scanEntries = {};
+      // The live journal worker fully re-parses the whole current session
+      // file from scratch on every journal write, so a single in-game scan
+      // replays every earlier jump in that file too — each re-posting
+      // bodies-data (bodies + stations) for whatever system it belonged to
+      // AT THE TIME. We used to accept every one of those and just
+      // reassign _currentSystem to match, on the theory that the final
+      // message in the replay always "self-corrects" back to the truth.
+      //
+      // That was itself mostly harmless for _journalBodies, but it meant
+      // _currentSystem flickered through every system visited earlier this
+      // session while a replay was in progress. onEdsmBodies (below) uses
+      // _currentSystem to decide whether an incoming EDSM/Spansh response
+      // is stale — so a real, correct response for the system you're
+      // ACTUALLY in could land mid-flicker, get compared against the wrong
+      // (stale, replay-transient) _currentSystem, and get wrongly thrown
+      // away as "stale" — leaving old stations from a previous system on
+      // screen with nothing to replace them. That's the "stations that
+      // don't exist in the current system" bug.
+      //
+      // Fix: apply the exact same staleness guard here that onEdsmBodies
+      // already uses. _currentSystem is only ever advanced by onLocation
+      // (the real, non-replayed, one-shot signal for an actual jump) or by
+      // this handler when _currentSystem isn't known yet at all (cold
+      // boot). Any bodies-data payload for a system that doesn't match is
+      // historical replay noise and is ignored outright.
+      if (data.system && _currentSystem && data.system !== _currentSystem) {
+        return;
       }
 
-      _currentSystem  = incomingSystem;
+      if (data.system && !_currentSystem) _currentSystem = data.system;
+
       _journalBodies  = {};
       _journalSignals = data.signals || {};
+      _journalStations = data.stations || [];
       (data.bodies || []).forEach(function(b) {
         _journalBodies[b.name] = b;
         if (b.estimatedValue || b.mappedValue) {

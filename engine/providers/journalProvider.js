@@ -93,9 +93,9 @@ function runWorker(files, { mode = 'all', useLastProcessed = false, updateLastPr
           break;
 
         case 'bodies-data':
-          _cache.bodiesData = { system: msg.system, bodies: msg.bodies, signals: msg.signals };
-          send('bodies-data', { system: msg.system, bodies: msg.bodies, signals: msg.signals });
-          eventBus.emit('journal.bodies', { system: msg.system, bodies: msg.bodies, signals: msg.signals });
+          _cache.bodiesData = { system: msg.system, bodies: msg.bodies, signals: msg.signals, stations: msg.stations || [] };
+          send('bodies-data', { system: msg.system, bodies: msg.bodies, signals: msg.signals, stations: msg.stations || [] });
+          eventBus.emit('journal.bodies', { system: msg.system, bodies: msg.bodies, signals: msg.signals, stations: msg.stations || [] });
           break;
 
         case 'missions-data':

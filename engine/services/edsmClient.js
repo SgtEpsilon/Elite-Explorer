@@ -3,7 +3,9 @@
  *
  * Listens on the eventBus for journal.location events (fired on every
  * FSDJump and Location event) and fetches system info + bodies from EDSM,
- * then pushes the results to the renderer via edsm-system and edsm-bodies.
+ * cross-references bodies/stations against Spansh (see spanshClient.js),
+ * then pushes the merged results to the renderer via edsm-system and
+ * edsm-bodies.
  *
  * Bodies are ALWAYS fetched regardless of edsmEnabled — they populate the
  * System Bodies panel immediately on system entry without waiting for the
@@ -14,12 +16,24 @@
  *
  * Deduplication is by system+timestamp key so rapid duplicate events for the
  * same jump are collapsed, but re-entering the same system always re-fetches.
+ *
+ * ── Cross-referencing stations/bodies against Spansh ──────────────────────
+ * EDSM's station list is crowd-submitted and known to go stale — stations
+ * that have been removed, renamed, or never existed can linger. Spansh
+ * rebuilds its galaxy data from EDDN on a rolling basis and tends to reflect
+ * reality faster, so we treat Spansh as the primary source for stations
+ * (and use it to backfill/verify bodies) whenever we can resolve the
+ * system's id64, and only fall back to EDSM-only data if Spansh is
+ * unavailable or doesn't recognise the system yet. Every station/body we
+ * send to the renderer carries a `source` field ('spansh' or 'edsm') so any
+ * still-EDSM-only entry can be visually flagged as unverified.
  */
 
-const eventBus    = require('../core/eventBus');
-const logger      = require('../core/logger');
-const CONFIG_PATH = require('path').join(__dirname, '../../config.json');
-const fs          = require('fs');
+const eventBus     = require('../core/eventBus');
+const logger       = require('../core/logger');
+const spanshClient = require('./spanshClient');
+const CONFIG_PATH  = require('path').join(__dirname, '../../config.json');
+const fs           = require('fs');
 
 const BASE_URL = 'https://www.edsm.net';
 
@@ -27,6 +41,7 @@ let mainWindow     = null;
 let _lastLookupKey = null;   // last system name looked up — prevents re-fetching same system
 let _cachedSystem  = null;   // last edsm-system payload
 let _cachedBodies  = null;   // last edsm-bodies payload
+
 
 function setMainWindow(win) { mainWindow = win; }
 
@@ -70,6 +85,98 @@ async function fetchSystemStations(systemName) {
   );
   if (!res.ok) throw new Error('HTTP ' + res.status);
   return await res.json();
+}
+
+// ── Cross-referencing helpers ──────────────────────────────────────────────
+
+function normalizeName(n) { return String(n || '').trim().toLowerCase(); }
+
+// Spansh's dump schema doesn't match EDSM's station shape 1:1 — reshape it
+// to the same fields the renderer already reads off EDSM stations
+// (type, distanceToArrival, haveMarket/haveShipyard/haveOutfitting,
+// otherServices, controllingFaction.name, body.name) so the UI needs no
+// changes to consume whichever source a given station came from.
+function spanshStationToEdsmShape(s, bodiesById) {
+  const services = Array.isArray(s.services) ? s.services : [];
+  const body = (s.body && s.body.name)
+    ? { name: s.body.name }
+    : (s.bodyId != null && bodiesById && bodiesById[s.bodyId])
+      ? { name: bodiesById[s.bodyId] }
+      : null;
+  return {
+    name:              s.name || '?',
+    type:              s.type || s.stationType || 'Station',
+    distanceToArrival: s.distanceToArrival != null ? s.distanceToArrival : null,
+    haveMarket:        !!s.market || services.indexOf('Market') !== -1,
+    haveShipyard:      !!s.shipyard || services.indexOf('Shipyard') !== -1,
+    haveOutfitting:    !!s.outfitting || services.indexOf('Outfitting') !== -1,
+    otherServices:     services,
+    controllingFaction: s.controllingFaction && s.controllingFaction.name
+      ? { name: s.controllingFaction.name }
+      : (s.faction && s.faction.name ? { name: s.faction.name } : null),
+    updateTime: s.updateTime || null,
+    body,
+    source: 'spansh',
+  };
+}
+
+function spanshBodyToEdsmShape(b) {
+  return {
+    name:              b.name || '?',
+    type:              b.type || null,
+    subType:           b.subType || null,
+    distanceToArrival: b.distanceToArrival != null ? b.distanceToArrival : null,
+    radius:            b.radius != null ? b.radius : null,
+    gravity:           b.gravity != null ? b.gravity : null,
+    surfaceTemp:       b.surfaceTemperature != null ? b.surfaceTemperature : null,
+    isLandable:        !!b.isLandable,
+    rings:             Array.isArray(b.rings) && b.rings.length ? b.rings : null,
+    solarRadius:       b.solarRadius != null ? b.solarRadius : null,
+    source:            'spansh',
+  };
+}
+
+// Spansh is treated as primary (fresher, pruned against EDDN) — any EDSM
+// entry with the same name is dropped in favour of it. EDSM-only entries
+// (systems/stations Spansh hasn't indexed yet) are kept and tagged so the UI
+// can flag them as unverified.
+function mergeStations(edsmStations, spanshRaw) {
+  const bodiesById = {};
+  if (spanshRaw && Array.isArray(spanshRaw.bodies)) {
+    spanshRaw.bodies.forEach((b) => { if (b.id != null) bodiesById[b.id] = b.name; });
+  }
+
+  const merged  = new Map();
+  const spanshStations = (spanshRaw && Array.isArray(spanshRaw.stations)) ? spanshRaw.stations : [];
+
+  spanshStations.forEach((s) => {
+    merged.set(normalizeName(s.name), spanshStationToEdsmShape(s, bodiesById));
+  });
+
+  (edsmStations || []).forEach((s) => {
+    const key = normalizeName(s.name);
+    if (merged.has(key)) return; // Spansh already covers this one — trust it
+    merged.set(key, Object.assign({}, s, { source: 'edsm' }));
+  });
+
+  return Array.from(merged.values());
+}
+
+function mergeBodies(edsmBodies, spanshRaw) {
+  const merged = new Map();
+
+  (edsmBodies || []).forEach((b) => {
+    merged.set(normalizeName(b.name), Object.assign({}, b, { source: b.source || 'edsm' }));
+  });
+
+  const spanshBodies = (spanshRaw && Array.isArray(spanshRaw.bodies)) ? spanshRaw.bodies : [];
+  spanshBodies.forEach((b) => {
+    const key = normalizeName(b.name);
+    if (merged.has(key)) return; // already have it from EDSM/journal — don't override
+    merged.set(key, spanshBodyToEdsmShape(b));
+  });
+
+  return Array.from(merged.values());
 }
 
 // ── Main lookup — triggered on every system entry ─────────────────────────────
@@ -130,13 +237,47 @@ async function lookupSystem(systemName, timestamp) {
 
     // ── Bodies → edsm-bodies ───────────────────────────────────────────────
     if (bodiesRaw.status === 'fulfilled' && bodiesRaw.value && Array.isArray(bodiesRaw.value.bodies)) {
-      const stations = (stationsRaw.status === 'fulfilled' && stationsRaw.value && Array.isArray(stationsRaw.value.stations))
+      const edsmBodies   = bodiesRaw.value.bodies;
+      const edsmStations = (stationsRaw.status === 'fulfilled' && stationsRaw.value && Array.isArray(stationsRaw.value.stations))
         ? stationsRaw.value.stations
         : [];
-      const payload = { system: systemName, bodies: bodiesRaw.value.bodies, stations };
+
+      // Cross-reference against Spansh using the system's id64 (EDSM's
+      // bodies response includes it). Spansh is a second, independently
+      // maintained source — merging it in is what catches stations EDSM has
+      // wrong or stale. Any failure here (network, unrecognised system,
+      // Spansh API shape drift) is non-fatal — we just fall back to EDSM
+      // alone for this lookup. We also sanity-check the response actually
+      // is the system we asked for (by id64 and name) before trusting any
+      // of its stations — belt-and-braces against ever attributing another
+      // system's stations to this one if Spansh's id64 lookup ever mismatches.
+      let bodies = edsmBodies, stations = edsmStations, spanshOk = false;
+      const id64 = bodiesRaw.value.id64;
+      if (id64) {
+        try {
+          const spanshRaw = await spanshClient.fetchSpanshSystem(id64);
+          const spanshId64Matches = spanshRaw && (spanshRaw.id64 == null || String(spanshRaw.id64) === String(id64));
+          const spanshNameMatches = spanshRaw && (!spanshRaw.name || normalizeName(spanshRaw.name) === normalizeName(systemName));
+          if (spanshRaw && spanshId64Matches && spanshNameMatches) {
+            bodies   = mergeBodies(edsmBodies, spanshRaw);
+            stations = mergeStations(edsmStations, spanshRaw);
+            spanshOk = true;
+          } else if (spanshRaw) {
+            logger.warn('Spansh', `Response for id64 ${id64} didn't match requested system ${systemName} (got "${spanshRaw.name}") — ignoring, using EDSM only`);
+          }
+        } catch (err) {
+          logger.warn('Spansh', `Cross-reference lookup failed for ${systemName}`, err.message || err);
+        }
+      } else {
+        logger.warn('Spansh', `No id64 for ${systemName} — skipping cross-reference, using EDSM only`);
+      }
+
+      const payload = { system: systemName, bodies, stations };
       _cachedBodies = payload;
       send('edsm-bodies', payload);
-      logger.info('EDSM', `Bodies fetched for ${systemName}`, { count: bodiesRaw.value.bodies.length, stations: stations.length });
+      logger.info('EDSM', `Bodies fetched for ${systemName}`, {
+        count: bodies.length, stations: stations.length, spanshCrossRef: spanshOk,
+      });
     } else {
       logger.warn('EDSM', `Bodies fetch failed for ${systemName}`, bodiesRaw.reason?.message || 'empty response');
     }
@@ -145,6 +286,7 @@ async function lookupSystem(systemName, timestamp) {
     logger.error('EDSM', `Lookup error for ${systemName}`, err);
   }
 }
+
 
 // ── Replay cached data to any page that loads after the initial lookup ─────────
 
