@@ -119,6 +119,20 @@ function runWorker(files, { mode = 'all', useLastProcessed = false, updateLastPr
           eventBus.emit('journal.profile', msg.data);
           break;
 
+        case 'bodies-clear-summary': {
+          const { count, transitions, finalSystem } = msg.data;
+          // Full transition list goes into the exportable debug log (getDebugLog/
+          // saveDebugLog) — this is the detail needed to actually see *why* a
+          // pass cleared the panel, not just that it happened.
+          logger.info(
+            'JOURNAL',
+            `Bodies panel rebuilt via ${count} clear/rebuild pass(es) this read, ending in ${finalSystem || '?'}`,
+            transitions.map((t) => `${t.prevSystem || '(none)'} → ${t.newSystem} @ ${t.timestamp}`).join('; ')
+          );
+          send('bodies-clear-summary', msg.data);
+          break;
+        }
+
         case 'carrier-event':
           // Not cached/replayed — this is a one-shot trigger for capiProvider
           // (docked-at-carrier / trade-order / trade), not renderer-facing data.

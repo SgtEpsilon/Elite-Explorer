@@ -66,6 +66,16 @@ async function run() {
   // Live missions accumulator — keyed by MissionID so updates overwrite cleanly.
   let liveMissions = {};  // missionID → mission object
 
+  // Records every time liveBodies/liveStations/liveSignals get wiped, and why.
+  // Live mode fully re-parses the whole current journal file from line 0 on
+  // EVERY journal write (see journalProvider.js's runLiveWorker — it never
+  // passes useLastProcessed), so a single in-game event can replay every
+  // earlier FSDJump in a long session, each one wiping and rebuilding the
+  // bodies panel again before the final, correct state is reached. This log
+  // makes that replay visible instead of it just looking like "the tab
+  // randomly cleared" — see the summary emitted at the end of run().
+  let bodiesClearLog = [];
+
   // Profile data accumulator (identity, ranks, rep, stats)
   let profileIdentity   = null;
   let profileRanks      = null;
@@ -157,6 +167,12 @@ async function run() {
             liveData.jumpRange     = entry.JumpDist ? entry.JumpDist.toFixed(2) + ' ly' : null;
             liveData.lastJumpWasFirstDiscovery = (entry.SystemAlreadyDiscovered === false);
             // Clear bodies/stations when entering a new system
+            bodiesClearLog.push({
+              reason:     'FSDJump',
+              prevSystem: liveBodySystem,
+              newSystem:  entry.StarSystem,
+              timestamp:  entry.timestamp,
+            });
             liveBodies     = {};
             liveSignals    = {};
             liveStations   = {};
@@ -641,6 +657,21 @@ async function run() {
       delete liveData._pendingLocation;
     }
     parentPort.postMessage({ type: 'live-data', data: liveData });
+  }
+
+  // ── Emit bodies-clear summary ─────────────────────────────────────────────
+  // One message per run() (not per clear) so a long-session replay doesn't
+  // spam the log — but it still carries every individual transition for
+  // anyone who wants the full detail (exported debug log).
+  if (doLive && bodiesClearLog.length > 0) {
+    parentPort.postMessage({
+      type: 'bodies-clear-summary',
+      data: {
+        count:        bodiesClearLog.length,
+        transitions:  bodiesClearLog,
+        finalSystem:  liveBodySystem,
+      }
+    });
   }
 
   // ── Emit missions-data ────────────────────────────────────────────────────

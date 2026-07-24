@@ -1018,7 +1018,7 @@ if (window.electronAPI) {
     set('tb-sys',   data.system);
 
     if (isNewSystem) {
-      log('Jump: ' + data.system, 'info');
+      log('Jump: ' + (_currentSystem || '(none)') + ' \u2192 ' + data.system + ' \u2014 bodies panel cleared', 'info');
 
       // Clear body state - entering a new system
       _currentSystem  = data.system;
@@ -1110,6 +1110,26 @@ if (window.electronAPI) {
       });
       renderBodiesDebounced(displaySystem);
       renderScans();
+    });
+  }
+
+  // ── BODIES-CLEAR SUMMARY → surfaces *why* the panel just cleared ───────────
+  // Live mode re-parses the whole current journal file from scratch on every
+  // journal write, so one in-game event (even something as minor as entering
+  // supercruise) can replay every earlier jump this session, each one wiping
+  // and rebuilding the panel again before landing on the real, current one.
+  // A single-transition summary is just the normal "you jumped" case; more
+  // than one in the same pass means a replay just happened, which is the
+  // "randomly clearing" symptom — this makes that visible instead of silent.
+  if (window.electronAPI.onBodiesClearSummary) {
+    window.electronAPI.onBodiesClearSummary(function (data) {
+      if (!data) return;
+      if (data.count > 1) {
+        log('System Bodies: rebuilt via ' + data.count + ' replayed jump(s) this pass (ended in ' +
+            (data.finalSystem || '?') + ')', 'warn');
+      } else {
+        log('System Bodies: cleared for jump into ' + (data.finalSystem || '?'), 'info');
+      }
     });
   }
 
