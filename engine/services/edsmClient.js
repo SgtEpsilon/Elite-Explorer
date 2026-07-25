@@ -140,6 +140,16 @@ function spanshBodyToEdsmShape(b) {
     isLandable:        !!b.isLandable,
     rings:             Array.isArray(b.rings) && b.rings.length ? b.rings : null,
     solarRadius:       b.solarRadius != null ? b.solarRadius : null,
+    // Mass + terraforming state — same field names EDSM's own API already
+    // uses (earthMasses/solarMasses/terraformingState), needed so the
+    // renderer can estimate a Value/Max for bodies we only know about from
+    // Spansh (haven't personally scanned this session). Without these the
+    // exploration-value formula has nothing to work from but a flat
+    // default mass of 1, which is wrong for anything but a genuinely
+    // Earth-mass body.
+    earthMasses:       b.earthMasses  != null ? b.earthMasses  : null,
+    solarMasses:       b.solarMasses  != null ? b.solarMasses  : null,
+    terraformingState: b.terraformingState || null,
     // Spansh's dump format is based on EDSM's own schema, so materials come
     // through as the same {elementname: percent} object shape when present —
     // pass it straight through unchanged.

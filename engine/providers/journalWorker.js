@@ -216,8 +216,11 @@ async function run() {
               composition:  entry.Composition      || null,
               wasDiscovered: entry.WasDiscovered   !== false,
               wasMapped:    entry.WasMapped        !== false,
-              mappedValue:  entry.MappedValue      || null,
-              estimatedValue: entry.EstimatedValue || null,
+              // NOTE: the journal's Scan event has no value field at all (no
+              // MappedValue/EstimatedValue keys — confirmed against the
+              // Frontier journal manual). Value is computed client-side in
+              // ui/script.js (computeBodyValue) from class + mass +
+              // wasDiscovered/wasMapped instead.
               isScoopable:  entry.StarType ? 'KGBFOAM'.includes(entry.StarType[0]) : false,
               timestamp:    entry.timestamp,
             };

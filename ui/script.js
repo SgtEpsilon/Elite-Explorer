@@ -162,24 +162,86 @@ function fmtLS(ls) {
   return (ls / 499.004785).toFixed(2) + ' AU';
 }
 
-// Estimate base scan value from planet class (fallback when journal doesn't give it)
-function estimateValue(b) {
-  if (!b.planetClass) return null;
-  var pc = b.planetClass.toLowerCase();
-  if (pc.includes('earth'))   return 700000;
-  if (pc.includes('ammonia'))  return 500000;
-  if (pc.includes('water giant')) return 100000;
-  if (pc.includes('water'))   return 100000;
-  if (pc.includes('metal'))   return 20000;
-  if (pc.includes('high metal')) return 20000;
-  if (pc.includes('class i gas'))  return 3000;
-  if (pc.includes('class ii gas')) return 8000;
-  if (pc.includes('class iii'))    return 5000;
-  if (pc.includes('class iv'))     return 5000;
-  if (pc.includes('class v'))      return 6000;
-  if (pc.includes('icy'))     return 1000;
-  if (pc.includes('rocky'))   return 500;
-  return null;
+// ─── EXPLORATION VALUE ESTIMATION ──────────────────────────────────
+// The journal's Scan event does NOT include a value field (no
+// "EstimatedValue"/"MappedValue" key exists on it) and neither EDSM's nor
+// Spansh's body payloads carry a ready-made credit figure either — so
+// there is no field to just "read off" any of the three sources. Instead
+// we reproduce the same reverse-engineered 3.3+ exploration-value formula
+// EDDiscovery/EDSY use (see https://forums.frontier.co.uk/showthread.php/232000-Exploration-value-formulae/
+// and EDDiscovery's own EliteDangerousCore/.../EstimatedValues.cs), fed
+// from whichever inputs are available: full detail from a journal Scan
+// (jb) if we've scanned it ourselves this session, otherwise the
+// coarser class/mass data EDSM or Spansh already gave us (eb). This is
+// why edsmClient.js was extended to pass earthMasses/solarMasses/
+// terraformingState through for Spansh-sourced bodies (EDSM's raw shape
+// already carries them) — without mass+class we can't compute anything.
+
+function starValueK(starTypeCode, subTypeText) {
+  var code = (starTypeCode || '').toUpperCase();
+  var t    = (subTypeText  || '').toLowerCase();
+  if (t.indexOf('supermassive') !== -1) return 33.5678;
+  if (/^D/.test(code) || t.indexOf('white dwarf') !== -1) return 14057;
+  if (code === 'N' || code === 'H' || t.indexOf('neutron') !== -1 || t.indexOf('black hole') !== -1) return 22628;
+  return 1200; // ordinary main-sequence/giant/proto stars
+}
+
+function planetValueK(planetClassText, terraformable) {
+  var t = (planetClassText || '').toLowerCase();
+  if (t.indexOf('metal') !== -1 && t.indexOf('high metal') === -1) // "metal-rich body" but not "high metal content"
+    return 21790 + (terraformable ? 65631 : 0);
+  if (t.indexOf('ammonia') !== -1) return 96932;
+  if (t.indexOf('earth') !== -1) return 64831 + 116295; // Earthlike is always terraformable
+  if (t.indexOf('water world') !== -1) return 64831 + (terraformable ? 116295 : 0);
+  if (t.indexOf('high metal content') !== -1) return 9654 + (terraformable ? 100677 : 0);
+  if (t.indexOf('class i gas giant') !== -1) return 1656;
+  if (t.indexOf('class ii gas giant') !== -1) return 9654 + (terraformable ? 100677 : 0);
+  return 300 + (terraformable ? 93328 : 0); // class III/IV/V giants, rocky, icy, rocky ice, water giant, belts
+}
+
+function odysseyBonus(v) { return v + Math.max(v * 0.3, 555); }
+
+// jb = journal-scanned body data (may be absent), eb = EDSM/Spansh body data (may be absent)
+// Returns { value, maxValue } in credits, or nulls when there isn't enough data to estimate.
+function computeBodyValue(jb, eb) {
+  var isStar = (jb && jb.type === 'Star') || (eb && eb.type === 'Star');
+
+  if (isStar) {
+    var starCode = jb && jb.starType || null;
+    var starSub  = (eb && (eb.subType || eb.type)) || '';
+    var kValue   = starValueK(starCode, starSub);
+    var sMass    = (jb && jb.solarMasses != null) ? parseFloat(jb.solarMasses)
+                 : (eb && eb.solarMasses != null) ? parseFloat(eb.solarMasses)
+                 : 1;
+    var sBase    = kValue + (sMass * kValue / 66.25);
+    var sFirstDiscovery = jb ? !jb.wasDiscovered : false; // unknown from EDSM/Spansh alone — assume already known
+    var sValue   = sBase * (sFirstDiscovery ? 2.6 : 1);
+    // Stars can't be DSS-mapped, so there's no separate "Max" figure for them.
+    return { value: Math.round(sValue), maxValue: null };
+  }
+
+  var planetClassText = (jb && jb.planetClass) || (eb && eb.subType) || null;
+  if (!planetClassText) return { value: null, maxValue: null }; // e.g. belts, or no data at all yet
+
+  var terraformable = !!(jb && jb.terraformable) ||
+    !!(eb && eb.terraformingState && eb.terraformingState !== 'Not terraformable');
+  var pkValue = planetValueK(planetClassText, terraformable);
+  var pMass   = (jb && jb.massEM != null) ? parseFloat(jb.massEM)
+              : (eb && eb.earthMasses != null) ? parseFloat(eb.earthMasses)
+              : 1;
+  var pBase = Math.max(pkValue + (pkValue * Math.pow(pMass, 0.2) * 0.56591828), 500);
+
+  var firstDiscovery = jb ? !jb.wasDiscovered : false; // unknown from EDSM/Spansh alone — assume already known
+  var firstMapped    = jb ? !jb.wasMapped     : false; // unknown from EDSM/Spansh alone — assume already mapped
+
+  var value = pBase * (firstDiscovery ? 2.6 : 1);
+
+  var maxValue;
+  if (firstDiscovery && firstMapped)      maxValue = odysseyBonus(pBase * 3.699622554) * 2.6;
+  else if (firstMapped)                   maxValue = odysseyBonus(pBase * 8.0956);
+  else                                    maxValue = odysseyBonus(pBase * 3.3333333);
+
+  return { value: Math.round(value), maxValue: Math.round(maxValue) };
 }
 
 // Determine if a body is a moon (has a parent that is not a belt or barycentre)
@@ -572,9 +634,10 @@ function renderBodies(system) {
       // nothing extra
     }
 
-    // ── Value ──
-    var value    = (jb && jb.estimatedValue) || estimateValue(jb || {});
-    var maxValue = (jb && jb.mappedValue)    || (value ? Math.round(value * 3.3) : null);
+    // ── Value ── computed from whichever of journal/EDSM/Spansh data we have (see computeBodyValue)
+    var bodyValue = computeBodyValue(jb, eb);
+    var value     = bodyValue.value;
+    var maxValue  = bodyValue.maxValue;
 
     // Count body types
     if (isStar)      stars++;
@@ -1159,12 +1222,16 @@ if (window.electronAPI) {
       _journalStations = data.stations || [];
       (data.bodies || []).forEach(function(b) {
         _journalBodies[b.name] = b;
-        if (b.estimatedValue || b.mappedValue) {
+        // The journal's Scan event never actually carries a value field —
+        // there's nothing to read here, so compute it the same way the
+        // System Bodies table does (see computeBodyValue above).
+        var bv = computeBodyValue(b, null);
+        if (bv.value) {
           _scanEntries[b.name] = {
             body:   b.name,
             type:   b.planetClass || b.starType || b.type || '',
             mapped: b.wasMapped === false,
-            value:  b.estimatedValue || null,
+            value:  bv.value,
           };
         }
       });
