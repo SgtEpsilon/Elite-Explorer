@@ -1293,3 +1293,48 @@ a:focus-visible, button:focus-visible, input:focus-visible,
 @media (prefers-reduced-motion: reduce) {
   *, *::before, *::after { animation-duration: 0.001ms !important; animation-iteration-count: 1 !important; transition-duration: 0.001ms !important; }
 }
+
+/* ─── CARRIER — Cargo & Orders scroll regions ───────────────────────
+   Both lists can grow past one screen (dozens of commodities on a
+   well-stocked carrier), so each gets its own capped, independently
+   scrollable region rather than pushing the whole page height out. */
+#carrier-cargo-list, #capi-carrier-orders {
+  max-height: 340px;
+  overflow-y: auto;
+  padding-right: 6px;
+}
+#carrier-cargo-list::-webkit-scrollbar, #capi-carrier-orders::-webkit-scrollbar { width: 3px; }
+#carrier-cargo-list::-webkit-scrollbar-thumb, #capi-carrier-orders::-webkit-scrollbar-thumb { background: var(--border2); border-radius: 2px; }
+
+/* Orders table — Commodity | Buying | Selling | Quantity | Price */
+.orders-table { display: grid; grid-template-columns: minmax(0,2.2fr) 0.8fr 0.8fr 1fr 1.1fr; border-top: 1px solid var(--border); }
+.orders-th {
+  font-family: var(--mono); font-size: 0.6667em; font-weight: 700; letter-spacing: 0.1em; text-transform: uppercase;
+  color: var(--text-mute); background: var(--bg2); padding: 8px 10px; border-bottom: 2px solid var(--border2);
+  position: sticky; top: 0; z-index: 1;
+}
+.orders-th.num, .orders-cell.num { text-align: right; }
+.orders-th.mid, .orders-cell.mid { text-align: center; }
+.orders-cell { font-family: var(--mono); font-size: 0.8333em; color: var(--text); padding: 7px 10px; border-bottom: 1px solid var(--border); display: flex; align-items: center; }
+.orders-cell.num, .orders-cell.mid { justify-content: flex-end; }
+.orders-cell.mid { justify-content: center; }
+.orders-cell.commod { color: var(--text); }
+.orders-flag-yes { color: var(--cyan); }
+.orders-flag-no { color: var(--text-mute); opacity: 0.4; }
+.orders-row-buy .orders-cell:first-child { box-shadow: inset 3px 0 0 0 var(--green); }
+.orders-row-sell .orders-cell:first-child { box-shadow: inset 3px 0 0 0 var(--gold); }
+
+/* Body surface composition badges (System Bodies table) — grade colours
+   reused from the Materials tab's own g1-g4 palette for consistency. */
+.mat-badge-row { margin-top: 4px; display: flex; flex-wrap: wrap; gap: 3px; }
+.mat-badge {
+  display: inline-flex; align-items: center; gap: 3px;
+  font-family: var(--mono); font-size: 0.6667em; font-weight: 700;
+  padding: 2px 6px; border-radius: 3px; letter-spacing: 0.02em;
+  color: var(--bg); cursor: default;
+}
+.mat-badge-pct { font-weight: 400; opacity: 0.85; }
+.mat-badge.g1 { background: #a0b880; }
+.mat-badge.g2 { background: #7ecfcf; }
+.mat-badge.g3 { background: #d4b84a; }
+.mat-badge.g4 { background: #c080d0; }

@@ -298,17 +298,18 @@
   }
 
   // ── Fleet Carrier ────────────────────────────────────────────────────────────
-  // NOTE on Cargo & Orders: Frontier's /fleetcarrier response only tells us
-  // "physically in the hold" indirectly — via each commodity's current sell
-  // order (its stock is what's actually loaded and up for sale) and via each
-  // buy order's outstanding/total (total - outstanding = however much has been
-  // delivered into the hold so far against that order). We use those two
-  // fields rather than a separate raw cargo manifest, since the app doesn't
-  // fetch one:
-  //   - Cargo list / Selling list: only commodities with stock > 0 (i.e.
-  //     actually sitting in the carrier's hold right now) are shown.
-  //   - Buying list: shown as "<already in cargo>/<quantity wanted>" instead
-  //     of the old "<outstanding>/<total> remaining".
+  // NOTE on Cargo & Orders: Frontier's /fleetcarrier response DOES include a
+  // real raw cargo manifest at fc.cargo — a flat list of every item actually
+  // sitting in the hold (commodity, qty, stolen, mission, locName), completely
+  // independent of whether that item has a buy/sell order set. Previously this
+  // page derived "Cargo" from orders.commodities.sales instead, which only
+  // showed items that happened to have an active sell order — anything moved
+  // in via ship-to-carrier transfer without an order (escape pods, relics,
+  // raw mined cargo, limpets, etc.) was invisible here even though it was
+  // physically aboard. Cargo now reads fc.cargo directly (aggregated by
+  // commodity, since each line in fc.cargo is qty 1); Orders reads
+  // fc.orders.commodities as before, unfiltered by what's physically in the
+  // hold — an order can exist with 0 stock, or the reverse.
   function renderFleetCarrier(fc) {
     var noneEl    = document.getElementById('carrier-none');
     var contentEl = document.getElementById('carrier-owned-content');
@@ -353,42 +354,91 @@
       statsEl.innerHTML = html;
     }
 
-    var commodOrders  = fc.orders && fc.orders.commodities;
-    var sales         = (commodOrders && commodOrders.sales) || [];
-    var purchases     = (commodOrders && commodOrders.purchases) || [];
-    // Only commodities actually sitting in the carrier's hold (stock > 0).
-    var sellingInCargo = sales.filter(function (o) { return (o.stock || 0) > 0; });
+    var commodOrders = fc.orders && fc.orders.commodities;
+    var sales        = (commodOrders && commodOrders.sales) || [];
+    var purchases    = (commodOrders && commodOrders.purchases) || [];
 
     // ── Cargo list ─────────────────────────────────────────────────────────
+    // fc.cargo is a flat list of individual items (qty always 1 per Frontier's
+    // own docs), so aggregate by commodity name to get real hold quantities.
     var cargoEl = document.getElementById('carrier-cargo-list');
     if (cargoEl) {
+      var rawCargo = fc.cargo || [];
+      var byCommod = {}; // key: commodity name -> { locName, qty, value, stolen, mission }
+      rawCargo.forEach(function (item) {
+        var key = item.commodity || item.locName;
+        if (!key) return;
+        if (!byCommod[key]) {
+          byCommod[key] = {
+            locName: item.locName || item.commodity,
+            qty: 0,
+            value: 0,
+            stolen: false,
+            mission: false,
+          };
+        }
+        var entry = byCommod[key];
+        entry.qty += (item.qty != null ? item.qty : 1);
+        entry.value += (item.value || 0);
+        if (item.stolen)  entry.stolen  = true;
+        if (item.mission) entry.mission = true;
+      });
+      var cargoList = Object.keys(byCommod).map(function (k) { return byCommod[k]; });
+      cargoList.sort(function (a, b) { return b.qty - a.qty; });
+
       var ch = '';
-      sellingInCargo.forEach(function (o) {
-        ch += statRow(o.name, o.stock + ' t' + (o.blackmarket ? ' &#9679;' : ''));
+      cargoList.forEach(function (o) {
+        var flags = (o.stolen ? ' &#9679;stolen' : '') + (o.mission ? ' &#9670;mission' : '');
+        ch += statRow(o.locName, o.qty + ' t' + flags);
       });
       cargoEl.innerHTML = ch || '<div style="color:var(--text-mute);font-size:0.78em;">Nothing in the carrier\u2019s hold right now.</div>';
     }
 
     // ── Orders list ────────────────────────────────────────────────────────
+    // "Active" means: a sell order with a real price set AND stock > 0 (a
+    // sell order with nothing currently loaded against it has zero quantity
+    // to show, so it's hidden rather than displayed as a 0), and a buy order
+    // that still has outstanding demand — once outstanding hits 0 the order
+    // has been fully satisfied and isn't actively buying anything anymore,
+    // even if it lingers in the raw response. A commodity is never both a
+    // buy and a sell order at once (Frontier's carrier market doesn't allow
+    // it), so each active order becomes exactly one row:
+    // Commodity | Buying | Selling | Quantity | Price.
+    var activeSales     = sales.filter(function (o) { return o.price != null && o.price > 0 && (o.stock || 0) > 0; });
+    var activePurchases = purchases.filter(function (o) { return (o.outstanding || 0) > 0; });
+
     var ordersEl = document.getElementById('capi-carrier-orders');
     if (ordersEl) {
-      var oh = '';
-      if (sellingInCargo.length) {
-        oh += '<div style="font-size:0.72em;color:var(--text-dim);margin-top:6px;">Selling</div>';
-        sellingInCargo.forEach(function (o) {
-          oh += statRow(o.name, fmtCr(o.price) + ' &times; ' + o.stock + (o.blackmarket ? ' &#9679;' : ''));
-        });
+      var rows = [];
+      activeSales.forEach(function (o) {
+        rows.push({ name: o.name, buying: false, selling: true, qty: o.stock || 0, price: o.price, blackmarket: o.blackmarket });
+      });
+      activePurchases.forEach(function (o) {
+        var wanted    = o.total != null ? o.total : 0;
+        var remaining = o.outstanding != null ? o.outstanding : 0;
+        rows.push({ name: o.name, buying: true, selling: false, qty: remaining + ' / ' + wanted, price: o.price });
+      });
+      rows.sort(function (a, b) { return String(a.name).localeCompare(String(b.name)); });
+
+      if (rows.length) {
+        var flag = function (on) { return '<span class="' + (on ? 'orders-flag-yes' : 'orders-flag-no') + '">' + (on ? '\u2713' : '\u2014') + '</span>'; };
+        var th = '<div class="orders-th">Commodity</div>' +
+                 '<div class="orders-th mid">Buying</div>' +
+                 '<div class="orders-th mid">Selling</div>' +
+                 '<div class="orders-th num">Quantity</div>' +
+                 '<div class="orders-th num">Price</div>';
+        var body = rows.map(function (r) {
+          var rowCls = r.buying ? 'orders-row-buy' : 'orders-row-sell';
+          return '<div class="orders-cell commod ' + rowCls + '">' + esc(r.name) + (r.blackmarket ? ' &#9679;' : '') + '</div>' +
+                 '<div class="orders-cell mid">' + flag(r.buying) + '</div>' +
+                 '<div class="orders-cell mid">' + flag(r.selling) + '</div>' +
+                 '<div class="orders-cell num">' + r.qty + '</div>' +
+                 '<div class="orders-cell num">' + fmtCr(r.price) + '</div>';
+        }).join('');
+        ordersEl.innerHTML = '<div class="orders-table">' + th + body + '</div>';
+      } else {
+        ordersEl.innerHTML = '<div style="color:var(--text-mute);font-size:0.78em;">No active buy/sell orders.</div>';
       }
-      if (purchases.length) {
-        oh += '<div style="font-size:0.72em;color:var(--text-dim);margin-top:6px;">Buying</div>';
-        purchases.forEach(function (o) {
-          var wanted    = o.total != null ? o.total : 0;
-          var remaining = o.outstanding != null ? o.outstanding : 0;
-          var inCargo   = Math.max(0, wanted - remaining);
-          oh += statRow(o.name, fmtCr(o.price) + ' \u2014 ' + inCargo + '/' + wanted + ' in cargo');
-        });
-      }
-      ordersEl.innerHTML = oh || '<div style="color:var(--text-mute);font-size:0.78em;">No active buy/sell orders.</div>';
     }
   }
 

@@ -140,6 +140,10 @@ function spanshBodyToEdsmShape(b) {
     isLandable:        !!b.isLandable,
     rings:             Array.isArray(b.rings) && b.rings.length ? b.rings : null,
     solarRadius:       b.solarRadius != null ? b.solarRadius : null,
+    // Spansh's dump format is based on EDSM's own schema, so materials come
+    // through as the same {elementname: percent} object shape when present —
+    // pass it straight through unchanged.
+    materials:         b.materials && typeof b.materials === 'object' ? b.materials : null,
     source:            'spansh',
   };
 }

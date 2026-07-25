@@ -7,6 +7,58 @@ const EMPIRE_RANKS  = ['None','Outsider','Serf','Master','Squire','Knight','Lord
 const FED_RANKS     = ['None','Recruit','Cadet','Midshipman','Petty Officer','Chief Petty Officer','Warrant Officer','Ensign','Lieutenant','Lt. Commander','Post Commander','Post Captain','Rear Admiral','Vice Admiral','Admiral'];
 const EXOBIO_RANKS  = ['Directionless','Mostly Directionless','Compiler','Collector','Cataloguer','Taxonomist','Ecologist','Geneticist','Elite'];
 
+// ─── RAW MATERIALS — symbol + grade lookup (surface composition badges) ────
+// Grade grouping matches the app's own Materials tab (profile.html's
+// MATERIAL_GRADES) so the colour language stays consistent across pages.
+const RAW_MATERIAL_SYMBOL = {
+  carbon:'C', iron:'Fe', lead:'Pb', nickel:'Ni', phosphorus:'P', rhenium:'Re', sulphur:'S', sulfur:'S',
+  arsenic:'As', chromium:'Cr', germanium:'Ge', manganese:'Mn', vanadium:'V', zinc:'Zn', zirconium:'Zr',
+  boron:'B', cadmium:'Cd', mercury:'Hg', molybdenum:'Mo', niobium:'Nb', tin:'Sn', tungsten:'W',
+  antimony:'Sb', polonium:'Po', ruthenium:'Ru', selenium:'Se', technetium:'Tc', tellurium:'Te', yttrium:'Y',
+};
+const RAW_MATERIAL_GRADE = {
+  carbon:1, iron:1, lead:1, nickel:1, phosphorus:1, rhenium:1, sulphur:1, sulfur:1,
+  arsenic:2, chromium:2, germanium:2, manganese:2, vanadium:2, zinc:2, zirconium:2,
+  boron:3, cadmium:3, mercury:3, molybdenum:3, niobium:3, tin:3, tungsten:3,
+  antimony:4, polonium:4, ruthenium:4, selenium:4, technetium:4, tellurium:4, yttrium:4,
+};
+
+// Normalizes a body's surface material composition regardless of source:
+//  - journal Scan/FSSBodyScanned (jb.materials): array of {Name, Percent},
+//    the freshest possible data since it's this commander's own scan.
+//  - EDSM (eb.materials): object map of {elementname: percent}, crowd-sourced
+//    from anyone who's scanned the body — used as a fallback so unscanned
+//    (this session) bodies still show composition if EDSM already knows it.
+// Journal data wins when both are present. Returns [] when neither has it.
+function getBodyMaterials(jb, eb) {
+  var out = [];
+  if (jb && Array.isArray(jb.materials) && jb.materials.length) {
+    jb.materials.forEach(function (m) {
+      var key = String(m.Name || m.name || '').toLowerCase();
+      if (!key) return;
+      out.push({ key: key, percent: m.Percent != null ? m.Percent : m.percent });
+    });
+  } else if (eb && eb.materials && typeof eb.materials === 'object') {
+    Object.keys(eb.materials).forEach(function (key) {
+      out.push({ key: key.toLowerCase(), percent: eb.materials[key] });
+    });
+  }
+  out.sort(function (a, b) { return (b.percent || 0) - (a.percent || 0); });
+  return out;
+}
+
+function materialBadgesHtml(materials) {
+  if (!materials || !materials.length) return '';
+  return '<div class="mat-badge-row">' + materials.map(function (m) {
+    var symbol = RAW_MATERIAL_SYMBOL[m.key] || (m.key.charAt(0).toUpperCase() + m.key.slice(1, 3));
+    var grade  = RAW_MATERIAL_GRADE[m.key] || 1;
+    var pct    = m.percent != null ? m.percent.toFixed(1) : '?';
+    return '<span class="mat-badge g' + grade + '" title="' + (m.key.charAt(0).toUpperCase() + m.key.slice(1)) + '">' +
+             symbol + ' <span class="mat-badge-pct">' + pct + '%</span>' +
+           '</span>';
+  }).join('') + '</div>';
+}
+
 // ─── UTILITIES ────────────────────────────────────────────────────
 function fmt(n)    { return (n == null || n === 0) ? '\u2014' : Number(n).toLocaleString() + ' cr'; }
 function fmtNum(n) { return n == null ? '\u2014' : Number(n).toLocaleString(); }
@@ -479,6 +531,13 @@ function renderBodies(system) {
     if (jb && jb.rings)  infoLines.push('Rings: ' + (jb.ringTypes.join(', ') || 'present'));
     else if (eb && eb.rings) infoLines.push('Rings');
 
+    // ── Surface composition (materials) ─────────────────────────────────────
+    // Only meaningful for landable rocky/icy bodies — stars and gas giants
+    // never carry a materials list from either source, so this naturally
+    // stays empty (and unrendered) for them.
+    var bodyMaterials = getBodyMaterials(jb, eb);
+    var materialsHtml = materialBadgesHtml(bodyMaterials);
+
     // ── Tags ──
     var tags = [];
 
@@ -560,6 +619,7 @@ function renderBodies(system) {
         '<td>' +
           '<div class="info-text">' + infoHtml + '</div>' +
           (tagHtml ? '<div style="margin-top:3px">' + tagHtml + '</div>' : '') +
+          materialsHtml +
         '</td>' +
         '<td class="val-cell">' + (value ? value.toLocaleString() + ' cr' : '—') + '</td>' +
         '<td class="val-cell muted" style="font-size:0.75em">' + (maxValue ? maxValue.toLocaleString() + ' cr' : '—') + '</td>' +
