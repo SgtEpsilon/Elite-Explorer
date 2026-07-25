@@ -303,6 +303,27 @@ body::after { content: ''; position: fixed; inset: 0; background: repeating-line
 #log-entries::-webkit-scrollbar-thumb { background: var(--border2); }
 .log-entry { display: flex; gap: 8px; padding: 1px 0; animation: fadeIn 0.3s ease; }
 @keyframes fadeIn { from { opacity: 0; transform: translateY(-2px); } to { opacity: 1; transform: translateY(0); } }
+
+/* System Bodies panel header — transient "this was a replay, not a real jump"
+   indicator. Lives right next to the body count so it's seen by anyone
+   watching the panel itself, not just people with the Application Log open. */
+.bodies-replay-note {
+  font-family: var(--mono);
+  font-size: 0.75em;
+  color: var(--gold);
+  letter-spacing: 0.02em;
+  white-space: nowrap;
+  opacity: 0;
+  max-width: 0;
+  overflow: hidden;
+  display: inline-block;
+  transition: opacity 0.35s ease, max-width 0.35s ease, margin 0.35s ease;
+}
+.bodies-replay-note.show {
+  opacity: 1;
+  max-width: 260px;
+  margin-right: 8px;
+}
 .log-ts { color: var(--text-mute); white-space: nowrap; }
 .log-msg.info  { color: var(--text-dim); }
 .log-msg.good  { color: var(--green); }

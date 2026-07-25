@@ -259,7 +259,19 @@ async function lookupSystem(systemName, timestamp) {
       // is the system we asked for (by id64 and name) before trusting any
       // of its stations — belt-and-braces against ever attributing another
       // system's stations to this one if Spansh's id64 lookup ever mismatches.
-      let bodies = edsmBodies, stations = edsmStations, spanshOk = false;
+      //
+      // FIX: the fallback (no id64 / lookup failed / mismatch) used to hand
+      // back edsmBodies/edsmStations completely untagged. mergeStations()
+      // tags every non-Spansh-matched entry `source: 'edsm'`, which is what
+      // the renderer's "Unverified" badge keys off — so a *partial* Spansh
+      // success correctly flagged the EDSM-only leftovers, but a *total*
+      // Spansh failure (arguably the case where the data is least trustworthy)
+      // rendered with no warning at all, looking identical to verified data.
+      // Tag the fallback the same way so "Unverified" is consistent regardless
+      // of which path produced the result.
+      let bodies   = edsmBodies.map(b => Object.assign({}, b, { source: b.source || 'edsm' }));
+      let stations = edsmStations.map(s => Object.assign({}, s, { source: s.source || 'edsm' }));
+      let spanshOk = false;
       const id64 = bodiesRaw.value.id64;
       if (id64) {
         try {
@@ -280,7 +292,7 @@ async function lookupSystem(systemName, timestamp) {
         logger.warn('Spansh', `No id64 for ${systemName} — skipping cross-reference, using EDSM only`);
       }
 
-      const payload = { system: systemName, bodies, stations };
+      const payload = { system: systemName, bodies, stations, spanshVerified: spanshOk };
       _cachedBodies = payload;
       send('edsm-bodies', payload);
       logger.info('EDSM', `Bodies fetched for ${systemName}`, {

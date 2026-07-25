@@ -1121,12 +1121,34 @@ if (window.electronAPI) {
   // A single-transition summary is just the normal "you jumped" case; more
   // than one in the same pass means a replay just happened, which is the
   // "randomly clearing" symptom — this makes that visible instead of silent.
+  var _bodiesReplayNoteTimer = null;
   if (window.electronAPI.onBodiesClearSummary) {
     window.electronAPI.onBodiesClearSummary(function (data) {
       if (!data) return;
       if (data.count > 1) {
         log('System Bodies: rebuilt via ' + data.count + ' replayed jump(s) this pass (ended in ' +
             (data.finalSystem || '?') + ')', 'warn');
+
+        // Also surface it right on the System Bodies panel itself — the
+        // Application Log lives in a different column and someone just
+        // watching the table has no reason to have it open. Without this,
+        // a mid-session journal write (even something unrelated, like a
+        // fuel scoop event) re-parses the whole file from line 0, replays
+        // every earlier FSDJump, and the panel appears to blank and
+        // repopulate for no visible reason.
+        var note = document.getElementById('bodies-replay-note');
+        if (note) {
+          var text = '\u21bb replayed ' + data.count + ' jump(s)';
+          note.textContent = text;
+          note.title = 'Live mode re-parsed the whole journal file this write and replayed ' +
+                       data.count + ' earlier jump(s) before settling on ' +
+                       (data.finalSystem || 'the current system') + '. The panel is correct now.';
+          note.classList.add('show');
+          if (_bodiesReplayNoteTimer) clearTimeout(_bodiesReplayNoteTimer);
+          _bodiesReplayNoteTimer = setTimeout(function () {
+            note.classList.remove('show');
+          }, 4000);
+        }
       } else {
         log('System Bodies: cleared for jump into ' + (data.finalSystem || '?'), 'info');
       }
@@ -1153,6 +1175,10 @@ if (window.electronAPI) {
       _edsmStations = data.stations || [];
       renderBodiesDebounced(data.system || _currentSystem);
       log('EDSM: ' + _edsmBodies.length + ' bodies, ' + _edsmStations.length + ' stations for ' + (data.system || _currentSystem || '?'), 'info');
+      if (data.spanshVerified === false && _edsmStations.length > 0) {
+        log('Spansh: cross-reference unavailable for ' + (data.system || _currentSystem || '?') +
+            ' \u2014 station list is unverified EDSM data only', 'warn');
+      }
     });
   }
 
