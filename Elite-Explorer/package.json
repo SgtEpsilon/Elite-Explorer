@@ -1,0 +1,100 @@
+{
+  "name": "elite-explorer",
+  "version": "0.1.8-beta.3",
+  "description": "Elite Dangerous exploration desktop engine",
+  "main": "main.js",
+  "scripts": {
+    "start": "electron .",
+    "dev": "electron .",
+    "start-ui": "electron .",
+    "build": "node scripts/check-client-id.js && electron-builder",
+    "build:win": "node scripts/check-client-id.js && electron-builder --win",
+    "build:mac": "node scripts/check-client-id.js && electron-builder --mac",
+    "build:linux": "node scripts/check-client-id.js && electron-builder --linux",
+    "publish:stable": "node scripts/check-client-id.js && electron-builder --publish always",
+    "publish:beta": "node scripts/check-client-id.js && electron-builder --publish always -c.publish.releaseType=prerelease -c.publish.channel=beta"
+  },
+  "author": "CMDR Epsilon",
+  "license": "MIT",
+  "dependencies": {
+    "chokidar": "^3.0.0",
+    "electron-updater": "^6.1.7",
+    "express": "^4.18.2",
+    "read-last-lines": "^1.7.1",
+    "sql.js": "^1.12.0"
+  },
+  "devDependencies": {
+    "electron": "^26.2.0",
+    "electron-builder": "^24.13.3"
+  },
+  "build": {
+    "appId": "com.cmdr-epsilon.elite-explorer",
+    "productName": "Elite Explorer",
+    "copyright": "Copyright © 2025 CMDR Epsilon",
+    "icon": "build/icon.png",
+    "files": [
+      "main.js",
+      "preload.js",
+      "index.js",
+      "config.json",
+      ".env",
+      "ui/**/*",
+      "engine/**/*",
+      "node_modules/**/*",
+      "!node_modules/.cache/**/*",
+      "!**/*.map"
+    ],
+    "win": {
+      "target": [
+        {
+          "target": "nsis",
+          "arch": [
+            "x64"
+          ]
+        },
+        {
+          "target": "portable",
+          "arch": [
+            "x64"
+          ]
+        }
+      ],
+      "icon": "build/icon.png",
+      "requestedExecutionLevel": "asInvoker"
+    },
+    "nsis": {
+      "oneClick": false,
+      "allowToChangeInstallationDirectory": true,
+      "allowElevation": true,
+      "createDesktopShortcut": true,
+      "createStartMenuShortcut": true,
+      "shortcutName": "Elite Explorer",
+      "installerHeaderIcon": "build/icon.png",
+      "deleteAppDataOnUninstall": false
+    },
+    "mac": {
+      "target": "dmg",
+      "icon": "build/icon.png",
+      "category": "public.app-category.utilities"
+    },
+    "linux": {
+      "target": [
+        "AppImage",
+        "deb"
+      ],
+      "icon": "build/icon.png",
+      "category": "Utility"
+    },
+    "directories": {
+      "output": "dist",
+      "buildResources": "build"
+    },
+    "asar": true,
+    "publish": {
+      "provider": "github",
+      "owner": "SgtEpsilon",
+      "repo": "Elite-Explorer",
+      "releaseType": "release"
+    }
+  }
+}
