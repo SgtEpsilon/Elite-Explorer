@@ -184,18 +184,25 @@ function mergeStations(edsmStations, spanshRaw) {
   return Array.from(merged.values());
 }
 
+// Spansh is treated as primary here too (see mergeStations above) — its
+// earthMasses/solarMasses/terraformingState feed computeBodyValue's scan-value
+// estimate directly, and EDSM's crowd-submitted mass data is the less
+// trustworthy of the two. Any EDSM entry with the same name is dropped in
+// favour of Spansh; EDSM-only bodies (Spansh hasn't indexed the system, or
+// doesn't have that particular body) are kept and tagged so the UI can still
+// flag them as unverified.
 function mergeBodies(edsmBodies, spanshRaw) {
   const merged = new Map();
 
-  (edsmBodies || []).forEach((b) => {
-    merged.set(normalizeName(b.name), Object.assign({}, b, { source: b.source || 'edsm' }));
-  });
-
   const spanshBodies = (spanshRaw && Array.isArray(spanshRaw.bodies)) ? spanshRaw.bodies : [];
   spanshBodies.forEach((b) => {
+    merged.set(normalizeName(b.name), spanshBodyToEdsmShape(b));
+  });
+
+  (edsmBodies || []).forEach((b) => {
     const key = normalizeName(b.name);
-    if (merged.has(key)) return; // already have it from EDSM/journal — don't override
-    merged.set(key, spanshBodyToEdsmShape(b));
+    if (merged.has(key)) return; // Spansh already covers this one — trust it
+    merged.set(key, Object.assign({}, b, { source: b.source || 'edsm' }));
   });
 
   return Array.from(merged.values());

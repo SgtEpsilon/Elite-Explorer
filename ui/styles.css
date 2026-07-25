@@ -285,7 +285,7 @@ body::after { content: ''; position: fixed; inset: 0; background: repeating-line
 .scan-total-label { font-family: var(--mono); font-size:0.6667em; color: var(--text-mute); letter-spacing: 0.1em; }
 .scan-total-val { font-family: var(--mono); font-size:1.0833em; color: var(--gold); text-shadow: 0 0 8px var(--gold-glow); }
 .scan-table { width: 100%; table-layout: fixed; border-collapse: collapse; }
-.scan-table th { font-family: var(--mono); font-size:0.6667em; color: var(--text-mute); letter-spacing: 0.1em; padding: 3px 6px; text-align: left; border-bottom: 1px solid var(--border); position: sticky; top: 0; background: var(--panel); overflow-wrap: break-word; }
+.scan-table th { font-family: var(--mono); font-size:0.6667em; color: var(--text-mute); letter-spacing: 0.1em; padding: 3px 6px; text-align: left; border-bottom: 1px solid var(--border); position: sticky; top: 0; background: var(--panel); white-space: nowrap; }
 .scan-table td { font-family: var(--mono); font-size:0.75em; color: var(--text); padding: 4px 6px; border-bottom: 1px solid rgba(46,33,16,0.4); vertical-align: middle; overflow-wrap: break-word; word-break: break-word; }
 .scan-table tr:hover td { background: rgba(var(--cyan-rgb),0.03); }
 .mapped-icon { display: inline-block; width: 8px; height: 8px; border-radius: 50%; vertical-align: middle; }
