@@ -1,9 +1,0 @@
-{
-  "publish": {
-    "provider": "github",
-    "owner": "SgtEpsilon",
-    "repo": "Elite-Explorer",
-    "releaseType": "prerelease",
-    "channel": "beta"
-  }
-}
