@@ -17,6 +17,7 @@
     <a class="tab-btn" href="index.html">Live</a>
     <a class="tab-btn" href="ship.html">Ship</a>
     <a class="tab-btn active" href="profile.html">Profile</a>
+    <a class="tab-btn" href="carrier.html">Carrier</a>
     <a class="tab-btn" href="history.html">History</a>
     <a class="tab-btn" href="spansh.html">Spansh</a>
   </div>
@@ -284,19 +285,6 @@
         <div class="prof-section" style="border-bottom:1px solid var(--border);">
           <div class="prof-title" style="font-size:0.85em;">Stored Ships</div>
           <div id="capi-stored-ships-list" class="eng-grid"></div>
-        </div>
-
-        <!-- Fleet Carrier -->
-        <div class="prof-section" style="border-bottom:1px solid var(--border);">
-          <div class="prof-title" style="font-size:0.85em;">Fleet Carrier</div>
-          <div id="capi-carrier-none" style="color:var(--text-mute);font-size:0.8em;">No fleet carrier owned.</div>
-          <div id="capi-carrier-content" style="display:none;">
-            <div class="stats-cols" id="capi-carrier-stats"></div>
-            <div style="margin-top:12px;">
-              <div class="prof-title" style="font-size:0.78em;color:var(--text-dim);">Cargo &amp; Orders</div>
-              <div id="capi-carrier-orders"></div>
-            </div>
-          </div>
         </div>
 
         <!-- Community Goals -->
@@ -1204,16 +1192,6 @@
 
   function fmtCr(n) { return (n == null ? 0 : n).toLocaleString() + ' cr'; }
 
-  // Fleet carrier vanity names come back hex-encoded per Frontier's docs.
-  function hexToStr(hex) {
-    if (!hex) return '';
-    try {
-      var out = '';
-      for (var i = 0; i + 1 < hex.length; i += 2) out += String.fromCharCode(parseInt(hex.substr(i, 2), 16));
-      return out;
-    } catch { return ''; }
-  }
-
   function statRow(key, val, cls) {
     return '<div class="stat-row"><span class="stat-key">' + esc(key) + '</span>' +
            '<span class="stat-val' + (cls ? ' ' + cls : '') + '">' + val + '</span></div>';
@@ -1254,71 +1232,6 @@
       html += '</div>';
     });
     el.innerHTML = html || '<div style="color:var(--text-mute);font-size:0.8em;padding:8px 4px;">Only one ship on record.</div>';
-  }
-
-  // ── Fleet Carrier ────────────────────────────────────────────────────────────
-  function renderFleetCarrier(fc) {
-    var noneEl    = document.getElementById('capi-carrier-none');
-    var contentEl = document.getElementById('capi-carrier-content');
-    if (!fc) {
-      if (noneEl)    noneEl.style.display = '';
-      if (contentEl) contentEl.style.display = 'none';
-      return;
-    }
-    if (noneEl)    noneEl.style.display = 'none';
-    if (contentEl) contentEl.style.display = '';
-
-    var statsEl = document.getElementById('capi-carrier-stats');
-    if (statsEl) {
-      var vanity = hexToStr(fc.name && fc.name.vanityName);
-      var callsign = (fc.name && fc.name.callsign) || '\u2014';
-      var html = '<div class="stat-group" style="grid-column:1/-1;">' +
-        '<div class="stat-group-title">' + esc(vanity ? vanity + ' \u2014 ' + callsign : callsign) + '</div>';
-      html += statRow('System', esc(fc.currentStarSystem || '\u2014'));
-      html += statRow('Balance', fmtCr(fc.balance), 'gold');
-      html += statRow('Fuel (Tritium)', (fc.fuel != null ? fc.fuel : '\u2014') + ' / 1000');
-      html += statRow('State', esc(fc.state || '\u2014'));
-      html += statRow('Docking Access', esc(fc.dockingAccess || '\u2014'));
-      html += '</div>';
-      if (fc.finance) {
-        html += '<div class="stat-group">' +
-          '<div class="stat-group-title">Finance</div>' +
-          statRow('Bank Balance', fmtCr(fc.finance.bankBalance)) +
-          statRow('Weekly Upkeep', fmtCr(fc.finance.coreCost)) +
-          statRow('Services Cost', fmtCr(fc.finance.servicesCost)) +
-          statRow('Jumps (7d)', fc.finance.numJumps != null ? fc.finance.numJumps : '\u2014') +
-          '</div>';
-      }
-      if (fc.capacity) {
-        html += '<div class="stat-group">' +
-          '<div class="stat-group-title">Capacity</div>' +
-          statRow('Free Space', fc.capacity.freeSpace != null ? fc.capacity.freeSpace + ' t' : '\u2014') +
-          statRow('Cargo (for sale)', fc.capacity.cargoForSale != null ? fc.capacity.cargoForSale + ' t' : '\u2014') +
-          statRow('Ship Packs', fc.capacity.shipPacks != null ? fc.capacity.shipPacks : '\u2014') +
-          statRow('Module Packs', fc.capacity.modulePacks != null ? fc.capacity.modulePacks : '\u2014') +
-          '</div>';
-      }
-      statsEl.innerHTML = html;
-    }
-
-    var ordersEl = document.getElementById('capi-carrier-orders');
-    if (ordersEl) {
-      var oh = '';
-      var commodOrders = fc.orders && fc.orders.commodities;
-      if (commodOrders && commodOrders.sales && commodOrders.sales.length) {
-        oh += '<div style="font-size:0.72em;color:var(--text-dim);margin-top:6px;">Selling</div>';
-        commodOrders.sales.forEach(function (o) {
-          oh += statRow(o.name, fmtCr(o.price) + ' &times; ' + o.stock + (o.blackmarket ? ' &#9679;' : ''));
-        });
-      }
-      if (commodOrders && commodOrders.purchases && commodOrders.purchases.length) {
-        oh += '<div style="font-size:0.72em;color:var(--text-dim);margin-top:6px;">Buying</div>';
-        commodOrders.purchases.forEach(function (o) {
-          oh += statRow(o.name, fmtCr(o.price) + ' \u2014 ' + o.outstanding + '/' + o.total + ' remaining');
-        });
-      }
-      ordersEl.innerHTML = oh || '<div style="color:var(--text-mute);font-size:0.78em;">No active buy/sell orders.</div>';
-    }
   }
 
   // ── Community Goals ──────────────────────────────────────────────────────────
@@ -1431,9 +1344,6 @@
         renderStoredShips(data);
       });
     }
-    if (window.electronAPI.onCapiFleetCarrierData) {
-      window.electronAPI.onCapiFleetCarrierData(function (data) { showCapiTab(true); renderFleetCarrier(data); });
-    }
     if (window.electronAPI.onCapiCommunityGoalsData) {
       window.electronAPI.onCapiCommunityGoalsData(function (data) { showCapiTab(true); renderCommunityGoals(data); });
     }
@@ -1450,7 +1360,6 @@
     // from a replay that fired before this script ran — pick it up immediately.
     if (window._capiCache) {
       if (window._capiCache.profile)        { showCapiTab(true); renderStoredShips(window._capiCache.profile); }
-      if (window._capiCache.fleetCarrier !== undefined) { showCapiTab(true); renderFleetCarrier(window._capiCache.fleetCarrier); }
       if (window._capiCache.communityGoals) { showCapiTab(true); renderCommunityGoals(window._capiCache.communityGoals); }
       if (window._capiCache.market)         { showCapiTab(true); renderCapiMarket(window._capiCache.market); }
       if (window._capiCache.shipyard)       { showCapiTab(true); renderCapiShipyard(window._capiCache.shipyard); }

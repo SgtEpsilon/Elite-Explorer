@@ -93,9 +93,9 @@ function runWorker(files, { mode = 'all', useLastProcessed = false, updateLastPr
           break;
 
         case 'bodies-data':
-          _cache.bodiesData = { system: msg.system, bodies: msg.bodies, signals: msg.signals };
-          send('bodies-data', { system: msg.system, bodies: msg.bodies, signals: msg.signals });
-          eventBus.emit('journal.bodies', { system: msg.system, bodies: msg.bodies, signals: msg.signals });
+          _cache.bodiesData = { system: msg.system, bodies: msg.bodies, signals: msg.signals, stations: msg.stations || [] };
+          send('bodies-data', { system: msg.system, bodies: msg.bodies, signals: msg.signals, stations: msg.stations || [] });
+          eventBus.emit('journal.bodies', { system: msg.system, bodies: msg.bodies, signals: msg.signals, stations: msg.stations || [] });
           break;
 
         case 'missions-data':
@@ -117,6 +117,26 @@ function runWorker(files, { mode = 'all', useLastProcessed = false, updateLastPr
           _cache.profileData = msg.data;
           send('profile-data', msg.data);
           eventBus.emit('journal.profile', msg.data);
+          break;
+
+        case 'bodies-clear-summary': {
+          const { count, transitions, finalSystem } = msg.data;
+          // Full transition list goes into the exportable debug log (getDebugLog/
+          // saveDebugLog) — this is the detail needed to actually see *why* a
+          // pass cleared the panel, not just that it happened.
+          logger.info(
+            'JOURNAL',
+            `Bodies panel rebuilt via ${count} clear/rebuild pass(es) this read, ending in ${finalSystem || '?'}`,
+            transitions.map((t) => `${t.prevSystem || '(none)'} → ${t.newSystem} @ ${t.timestamp}`).join('; ')
+          );
+          send('bodies-clear-summary', msg.data);
+          break;
+        }
+
+        case 'carrier-event':
+          // Not cached/replayed — this is a one-shot trigger for capiProvider
+          // (docked-at-carrier / trade-order / trade), not renderer-facing data.
+          eventBus.emit('journal.carrierEvent', msg.data);
           break;
 
         case 'done':

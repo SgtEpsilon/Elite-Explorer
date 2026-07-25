@@ -13,6 +13,7 @@ contextBridge.exposeInMainWorld('electronAPI', {
   onLiveData:           (cb) => on('live-data',             cb),
   onProfileData:        (cb) => on('profile-data',          cb),
   onBodiesData:         (cb) => on('bodies-data',           cb),
+  onBodiesClearSummary: (cb) => on('bodies-clear-summary',  cb),
   onMissionsData:       (cb) => on('missions-data',         cb),
   onLocation:           (cb) => on('location-data',         cb),
   onProgress:           (cb) => on('scan-progress',         cb),

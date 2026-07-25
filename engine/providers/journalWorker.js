@@ -55,8 +55,26 @@ async function run() {
   let liveBodySystem = null; // system name these bodies belong to
   let liveSignals    = {};   // bodyName → array of signal strings (bio, geo, stations etc)
 
+  // Live stations accumulator — cleared on each FSDJump alongside liveBodies.
+  // Built from Docked (full detail) and ApproachSettlement (name/body only,
+  // for settlements seen but not landed at) events. A station you've
+  // actually docked at in the current system is ground truth, so this is
+  // treated as the highest-priority source when merged with EDSM/Spansh in
+  // the renderer.
+  let liveStations = {};   // stationName → station entry
+
   // Live missions accumulator — keyed by MissionID so updates overwrite cleanly.
   let liveMissions = {};  // missionID → mission object
+
+  // Records every time liveBodies/liveStations/liveSignals get wiped, and why.
+  // Live mode fully re-parses the whole current journal file from line 0 on
+  // EVERY journal write (see journalProvider.js's runLiveWorker — it never
+  // passes useLastProcessed), so a single in-game event can replay every
+  // earlier FSDJump in a long session, each one wiping and rebuilding the
+  // bodies panel again before the final, correct state is reached. This log
+  // makes that replay visible instead of it just looking like "the tab
+  // randomly cleared" — see the summary emitted at the end of run().
+  let bodiesClearLog = [];
 
   // Profile data accumulator (identity, ranks, rep, stats)
   let profileIdentity   = null;
@@ -134,9 +152,10 @@ async function run() {
               // so the panel populates on app boot when the game is already running.
               parentPort.postMessage({
                 type: 'bodies-data',
-                system:  liveBodySystem,
-                bodies:  Object.values(liveBodies),
-                signals: liveSignals,
+                system:   liveBodySystem,
+                bodies:   Object.values(liveBodies),
+                signals:  liveSignals,
+                stations: Object.values(liveStations),
               });
             }
           }
@@ -147,11 +166,18 @@ async function run() {
             liveData.pos           = entry.StarPos ? entry.StarPos.map(n => n.toFixed(2)).join(', ') : null;
             liveData.jumpRange     = entry.JumpDist ? entry.JumpDist.toFixed(2) + ' ly' : null;
             liveData.lastJumpWasFirstDiscovery = (entry.SystemAlreadyDiscovered === false);
-            // Clear bodies when entering a new system
+            // Clear bodies/stations when entering a new system
+            bodiesClearLog.push({
+              reason:     'FSDJump',
+              prevSystem: liveBodySystem,
+              newSystem:  entry.StarSystem,
+              timestamp:  entry.timestamp,
+            });
             liveBodies     = {};
             liveSignals    = {};
+            liveStations   = {};
             liveBodySystem = entry.StarSystem;
-            parentPort.postMessage({ type: 'bodies-data', system: liveBodySystem, bodies: [], signals: {} });
+            parentPort.postMessage({ type: 'bodies-data', system: liveBodySystem, bodies: [], signals: {}, stations: [] });
           }
 
           // ── Scan event → add/update body in the live bodies map ───────────
@@ -190,16 +216,20 @@ async function run() {
               composition:  entry.Composition      || null,
               wasDiscovered: entry.WasDiscovered   !== false,
               wasMapped:    entry.WasMapped        !== false,
-              mappedValue:  entry.MappedValue      || null,
-              estimatedValue: entry.EstimatedValue || null,
+              // NOTE: the journal's Scan event has no value field at all (no
+              // MappedValue/EstimatedValue keys — confirmed against the
+              // Frontier journal manual). Value is computed client-side in
+              // ui/script.js (computeBodyValue) from class + mass +
+              // wasDiscovered/wasMapped instead.
               isScoopable:  entry.StarType ? 'KGBFOAM'.includes(entry.StarType[0]) : false,
               timestamp:    entry.timestamp,
             };
             parentPort.postMessage({
               type: 'bodies-data',
-              system:  liveBodySystem,
-              bodies:  Object.values(liveBodies),
-              signals: liveSignals,
+              system:   liveBodySystem,
+              bodies:   Object.values(liveBodies),
+              signals:  liveSignals,
+              stations: Object.values(liveStations),
             });
           }
 
@@ -209,10 +239,11 @@ async function run() {
           if (ev === 'FSSDiscoveryScan') {
             liveBodySystem = entry.SystemName || liveBodySystem;
             parentPort.postMessage({
-              type:    'bodies-data',
-              system:  liveBodySystem,
-              bodies:  Object.values(liveBodies),
-              signals: liveSignals,
+              type:     'bodies-data',
+              system:   liveBodySystem,
+              bodies:   Object.values(liveBodies),
+              signals:  liveSignals,
+              stations: Object.values(liveStations),
             });
             parentPort.postMessage({
               type:  'event',
@@ -233,9 +264,10 @@ async function run() {
               liveSignals[bodyName] = sigs;
               parentPort.postMessage({
                 type: 'bodies-data',
-                system:  liveBodySystem,
-                bodies:  Object.values(liveBodies),
-                signals: liveSignals,
+                system:   liveBodySystem,
+                bodies:   Object.values(liveBodies),
+                signals:  liveSignals,
+                stations: Object.values(liveStations),
               });
             }
           }
@@ -254,11 +286,118 @@ async function run() {
               );
               parentPort.postMessage({
                 type: 'bodies-data',
-                system:  liveBodySystem,
-                bodies:  Object.values(liveBodies),
-                signals: liveSignals,
+                system:   liveBodySystem,
+                bodies:   Object.values(liveBodies),
+                signals:  liveSignals,
+                stations: Object.values(liveStations),
               });
             }
+          }
+
+          // ── Docked → full station detail, straight from the game ──────────
+          // A station you've actually docked at this session is ground truth —
+          // outranks both EDSM and Spansh when merged in the renderer.
+          if (ev === 'Docked') {
+            liveBodySystem = entry.StarSystem || liveBodySystem;
+            const services = entry.StationServices || [];
+            const key = entry.StationName || ('MarketID:' + entry.MarketID);
+            liveStations[key] = {
+              name:              entry.StationName || '?',
+              type:              entry.StationType || 'Station',
+              distanceToArrival: entry.DistFromStarLS != null ? entry.DistFromStarLS : null,
+              haveMarket:        services.indexOf('Commodities') !== -1 || services.indexOf('Market') !== -1,
+              haveShipyard:      services.indexOf('Shipyard') !== -1,
+              haveOutfitting:    services.indexOf('Outfitting') !== -1,
+              otherServices:     services,
+              controllingFaction: entry.StationFaction && entry.StationFaction.Name
+                ? { name: entry.StationFaction.Name } : null,
+              body: entry.BodyName ? { name: entry.BodyName } : null,
+              updateTime: entry.timestamp || null,
+              source: 'journal',
+            };
+            parentPort.postMessage({
+              type: 'bodies-data',
+              system:   liveBodySystem,
+              bodies:   Object.values(liveBodies),
+              signals:  liveSignals,
+              stations: Object.values(liveStations),
+            });
+          }
+
+          // ── ApproachSettlement → lightweight entry for settlements seen ───
+          // but not landed at. Only fills in if Docked hasn't already given us
+          // a richer record for the same name — never downgrades it.
+          if (ev === 'ApproachSettlement') {
+            const key = entry.Name || '';
+            if (key && !liveStations[key]) {
+              liveStations[key] = {
+                name:              key,
+                type:              'Settlement',
+                distanceToArrival: null,
+                haveMarket:        false,
+                haveShipyard:      false,
+                haveOutfitting:    false,
+                otherServices:     [],
+                controllingFaction: null,
+                body: entry.BodyName ? { name: entry.BodyName } : null,
+                updateTime: entry.timestamp || null,
+                source: 'journal',
+              };
+              parentPort.postMessage({
+                type: 'bodies-data',
+                system:   liveBodySystem,
+                bodies:   Object.values(liveBodies),
+                signals:  liveSignals,
+                stations: Object.values(liveStations),
+              });
+            }
+          }
+
+          // ── Fleet Carrier — order/trade events ──────────────────────────
+          // These exist purely to give capiProvider an early, event-driven
+          // cue about our OWN carrier: journal data can't see other crew's
+          // actions or the carrier's true stock levels (that's still cAPI's
+          // job), but it sees our own docking, order changes, and trades
+          // instantly instead of on the next 5-minute /fleetcarrier poll.
+          if (ev === 'Docked' && entry.StationType === 'FleetCarrier') {
+            parentPort.postMessage({
+              type: 'carrier-event',
+              data: { kind: 'docked', carrierId: entry.MarketID, timestamp: entry.timestamp }
+            });
+          }
+
+          // CarrierTradeOrder fires only when *we* (the carrier owner) set or
+          // cancel a buy/sell order from the Carrier Management panel — its
+          // fields map 1:1 onto the /fleetcarrier orders.commodities shape,
+          // so capiProvider can patch its cache directly from this.
+          if (ev === 'CarrierTradeOrder') {
+            parentPort.postMessage({
+              type: 'carrier-event',
+              data: {
+                kind:               'tradeOrder',
+                carrierId:          entry.CarrierID,
+                commodity:          entry.Commodity,
+                commodityLocalised: entry.Commodity_Localised || entry.Commodity,
+                purchaseOrder:      entry.PurchaseOrder != null ? entry.PurchaseOrder : null,
+                saleOrder:          entry.SaleOrder      != null ? entry.SaleOrder      : null,
+                cancelTrade:        !!entry.CancelTrade,
+                price:              entry.Price != null ? entry.Price : null,
+                blackMarket:        !!entry.BlackMarket,
+                timestamp:          entry.timestamp,
+              }
+            });
+          }
+
+          // MarketBuy/MarketSell/CargoTransfer while docked at our own
+          // carrier change its hold contents, but — unlike CarrierTradeOrder
+          // — nothing here tells us the resulting stock number, so we only
+          // use these as a "go refresh soon" nudge rather than patching data.
+          if ((ev === 'MarketBuy' || ev === 'MarketSell' || ev === 'CargoTransfer') &&
+              liveData && liveData.dockedStationType === 'FleetCarrier') {
+            parentPort.postMessage({
+              type: 'carrier-event',
+              data: { kind: 'trade', event: ev, timestamp: entry.timestamp }
+            });
           }
 
           if (ev === 'Loadout') {
@@ -521,6 +660,21 @@ async function run() {
       delete liveData._pendingLocation;
     }
     parentPort.postMessage({ type: 'live-data', data: liveData });
+  }
+
+  // ── Emit bodies-clear summary ─────────────────────────────────────────────
+  // One message per run() (not per clear) so a long-session replay doesn't
+  // spam the log — but it still carries every individual transition for
+  // anyone who wants the full detail (exported debug log).
+  if (doLive && bodiesClearLog.length > 0) {
+    parentPort.postMessage({
+      type: 'bodies-clear-summary',
+      data: {
+        count:        bodiesClearLog.length,
+        transitions:  bodiesClearLog,
+        finalSystem:  liveBodySystem,
+      }
+    });
   }
 
   // ── Emit missions-data ────────────────────────────────────────────────────

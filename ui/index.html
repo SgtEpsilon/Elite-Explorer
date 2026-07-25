@@ -17,6 +17,7 @@
     <a class="tab-btn active" href="index.html">Live</a>
     <a class="tab-btn" href="ship.html">Ship</a>
     <a class="tab-btn" href="profile.html">Profile</a>
+    <a class="tab-btn" href="carrier.html">Carrier</a>
     <a class="tab-btn" href="history.html">History</a>
     <a class="tab-btn" href="spansh.html">Spansh</a>
   </div>
@@ -115,11 +116,21 @@
           <button id="btn-toggle-stations" title="Show/hide stations &amp; settlements"
                   style="font-family:var(--mono);font-size:0.6667em;letter-spacing:0.08em;text-transform:uppercase;background:rgba(46,207,207,0.1);color:var(--cyan);border:1px solid rgba(46,207,207,0.3);padding:2px 7px;cursor:pointer;transition:all 0.15s;margin-right:6px;"
                   onclick="toggleStations()">&#9670; Stations</button>
+          <span id="bodies-replay-note" class="bodies-replay-note" title=""></span>
           <span style="font-family:var(--mono);font-size:0.75em;color:var(--text-mute)" id="body-count">0 bodies</span>
           <button type="button" class="live-pane-toggle" data-live-panel="system" title="Show or hide this panel">&#8722;</button>
         </div>
         <div class="panel-body" style="padding:0;">
           <table class="bodies-table">
+            <colgroup>
+              <col style="width:26px">
+              <col style="width:20%">
+              <col style="width:18%">
+              <col style="width:11%">
+              <col style="width:29%">
+              <col style="width:8%">
+              <col style="width:8%">
+            </colgroup>
             <thead>
               <tr>
                 <th style="width:28px"></th>
@@ -164,6 +175,12 @@
         <div class="scan-total-bar"><span class="scan-total-label">EST. TOTAL</span><span class="scan-total-val" id="scan-total">0 cr</span></div>
         <div class="panel-body" style="padding:0;">
           <table class="scan-table">
+            <colgroup>
+              <col style="width:40%">
+              <col style="width:26%">
+              <col style="width:16%">
+              <col style="width:18%">
+            </colgroup>
             <thead>
               <tr>
                 <th>Body</th>
