@@ -124,9 +124,22 @@ async function run() {
         // ── Location / system changes ─────────────────────────────────
         // Buffer the latest location — only emitted once at end-of-file so
         // replaying a full journal doesn't trigger one EDSM lookup per jump.
+        // The Location/FSDJump event itself already carries security,
+        // allegiance, economy and population straight from the game — no
+        // need to wait on EDSM for these, and it means they still show up
+        // even if EDSM is unreachable or the system isn't in its database yet.
         if ((ev === 'Location' || ev === 'FSDJump') && doLive) {
           liveData = liveData || {};
-          liveData._pendingLocation = { system: entry.StarSystem, timestamp: entry.timestamp, coords: entry.StarPos || null };
+          liveData._pendingLocation = {
+            system:      entry.StarSystem,
+            timestamp:   entry.timestamp,
+            coords:      entry.StarPos || null,
+            security:    entry.SystemSecurity_Localised || entry.SystemSecurity || null,
+            allegiance:  entry.SystemAllegiance || null,
+            economy:     entry.SystemEconomy_Localised || entry.SystemEconomy || null,
+            government:  entry.SystemGovernment_Localised || entry.SystemGovernment || null,
+            population:  entry.Population != null ? entry.Population : null,
+          };
         }
 
         // ── Raw event forwarding for EDDN relay (live watcher only) ──
