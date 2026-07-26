@@ -145,6 +145,31 @@ function bodyIconType(b) {
 }
 
 // Shorten body name relative to system name
+// Apply Security/Allegiance/Economy/Population to the Navigation panel.
+// Used both by onLocation (instant, straight from the journal event — no
+// network round-trip) and onEdsmSystem (arrives later, can supplement or
+// correct the journal's picture e.g. if faction control changed since the
+// commander last visited). Either source can supply a partial object —
+// only the fields actually present overwrite what's on screen, so a
+// same-system EDSM reply arriving after journal-populated dashes never
+// blanks out fields the other source doesn't know about.
+function applySystemInfoFields(d) {
+  if (d.security != null) {
+    var secColor = 'var(--text-dim)';
+    var s = String(d.security).toLowerCase();
+    if (s.includes('high'))        secColor = 'var(--green)';
+    else if (s.includes('medium')) secColor = 'var(--gold)';
+    else if (s.includes('low') || s.includes('anarchy') || s.includes('lawless')) secColor = 'var(--red, #e05252)';
+    var secEl = document.getElementById('sys-security');
+    if (secEl) { secEl.textContent = d.security || '\u2014'; secEl.style.color = secColor; }
+  }
+  if (d.allegiance != null) set('sys-allegiance', d.allegiance || '\u2014');
+  if (d.economy    != null) set('sys-economy',    d.economy    || '\u2014');
+  if (d.population != null) {
+    set('sys-population', typeof d.population === 'number' ? d.population.toLocaleString() : d.population);
+  }
+}
+
 function shortBodyName(name, system) {
   if (!system || !name) return name || '—';
   if (name.toLowerCase().startsWith(system.toLowerCase() + ' ')) {
@@ -751,6 +776,15 @@ function renderBodiesDebounced(system) {
 // ─── SCAN VALUES PANEL ────────────────────────────────────────────
 var _scanEntries = {};  // bodyName → { value, mapped }
 
+function scanBodyCell(name, system) {
+  if (!name) return '—';
+  if (system && name.toLowerCase().startsWith(system.toLowerCase() + ' ')) {
+    var rest = name.slice(system.length + 1);
+    return '<span style="color:var(--text-dim)">' + system + '</span> ' + rest;
+  }
+  return name;
+}
+
 function renderScans() {
   var tbody = document.getElementById('scan-tbody');
   if (!tbody) return;
@@ -765,7 +799,7 @@ function renderScans() {
   var rows = entries.map(function(s) {
     total += (s.value || 0);
     return '<tr>' +
-      '<td style="font-size:0.75em">' + shortBodyName(s.body, _currentSystem) + '</td>' +
+      '<td style="font-size:0.75em">' + scanBodyCell(s.body, _currentSystem) + '</td>' +
       '<td style="font-size:0.6667em;color:var(--text-dim)">' + (s.type || '') + '</td>' +
       '<td style="text-align:center"><span class="mapped-icon ' + (s.mapped ? 'yes' : 'no') + '"></span></td>' +
       '<td class="scan-val">' + (s.value ? s.value.toLocaleString() : '—') + '</td>' +
@@ -1155,7 +1189,12 @@ if (window.electronAPI) {
       renderBodiesDebounced(data.system);
       renderScans();
 
-      // Clear EDSM fields until new system data arrives
+      // Clear EDSM fields until new system data arrives — applySystemInfoFields
+      // below will immediately overwrite these with whatever this Location/
+      // FSDJump event already told us. The journal itself carries security/
+      // allegiance/economy/population, so there's no need to wait on an EDSM
+      // round-trip (which may also be slow, rate-limited, or fail entirely
+      // for a system not in its database).
       set('sys-security',   '\u2014');
       set('sys-allegiance', '\u2014');
       set('sys-economy',    '\u2014');
@@ -1178,7 +1217,9 @@ if (window.electronAPI) {
       if (dot) { dot.style.background = 'var(--text-mute)'; dot.title = 'EDSM: fetching\u2026'; }
     }
     // Same-system Location events (FSS entry, supercruise exit, approach body, etc.)
-    // are intentionally ignored here - body state is preserved.
+    // are intentionally ignored for body/scan state — but still worth applying,
+    // in case the journal reports anything new (e.g. population changed).
+    applySystemInfoFields(data);
   });
 
   // ── JOURNAL SCAN DATA → live bodies panel ───────────────────────────────────────────
@@ -1310,20 +1351,16 @@ if (window.electronAPI) {
   }
 
   window.electronAPI.onEdsmSystem(function(d) {
-    // Security colour coding
-    var secColor = 'var(--text-dim)';
-    if (d.security) {
-      var s = d.security.toLowerCase();
-      if (s.includes('high'))   secColor = 'var(--green)';
-      else if (s.includes('medium')) secColor = 'var(--gold)';
-      else if (s.includes('low') || s.includes('anarchy') || s.includes('lawless')) secColor = 'var(--red, #e05252)';
-    }
-    var secEl = document.getElementById('sys-security');
-    if (secEl) { secEl.textContent = d.security || '\u2014'; secEl.style.color = secColor; }
-
-    set('sys-allegiance', d.allegiance || '\u2014');
-    set('sys-economy',    d.economy    || '\u2014');
-    set('sys-population', d.population != null ? Number(d.population).toLocaleString() : '\u2014');
+    // EDSM is the authoritative refresh — always apply, even if a field is
+    // missing (unlike the journal-sourced pass, which only overwrites the
+    // dashes with what it actually has). Fall back to '—' for anything EDSM
+    // doesn't know either, rather than leaving stale journal-only text.
+    applySystemInfoFields({
+      security:   d.security   || '\u2014',
+      allegiance: d.allegiance || '\u2014',
+      economy:    d.economy    || '\u2014',
+      population: d.population != null ? d.population : '\u2014',
+    });
 
     // Update EDSM link — edsmUrl is always provided by the service, even on error
     var link = document.getElementById('edsm-link');
@@ -1895,151 +1932,9 @@ if (edsmSyncBtnMain) edsmSyncBtnMain.addEventListener('click', async function() 
 // scanlines/glow/border) are handled by display-settings.js, shared by
 // every page — see that file for the single implementation.
 
-// ─── LIVE LAYOUT: toggleable panes, reflow, persistence (index.html) ─
-(function () {
-  var viewLive = document.getElementById('view-live');
-  if (!viewLive) return;
+// Live panels are always visible — the per-panel minimize/restore
+// feature was removed as it made the layout too easy to break.
 
-  var LIVE_PANEL_KEYS = ['commander', 'summary', 'system', 'progress', 'scan', 'missions', 'log'];
-  var LIVE_PANEL_ID = {
-    commander: 'panel-commander',
-    summary: 'panel-summary',
-    system: 'panel-system',
-    progress: 'panel-progress',
-    scan: 'panel-scan',
-    missions: 'panel-missions',
-    log: 'panel-log',
-  };
-  var LIVE_PANEL_TOG = {
-    commander: 'tog-commander',
-    summary: 'tog-summary',
-    system: 'tog-system',
-    progress: 'tog-progress',
-    scan: 'tog-scan',
-    missions: 'tog-missions',
-    log: 'tog-log',
-  };
-  var LIVE_PANEL_LABELS = {
-    commander: 'Commander',
-    summary: 'Scan Summary',
-    system: 'System Bodies',
-    progress: 'Journal Scan',
-    scan: 'Scan Values',
-    missions: 'Missions',
-    log: 'Application Log',
-  };
-  var LIVE_COL_LAYOUT = [
-    { col: 'live-col-left', restore: 'live-col-left-restore', keys: ['commander', 'summary'] },
-    { col: 'live-col-mid', restore: 'live-col-mid-restore', keys: ['system', 'progress'] },
-    { col: 'live-col-right', restore: 'live-col-right-restore', keys: ['scan', 'missions', 'log'] },
-  ];
-
-  function panelEl(key) {
-    return document.getElementById(LIVE_PANEL_ID[key]);
-  }
-
-  function isLivePanelVisible(key) {
-    var el = panelEl(key);
-    return !!(el && !el.classList.contains('live-pane-hidden'));
-  }
-
-  function saveLivePanelPrefs() {
-    var o = {};
-    LIVE_PANEL_KEYS.forEach(function (k) { o[k] = isLivePanelVisible(k); });
-    try { localStorage.setItem('ee-live-panels', JSON.stringify(o)); } catch (e) {}
-  }
-
-  function setLivePanelVisible(key, visible, opts) {
-    opts = opts || {};
-    var el = panelEl(key);
-    if (!el) return;
-    el.classList.toggle('live-pane-hidden', !visible);
-    var cb = document.getElementById(LIVE_PANEL_TOG[key]);
-    if (cb) cb.checked = visible;
-    if (!opts.skipSave) saveLivePanelPrefs();
-    if (!opts.skipReflow) reflowLiveLayout();
-  }
-
-  function reflowLiveLayout() {
-    LIVE_COL_LAYOUT.forEach(function (block) {
-      var colEl = document.getElementById(block.col);
-      var restoreEl = document.getElementById(block.restore);
-      if (!colEl || !restoreEl) return;
-      var visibleEls = [];
-      var hiddenKeys = [];
-      block.keys.forEach(function (k) {
-        var el = panelEl(k);
-        if (!el) return;
-        el.classList.remove('live-pane-grow');
-        if (el.classList.contains('live-pane-hidden')) hiddenKeys.push(k);
-        else visibleEls.push(el);
-      });
-      if (visibleEls.length === 1) visibleEls[0].classList.add('live-pane-grow');
-      colEl.classList.toggle('live-col-empty', visibleEls.length === 0);
-      restoreEl.innerHTML = '';
-      if (hiddenKeys.length) {
-        restoreEl.style.display = 'flex';
-        hiddenKeys.forEach(function (k) {
-          var b = document.createElement('button');
-          b.type = 'button';
-          b.className = 'live-restore-btn';
-          b.setAttribute('data-live-panel', k);
-          b.textContent = '\u002B ' + LIVE_PANEL_LABELS[k];
-          restoreEl.appendChild(b);
-        });
-      } else restoreEl.style.display = 'none';
-    });
-
-    var L = document.getElementById('live-col-left');
-    var M = document.getElementById('live-col-mid');
-    var R = document.getElementById('live-col-right');
-    var lVis = L && !L.classList.contains('live-col-empty');
-    var mVis = M && !M.classList.contains('live-col-empty');
-    var rVis = R && !R.classList.contains('live-col-empty');
-    viewLive.classList.remove(
-      'live-grid-lmr', 'live-grid-lm', 'live-grid-lr', 'live-grid-mr',
-      'live-grid-l', 'live-grid-m', 'live-grid-r'
-    );
-    if (lVis && mVis && rVis) viewLive.classList.add('live-grid-lmr');
-    else if (lVis && mVis) viewLive.classList.add('live-grid-lm');
-    else if (lVis && rVis) viewLive.classList.add('live-grid-lr');
-    else if (mVis && rVis) viewLive.classList.add('live-grid-mr');
-    else if (lVis) viewLive.classList.add('live-grid-l');
-    else if (mVis) viewLive.classList.add('live-grid-m');
-    else if (rVis) viewLive.classList.add('live-grid-r');
-  }
-
-  viewLive.addEventListener('click', function (e) {
-    var t = e.target.closest('.live-pane-toggle');
-    if (t && t.getAttribute('data-live-panel')) {
-      var k = t.getAttribute('data-live-panel');
-      if (LIVE_PANEL_KEYS.indexOf(k) >= 0) setLivePanelVisible(k, !isLivePanelVisible(k));
-      return;
-    }
-    var r = e.target.closest('.live-restore-btn');
-    if (r && r.getAttribute('data-live-panel')) {
-      var k2 = r.getAttribute('data-live-panel');
-      if (LIVE_PANEL_KEYS.indexOf(k2) >= 0) setLivePanelVisible(k2, true);
-    }
-  });
-
-  LIVE_PANEL_KEYS.forEach(function (k) {
-    var cb = document.getElementById(LIVE_PANEL_TOG[k]);
-    var el = panelEl(k);
-    if (!cb || !el) return;
-    cb.addEventListener('change', function () {
-      setLivePanelVisible(k, cb.checked);
-    });
-  });
-
-  var saved = {};
-  try { saved = JSON.parse(localStorage.getItem('ee-live-panels') || '{}'); } catch (e) {}
-  LIVE_PANEL_KEYS.forEach(function (k) {
-    var vis = saved[k] !== false;
-    setLivePanelVisible(k, vis, { skipSave: true, skipReflow: true });
-  });
-  reflowLiveLayout();
-}());
 
 // ─── BOOT ─────────────────────────────────────────────────────────
 populateBodies();

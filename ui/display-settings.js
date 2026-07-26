@@ -19,16 +19,16 @@ var THEMES = {
   // Matches the :root defaults in styles.css exactly — selecting "Default"
   // should never look different from the page's own baseline styling.
   default: {
+    '--gold':'#39d6ff', '--gold2':'#8fe9ff', '--gold-dim':'#135a75',
+    '--gold-glow':'rgba(57,214,255,0.22)', '--gold-rgb':'57,214,255',
+    '--cyan':'#8ab4ff', '--cyan2':'#c2d8ff',
+    '--cyan-dim':'rgba(138,180,255,0.10)', '--cyan-rgb':'138,180,255',
+  },
+  amber: {
     '--gold':'#ff9d1f', '--gold2':'#ffc266', '--gold-dim':'#8a5a1a',
     '--gold-glow':'rgba(255,157,31,0.18)', '--gold-rgb':'255,157,31',
     '--cyan':'#ffd24d', '--cyan2':'#ffe08a',
     '--cyan-dim':'rgba(255,210,77,0.10)', '--cyan-rgb':'255,210,77',
-  },
-  cyan: {
-    '--gold':'#2fb8ff', '--gold2':'#8fe0ff', '--gold-dim':'#145a80',
-    '--gold-glow':'rgba(47,184,255,0.18)', '--gold-rgb':'47,184,255',
-    '--cyan':'#6df0ff', '--cyan2':'#b3f7ff',
-    '--cyan-dim':'rgba(109,240,255,0.10)', '--cyan-rgb':'109,240,255',
   },
   red: {
     '--gold':'#ff4d3d', '--gold2':'#ff8a7a', '--gold-dim':'#8a221a',
@@ -107,8 +107,8 @@ function applyDisplay(key, v) {
       break;
     case 'opacity':
       panelOpacityStyle.textContent =
-        '.panel, #panel-summary, #panel-progress { background: rgba(9,14,24,' + (v/100) + ') !important; }' +
-        '#options-panel { background: rgba(9,14,24,' + Math.min(1, v/100+0.1) + ') !important; }';
+        '.panel, #panel-summary, #panel-progress { background: rgba(10,18,32,' + (v/100) + ') !important; }' +
+        '#options-panel { background: rgba(10,18,32,' + Math.min(1, v/100+0.1) + ') !important; }';
       break;
     case 'scan':
       if (v === 0) {
