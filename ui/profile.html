@@ -981,7 +981,7 @@
 
       return '<div class="eng-card ' + progressCls + '">' +
         '<div class="eng-name" title="' + esc(eng.name) + '">' + esc(eng.name) + '</div>' +
-        (system ? '<div style="font-family:var(--mono);font-size:0.6em;color:var(--text-mute);margin-top:1px;margin-bottom:4px;">' + esc(system) + '</div>' : '') +
+        (system ? '<div class="eng-system">' + esc(system) + '</div>' : '') +
         '<div class="eng-status ' + statusCls + '">' + esc(eng.progress || 'Unknown') + '</div>' +
         (eng.rank != null
           ? '<div class="eng-rank-row">' +

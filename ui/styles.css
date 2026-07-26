@@ -740,6 +740,11 @@ tr.body-section-header td {
   font-family: var(--mono); font-size: 0.8333em; color: var(--text);
   margin-bottom: 5px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
 }
+.eng-system {
+  font-family: var(--mono); font-size: 0.75em; color: var(--text-dim);
+  letter-spacing: 0.04em; margin-top: -2px; margin-bottom: 6px;
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+}
 .eng-status {
   font-family: var(--mono); font-size: 0.6667em;
   text-transform: uppercase; letter-spacing: 0.1em; margin-bottom: 7px;
