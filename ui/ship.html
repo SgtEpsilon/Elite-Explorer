@@ -128,6 +128,7 @@
 
 <script src="starfield.js"></script>
 <script src="display-settings.js"></script>
+<script src="module-data.js"></script>
 <script src="script.js"></script>
 <script src="update-modal.js"></script>
 <script src="prefs-modal.js"></script>
@@ -166,7 +167,36 @@
   // Section ordering
   var SECTION_ORDER = ['Hardpoints','Core','Optional','Utility','Other'];
 
-  function slotSection(slot) {
+  // ED_MODULE_DATA (from module-data.js, sourced from EDCD/FDevIDs outfitting.csv)
+  // maps lowercase Item symbol -> [name, category, class, rating, mount], where
+  // category is Frontier's own classification: hardpoint / utility / standard / internal.
+  // This is the SAME grouping Coriolis and EDSY use, so we prefer it over guessing
+  // from the slot name. Slot-name heuristics are kept only as a fallback for the
+  // rare module not yet present in the data table.
+  var MODULE_DATA = (typeof window !== 'undefined' && window.ED_MODULE_DATA) || {};
+
+  var CATEGORY_TO_SECTION = {
+    hardpoint: 'Hardpoints',
+    utility:   'Utility',
+    standard:  'Core',
+    internal:  'Optional'
+  };
+
+  function lookupModule(raw) {
+    if (!raw) return null;
+    var hit = MODULE_DATA[String(raw).toLowerCase()];
+    if (!hit) return null;
+    return { name: hit[0], category: hit[1], cls: hit[2], rating: hit[3], mount: hit[4] };
+  }
+
+  function slotSection(slot, item) {
+    var mod = lookupModule(item);
+    if (mod && CATEGORY_TO_SECTION[mod.category]) return CATEGORY_TO_SECTION[mod.category];
+    // Fallback heuristics (only reached if the module isn't in our data table).
+    // NOTE: TinyHardpoint slots hold utility modules (heat sinks, chaff, shield
+    // boosters, scanners, etc.), not weapons, so they must be checked before the
+    // generic Hardpoint match below.
+    if (/^TinyHardpoint/i.test(slot))  return 'Utility';
     if (/Hardpoint/i.test(slot))       return 'Hardpoints';
     if (/Armour|PowerPlant|MainEngines|FrameShiftDrive|LifeSupport|PowerDistributor|Radar|FuelTank/.test(slot)) return 'Core';
     if (/^Slot\d+_Size\d+/i.test(slot) || /^Cargo\d+/i.test(slot)) return 'Optional';
@@ -238,20 +268,34 @@
 
   function itemName(raw) {
     if (!raw) return '?';
-    // Strip prefixes like hpt_, int_, etc.
+    // Primary source: the real Frontier module name from FDevIDs outfitting.csv,
+    // which is exactly what Coriolis and EDSY display (e.g. "Heat Sink Launcher",
+    // not a guess built from the internal id like "Heatsinklauncher Turret Tiny").
+    var mod = lookupModule(raw);
+    if (mod) return mod.name;
+
+    // Fallback below only runs for a module missing from the data table (e.g.
+    // something added to the game after module-data.js was last generated).
     var s = raw.replace(/^(hpt_|int_|ext_)/i, '');
-    // Check the compound-word override table first, matching against the
-    // base id with any _sizeN_classN[_variant] suffix removed.
     var base = s.replace(/_(size|class|grade)\d+.*$/i, '').toLowerCase();
     if (MODULE_NAME_OVERRIDES[base]) return MODULE_NAME_OVERRIDES[base];
-    // Split on underscores, drop class/size/grade tokens, capitalise
     var parts = s.split('_').map(function(p) {
-      // skip things like size0, class5, grade1, etc.
       if (/^(size|class|grade)\d+$/i.test(p)) return null;
       if (/^[a-z]\d+$/.test(p)) return null; // e.g. "a", "b1"
       return p.charAt(0).toUpperCase() + p.slice(1);
     }).filter(Boolean);
     return parts.join(' ');
+  }
+
+  // Class+Rating tag shown next to the module name (e.g. "3A"), matching how
+  // Coriolis/EDSY label modules. Mount type (Fixed/Gimballed/Turreted) is
+  // appended for weapons. Returns '' when we don't have this data for the item.
+  function itemSpec(raw) {
+    var mod = lookupModule(raw);
+    if (!mod || !mod.cls || !mod.rating) return '';
+    var spec = mod.cls + mod.rating;
+    if (mod.mount) spec += ' · ' + mod.mount;
+    return spec;
   }
 
   function formatCredits(n) {
@@ -360,7 +404,7 @@
 
     modules.forEach(function(m) {
       if (SKIP_SLOTS.has(m.Slot)) return;
-      var sec = slotSection(m.Slot);
+      var sec = slotSection(m.Slot, m.Item);
       sections[sec].push(m);
     });
 
@@ -383,7 +427,8 @@
         // Off badge
         if (off) html += '<span class="module-off-badge">Off</span>';
 
-        html += '<div class="module-slot">' + esc(slotLabel(m.Slot)) + '</div>';
+        var spec = itemSpec(m.Item);
+        html += '<div class="module-slot">' + esc(slotLabel(m.Slot)) + (spec ? ' <span class="module-spec">' + esc(spec) + '</span>' : '') + '</div>';
         html += '<div class="module-name">' + esc(itemName(m.Item)) + '</div>';
 
         if (engineered) {
