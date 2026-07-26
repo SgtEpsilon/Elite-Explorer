@@ -190,10 +190,60 @@
     return slot;
   }
 
+  // Modules whose internal id runs words together with no underscore
+  // (e.g. "fuelscoop", "powerplant") can't be split by the underscore-based
+  // heuristic below, so they're spelled out here. Matched against the id
+  // with the hpt_/int_/ext_ prefix and any trailing _sizeN_classN tokens
+  // already stripped, case-insensitive.
+  var MODULE_NAME_OVERRIDES = {
+    powerplant: 'Power Plant',
+    lifesupport: 'Life Support',
+    fuelscoop: 'Fuel Scoop',
+    cargorack: 'Cargo Rack',
+    passengercabin: 'Passenger Cabin',
+    dronecontrol: 'Limpet Controller',
+    shieldgenerator: 'Shield Generator',
+    hullreinforcement: 'Hull Reinforcement Package',
+    modulereinforcement: 'Module Reinforcement Package',
+    buggybay: 'Planetary Vehicle Hangar',
+    fighterbay: 'Fighter Hangar',
+    shieldcellbank: 'Shield Cell Bank',
+    engine: 'Thrusters',
+    powerdistributor: 'Power Distributor',
+    hyperdrive: 'Frame Shift Drive',
+    sensors: 'Sensors',
+    detailedsurfacescanner: 'Detailed Surface Scanner',
+    multicannon: 'Multi-Cannon',
+    plasmaaccelerator: 'Plasma Accelerator',
+    railgun: 'Railgun',
+    beamlaser: 'Beam Laser',
+    pulselaser: 'Pulse Laser',
+    pulselaserburst: 'Burst Laser',
+    mininglaser: 'Mining Laser',
+    minelauncher: 'Mine Launcher',
+    missilerack: 'Missile Rack',
+    plasmapointdefence: 'Point Defence',
+    chafflauncher: 'Chaff Launcher',
+    heatsinklauncher: 'Heat Sink Launcher',
+    electroniccountermeasure: 'Electronic Countermeasure',
+    shieldbooster: 'Shield Booster',
+    fsdinterdictor: 'Frame Shift Wake Scanner',
+    crimescanner: 'Kill Warrant Scanner',
+    cargoscanner: 'Cargo Scanner',
+    xenoscanner: 'Xeno Scanner',
+    planetapproachsuite: 'Planetary Approach Suite',
+    stellarbodydiscoveryscanner: 'Discovery Scanner',
+    guardianfsdbooster: 'Guardian FSD Booster',
+  };
+
   function itemName(raw) {
     if (!raw) return '?';
     // Strip prefixes like hpt_, int_, etc.
     var s = raw.replace(/^(hpt_|int_|ext_)/i, '');
+    // Check the compound-word override table first, matching against the
+    // base id with any _sizeN_classN[_variant] suffix removed.
+    var base = s.replace(/_(size|class|grade)\d+.*$/i, '').toLowerCase();
+    if (MODULE_NAME_OVERRIDES[base]) return MODULE_NAME_OVERRIDES[base];
     // Split on underscores, drop class/size/grade tokens, capitalise
     var parts = s.split('_').map(function(p) {
       // skip things like size0, class5, grade1, etc.
@@ -212,8 +262,61 @@
     return n.toString();
   }
 
+  // Engineering blueprint internal id -> the short name Coriolis/EDSY show
+  // (e.g. "PowerPlant_Boosted" -> "Overcharged"). The raw id is NOT a
+  // human name — the old code was just prettifying the id itself, which
+  // produced things like "Power Plant Boosted" instead of "Overcharged".
+  // Covers the common blueprints; anything not listed here falls back to
+  // the cleaned-up-id heuristic below rather than showing something wrong.
+  var BLUEPRINT_NAMES = {
+    // Frame Shift Drive
+    fsd_longrange: 'Increased Range',
+    fsd_shielded: 'Shielded',
+    fsd_fasterboot: 'Faster Boot Sequence',
+    // Power Plant
+    powerplant_boosted: 'Overcharged',
+    powerplant_heatreduction: 'Low Emissions',
+    // Thrusters
+    engine_dirty: 'Dirty Drive Tuning',
+    engine_tuned: 'Clean Drive Tuning',
+    engine_faster: 'Drive Strengthening',
+    // Power Distributor
+    powerdistributor_highfrequency: 'Charge Enhanced',
+    // Shield Generator
+    shieldgenerator_optimised: 'Reinforced',
+    shieldgenerator_kinetic: 'Kinetic Resistant',
+    shieldgenerator_thermic: 'Thermal Resistant',
+    // Shield Boosters
+    shieldbooster_resistive: 'Resistance Augmented',
+    shieldbooster_kinetic: 'Kinetic Resistant',
+    shieldbooster_thermic: 'Thermal Resistant',
+    shieldbooster_explosive: 'Blast Resistant',
+    shieldbooster_heavyduty: 'Heavy Duty',
+    // Armour / Hull
+    armour_heavyduty: 'Heavy Duty',
+    armour_lightweight: 'Lightweight',
+    armour_blastresistant: 'Blast Resistant',
+    armour_kinetic: 'Kinetic Resistant',
+    armour_thermic: 'Thermal Resistant',
+    // Life Support
+    lifesupport_reinforced: 'Reinforced',
+    // Weapons (common ones)
+    weapon_overcharged: 'Overcharged',
+    weapon_lightweight: 'Lightweight',
+    weapon_efficient: 'Efficient',
+    weapon_focused: 'Focused',
+    weapon_longrange: 'Long Range',
+    weapon_rapidfire: 'Rapid Fire',
+    weapon_sturdy: 'Sturdy Mount',
+    weapon_highcapacity: 'High Capacity',
+  };
+
   function blueprintName(raw) {
     if (!raw) return '';
+    var known = BLUEPRINT_NAMES[String(raw).toLowerCase()];
+    if (known) return known;
+    // Unmapped blueprint — clean up the raw id as a best-effort fallback
+    // rather than an outright guess.
     return raw.replace(/_/g, ' ').replace(/([A-Z])/g, ' $1').trim()
       .replace(/\s+/g, ' ')
       .split(' ').map(function(w){ return w.charAt(0).toUpperCase() + w.slice(1); }).join(' ');
@@ -237,8 +340,8 @@
     enableExportButtons(data);
 
     // Identity
-    document.getElementById('ship-name').textContent  = data.shipName || data.ship || '—';
-    document.getElementById('ship-type').textContent  = data.ship     || '';
+    document.getElementById('ship-name').textContent  = data.shipName || (data.ship ? formatShipType(data.ship) : '—');
+    document.getElementById('ship-type').textContent  = data.ship ? formatShipType(data.ship) : '';
     var ident = data.shipIdent || '';
     var identEl = document.getElementById('ship-ident');
     identEl.textContent  = ident;
@@ -272,7 +375,7 @@
 
       mods.forEach(function(m) {
         var engineered = !!m.Engineering;
-        var off        = !m.On;
+        var off        = m.On === false;
         var cls        = 'module-card' + (off ? ' is-off' : '') + (engineered ? ' is-engineered' : '');
 
         html += '<div class="' + cls + '">';

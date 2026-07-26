@@ -7,6 +7,73 @@ const EMPIRE_RANKS  = ['None','Outsider','Serf','Master','Squire','Knight','Lord
 const FED_RANKS     = ['None','Recruit','Cadet','Midshipman','Petty Officer','Chief Petty Officer','Warrant Officer','Ensign','Lieutenant','Lt. Commander','Post Commander','Post Captain','Rear Admiral','Vice Admiral','Admiral'];
 const EXOBIO_RANKS  = ['Directionless','Mostly Directionless','Compiler','Collector','Cataloguer','Taxonomist','Ecologist','Geneticist','Elite'];
 
+// ─── SHIP TYPE NAMES — journal "Ship" symbol → display name ───────────────
+// The Loadout/LoadGame events never include a Ship_Localised field (that only
+// appears on events describing *other* commanders' ships, e.g. Interdicted).
+// For our own ship, "Ship" is Frontier's raw internal symbol, and those are
+// inconsistent — some are readable ("FerDeLance"), most aren't ("diamondbackxl",
+// "empire_courier", "explorer_nx" for the Caspian Explorer). So the type must
+// always be looked up here rather than shown as-is. Keys are lower-cased.
+const SHIP_NAMES = {
+  sidewinder: 'Sidewinder',
+  eagle: 'Eagle',
+  empire_eagle: 'Imperial Eagle',
+  hauler: 'Hauler',
+  adder: 'Adder',
+  viper: 'Viper Mk III',
+  viper_mkiv: 'Viper Mk IV',
+  cobramkiii: 'Cobra Mk III',
+  cobramkiv: 'Cobra Mk IV',
+  cobramkv: 'Cobra Mk V',
+  type6: 'Type-6 Transporter',
+  type7: 'Type-7 Transporter',
+  type8: 'Type-8 Transporter',
+  type9: 'Type-9 Heavy',
+  type9_military: 'Type-10 Defender',
+  dolphin: 'Dolphin',
+  asp: 'Asp Explorer',
+  asp_scout: 'Asp Scout',
+  vulture: 'Vulture',
+  federation_dropship: 'Federal Dropship',
+  federation_dropship_mkii: 'Federal Assault Ship',
+  federation_gunship: 'Federal Gunship',
+  federation_corvette: 'Federal Corvette',
+  independant_trader: 'Keelback',
+  orca: 'Orca',
+  empire_courier: 'Imperial Courier',
+  empire_trader: 'Imperial Clipper',
+  imperial_corsair: 'Corsair',
+  cutter: 'Imperial Cutter',
+  diamondback: 'Diamondback Scout',
+  diamondbackxl: 'Diamondback Explorer',
+  ferdelance: 'Fer-de-Lance',
+  python: 'Python',
+  python_nx: 'Python Mk II',
+  typex: 'Alliance Challenger',
+  typex_2: 'Alliance Crusader',
+  typex_3: 'Alliance Chieftain',
+  belugaliner: 'Beluga Liner',
+  anaconda: 'Anaconda',
+  krait_light: 'Krait Phantom',
+  krait_mkii: 'Krait Mk II',
+  mamba: 'Mamba',
+  mandalay: 'Mandalay',
+  explorer_nx: 'Caspian Explorer',
+};
+
+// Fallback for anything not in the map above (brand-new ships this list
+// hasn't been updated for yet). Turns a raw symbol into a readable guess
+// instead of showing it verbatim, e.g. "type11_prospector" -> "Type11 Prospector".
+function formatShipType(raw) {
+  if (!raw) return '\u2014';
+  var known = SHIP_NAMES[String(raw).toLowerCase()];
+  if (known) return known;
+  var s = String(raw).replace(/_/g, ' ').replace(/([a-z])([A-Z])/g, '$1 $2').trim();
+  return s.split(' ').filter(Boolean).map(function (w) {
+    return w.charAt(0).toUpperCase() + w.slice(1);
+  }).join(' ');
+}
+
 // ─── RAW MATERIALS — symbol + grade lookup (surface composition badges) ────
 // Grade grouping matches the app's own Materials tab (profile.html's
 // MATERIAL_GRADES) so the colour language stays consistent across pages.
@@ -933,8 +1000,8 @@ if (window.electronAPI) {
     if (d.currentSystem) set('sys-name',   d.currentSystem);
     if (d.pos)           set('sys-pos',    d.pos);
     if (d.ship || d.shipName)
-      set('ship-name', [d.shipName, d.ship].filter(Boolean).join(' \u00B7 ') || '\u2014');
-    if (d.ship)          set('ship-type',  d.ship);
+      set('ship-name', [d.shipName, d.ship ? formatShipType(d.ship) : null].filter(Boolean).join(' \u00B7 ') || '\u2014');
+    if (d.ship)          set('ship-type',  formatShipType(d.ship));
     if (d.shipIdent)     set('ship-ident', d.shipIdent);
     if (d.maxJumpRange)  set('ship-range', d.maxJumpRange);
     if (d.cargoCapacity != null) set('ship-cargo', d.cargoCapacity + ' T');
@@ -992,7 +1059,7 @@ if (window.electronAPI) {
     if (d.maxJumpRange)  set('prof-jump',   d.maxJumpRange);
     // Ship identity on profile page — kept in sync with live Loadout events
     if (d.ship || d.shipName) {
-      set('prof-ship-type',  d.ship      || '\u2014');
+      set('prof-ship-type',  d.ship ? formatShipType(d.ship) : '\u2014');
       set('prof-ship-name',  d.shipName  || '\u2014');
     }
     if (d.shipIdent)     set('prof-ship-ident', d.shipIdent);
@@ -1026,7 +1093,7 @@ if (window.electronAPI) {
 
     var shipTypeEl = document.getElementById('prof-ship-type');
     if (shipTypeEl && (shipTypeEl.textContent === '\u2014' || shipTypeEl.textContent === '—'))
-      shipTypeEl.textContent = id.ship || '\u2014';
+      shipTypeEl.textContent = id.ship ? formatShipType(id.ship) : '\u2014';
 
     var shipNameEl = document.getElementById('prof-ship-name');
     if (shipNameEl && (shipNameEl.textContent === '\u2014' || shipNameEl.textContent === '—'))
