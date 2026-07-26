@@ -63,18 +63,43 @@
       </div>
 
       <div id="prof-subpage-overview" class="prof-subpage active">
+
+        <div class="carrier-hero">
+          <div class="carrier-hero-icon">&#9678;</div>
+          <div class="carrier-hero-info">
+            <div class="carrier-hero-name" id="carrier-hero-name">&#8212;</div>
+            <div class="carrier-hero-meta">
+              <span class="carrier-hero-sys" id="carrier-hero-sys">&#8212;</span>
+              <span class="chip" id="carrier-hero-state">&#8212;</span>
+              <span class="chip chip-cyan" id="carrier-hero-docking">&#8212;</span>
+            </div>
+          </div>
+          <div class="carrier-hero-side">
+            <div class="carrier-hero-balance">
+              <div class="carrier-hero-balance-val" id="carrier-hero-balance">0 cr</div>
+              <div class="carrier-hero-balance-lbl">Balance</div>
+            </div>
+            <div class="carrier-fuel-wrap">
+              <div class="carrier-fuel-label"><span>Tritium</span><span id="carrier-fuel-label-val">0 / 1000</span></div>
+              <div class="fuel-bar-wrap"><div class="fuel-bar-fill" id="carrier-fuel-fill" style="width:0%"></div></div>
+            </div>
+          </div>
+        </div>
+
         <div class="prof-section">
-          <div class="stats-cols" id="capi-carrier-stats"></div>
+          <div class="stats-cols-carrier" id="capi-carrier-stats"></div>
         </div>
       </div><!-- /prof-subpage-overview -->
 
       <div id="prof-subpage-cargo-orders" class="prof-subpage">
         <div class="prof-section" style="border-bottom:1px solid var(--border);">
           <div class="prof-title" style="font-size:0.85em;">Cargo</div>
+          <div class="carrier-summary-bar" id="carrier-cargo-summary" style="display:none;"></div>
           <div id="carrier-cargo-list"></div>
         </div>
         <div class="prof-section">
           <div class="prof-title" style="font-size:0.85em;">Orders</div>
+          <div class="carrier-summary-bar" id="carrier-orders-summary" style="display:none;"></div>
           <div id="capi-carrier-orders"></div>
         </div>
       </div><!-- /prof-subpage-cargo-orders -->
@@ -251,7 +276,22 @@
       .replace(/>/g,'&gt;').replace(/"/g,'&quot;');
   }
 
-  function fmtCr(n) { return (n == null ? 0 : n).toLocaleString() + ' cr'; }
+  function fmtCr(n) {
+    var num = Number(n);
+    if (n == null || isNaN(num)) num = 0;
+    return num.toLocaleString() + ' cr';
+  }
+
+  // Frontier's cAPI is inconsistent about whether numeric fields come back
+  // as actual numbers or as numeric strings — and String.prototype.toLocaleString()
+  // is a silent no-op (no comma grouping), so calling .toLocaleString() directly
+  // on a cAPI field looks fine in testing but drops formatting in the wild.
+  // Always coerce through Number() first.
+  function fmtNum(n) {
+    var num = Number(n);
+    if (n == null || isNaN(num)) return '\u2014';
+    return num.toLocaleString();
+  }
 
   // Fleet carrier vanity names come back hex-encoded per Frontier's docs.
   function hexToStr(hex) {
@@ -325,37 +365,65 @@
     if (noneEl)    noneEl.style.display = 'none';
     if (contentEl) contentEl.style.display = '';
 
+    // ── Hero: name, system, state, docking, balance, fuel gauge ─────────────
+    var vanity   = hexToStr(fc.name && fc.name.vanityName);
+    var callsign = (fc.name && fc.name.callsign) || '\u2014';
+    var nameEl = document.getElementById('carrier-hero-name');
+    if (nameEl) nameEl.textContent = vanity ? (vanity + ' \u2014 ' + callsign) : callsign;
+
+    var sysEl = document.getElementById('carrier-hero-sys');
+    if (sysEl) sysEl.textContent = fc.currentStarSystem || '\u2014';
+
+    var stateEl = document.getElementById('carrier-hero-state');
+    if (stateEl) stateEl.textContent = fc.state || '\u2014';
+
+    var dockEl = document.getElementById('carrier-hero-docking');
+    if (dockEl) dockEl.textContent = fc.dockingAccess || '\u2014';
+
+    var balEl = document.getElementById('carrier-hero-balance');
+    if (balEl) balEl.textContent = fmtCr(fc.balance);
+
+    var fuel = fc.fuel != null ? fc.fuel : 0;
+    var fuelLabelEl = document.getElementById('carrier-fuel-label-val');
+    if (fuelLabelEl) fuelLabelEl.textContent = fuel + ' / 1000';
+    var fuelFillEl = document.getElementById('carrier-fuel-fill');
+    if (fuelFillEl) fuelFillEl.style.width = Math.max(0, Math.min(100, fuel / 10)) + '%';
+
+    // ── Finance / Capacity stat-block cards ──────────────────────────────────
     var statsEl = document.getElementById('capi-carrier-stats');
     if (statsEl) {
-      var vanity = hexToStr(fc.name && fc.name.vanityName);
-      var callsign = (fc.name && fc.name.callsign) || '\u2014';
-      var html = '<div class="stat-group" style="grid-column:1/-1;">' +
-        '<div class="stat-group-title">' + esc(vanity ? vanity + ' \u2014 ' + callsign : callsign) + '</div>';
-      html += statRow('System', esc(fc.currentStarSystem || '\u2014'));
-      html += statRow('Balance', fmtCr(fc.balance), 'gold');
-      html += statRow('Fuel (Tritium)', (fc.fuel != null ? fc.fuel : '\u2014') + ' / 1000');
-      html += statRow('State', esc(fc.state || '\u2014'));
-      html += statRow('Docking Access', esc(fc.dockingAccess || '\u2014'));
-      html += '</div>';
+      var miniStat = function (key, val) {
+        return '<div class="mini-stat"><span class="ms-key">' + esc(key) + '</span><span class="ms-val">' + val + '</span></div>';
+      };
+      var blocks = [];
       if (fc.finance) {
-        html += '<div class="stat-group">' +
-          '<div class="stat-group-title">Finance</div>' +
-          statRow('Bank Balance', fmtCr(fc.finance.bankBalance)) +
-          statRow('Weekly Upkeep', fmtCr(fc.finance.coreCost)) +
-          statRow('Services Cost', fmtCr(fc.finance.servicesCost)) +
-          statRow('Jumps (7d)', fc.finance.numJumps != null ? fc.finance.numJumps : '\u2014') +
-          '</div>';
+        var weeklyNet = (Number(fc.finance.coreCost) || 0) + (Number(fc.finance.servicesCost) || 0);
+        blocks.push('<div class="stat-block">' +
+          '<div class="stat-block-title c-gold">Finance</div>' +
+          miniStat('Bank Balance', fmtCr(fc.finance.bankBalance)) +
+          miniStat('Weekly Upkeep', fmtCr(fc.finance.coreCost)) +
+          miniStat('Services Cost', fmtCr(fc.finance.servicesCost)) +
+          miniStat('Total Weekly Cost', fmtCr(weeklyNet)) +
+          miniStat('Jumps (7d)', fc.finance.numJumps != null ? fmtNum(fc.finance.numJumps) : '\u2014') +
+          '</div>');
       }
       if (fc.capacity) {
-        html += '<div class="stat-group">' +
-          '<div class="stat-group-title">Capacity</div>' +
-          statRow('Free Space', fc.capacity.freeSpace != null ? fc.capacity.freeSpace + ' t' : '\u2014') +
-          statRow('Cargo (for sale)', fc.capacity.cargoForSale != null ? fc.capacity.cargoForSale + ' t' : '\u2014') +
-          statRow('Ship Packs', fc.capacity.shipPacks != null ? fc.capacity.shipPacks : '\u2014') +
-          statRow('Module Packs', fc.capacity.modulePacks != null ? fc.capacity.modulePacks : '\u2014') +
-          '</div>';
+        // Fleet carriers have a fixed 25,000t cargo hold; freeSpace lets us
+        // derive how much of that fixed capacity is currently in use.
+        var totalHold = 25000;
+        var free = fc.capacity.freeSpace != null ? fc.capacity.freeSpace : totalHold;
+        var used = Math.max(0, totalHold - free);
+        var pct  = Math.max(0, Math.min(100, (used / totalHold) * 100));
+        blocks.push('<div class="stat-block">' +
+          '<div class="stat-block-title c-cyan">Capacity</div>' +
+          '<div class="cap-hold-row"><span class="ms-key">Cargo Hold</span><span class="ms-val">' + fmtNum(used) + ' / ' + fmtNum(totalHold) + ' t</span></div>' +
+          '<div class="fuel-bar-wrap cap-hold-bar"><div class="fuel-bar-fill" style="width:' + pct + '%"></div></div>' +
+          miniStat('Cargo (for sale)', fc.capacity.cargoForSale != null ? fmtNum(fc.capacity.cargoForSale) + ' t' : '\u2014') +
+          miniStat('Ship Packs', fc.capacity.shipPacks != null ? fmtNum(fc.capacity.shipPacks) : '\u2014') +
+          miniStat('Module Packs', fc.capacity.modulePacks != null ? fmtNum(fc.capacity.modulePacks) : '\u2014') +
+          '</div>');
       }
-      statsEl.innerHTML = html;
+      statsEl.innerHTML = blocks.join('');
     }
 
     var commodOrders = fc.orders && fc.orders.commodities;
@@ -382,20 +450,38 @@
           };
         }
         var entry = byCommod[key];
-        entry.qty += (item.qty != null ? item.qty : 1);
-        entry.value += (item.value || 0);
+        entry.qty += Number(item.qty != null ? item.qty : 1) || 0;
+        entry.value += Number(item.value) || 0;
         if (item.stolen)  entry.stolen  = true;
         if (item.mission) entry.mission = true;
       });
       var cargoList = Object.keys(byCommod).map(function (k) { return byCommod[k]; });
       cargoList.sort(function (a, b) { return b.qty - a.qty; });
 
-      var ch = '';
-      cargoList.forEach(function (o) {
-        var flags = (o.stolen ? ' &#9679;stolen' : '') + (o.mission ? ' &#9670;mission' : '');
-        ch += statRow(o.locName, o.qty + ' t' + flags);
-      });
-      cargoEl.innerHTML = ch || '<div style="color:var(--text-mute);font-size:0.78em;">Nothing in the carrier\u2019s hold right now.</div>';
+      var summaryEl = document.getElementById('carrier-cargo-summary');
+      if (summaryEl) {
+        if (cargoList.length) {
+          var totalQty = cargoList.reduce(function (sum, o) { return sum + o.qty; }, 0);
+          summaryEl.style.display = '';
+          summaryEl.textContent = cargoList.length + ' commodit' + (cargoList.length === 1 ? 'y' : 'ies') +
+            ' \u00b7 ' + fmtNum(totalQty) + ' t total';
+        } else {
+          summaryEl.style.display = 'none';
+        }
+      }
+
+      var ch = cargoList.map(function (o) {
+        var flags = (o.stolen ? '<span class="cargo-flag stolen">Stolen</span>' : '') +
+                    (o.mission ? '<span class="cargo-flag mission">Mission</span>' : '');
+        return '<div class="cargo-card">' +
+          '<div class="cargo-card-name">' + esc(o.locName) + '</div>' +
+          '<div class="cargo-card-qty">' + fmtNum(o.qty) + ' <span class="cargo-card-unit">t</span></div>' +
+          (flags ? '<div class="cargo-card-flags">' + flags + '</div>' : '') +
+          '</div>';
+      }).join('');
+      cargoEl.innerHTML = ch
+        ? '<div class="cargo-grid">' + ch + '</div>'
+        : '<div style="color:var(--text-mute);font-size:0.78em;">Nothing in the carrier\u2019s hold right now.</div>';
     }
 
     // ── Orders list ────────────────────────────────────────────────────────
@@ -411,18 +497,29 @@
     var activeSales     = sales.filter(function (o) { return o.price != null && o.price > 0 && (o.stock || 0) > 0; });
     var activePurchases = purchases.filter(function (o) { return (o.outstanding || 0) > 0; });
 
-    var ordersEl = document.getElementById('capi-carrier-orders');
+    var ordersEl  = document.getElementById('capi-carrier-orders');
+    var ordersSum = document.getElementById('carrier-orders-summary');
     if (ordersEl) {
       var rows = [];
       activeSales.forEach(function (o) {
-        rows.push({ name: o.name, buying: false, selling: true, qty: o.stock || 0, price: o.price, blackmarket: o.blackmarket });
+        rows.push({ name: o.name, buying: false, selling: true, qty: fmtNum(o.stock || 0), price: o.price, blackmarket: o.blackmarket });
       });
       activePurchases.forEach(function (o) {
         var wanted    = o.total != null ? o.total : 0;
         var remaining = o.outstanding != null ? o.outstanding : 0;
-        rows.push({ name: o.name, buying: true, selling: false, qty: remaining + ' / ' + wanted, price: o.price });
+        rows.push({ name: o.name, buying: true, selling: false, qty: fmtNum(remaining) + ' / ' + fmtNum(wanted), price: o.price });
       });
       rows.sort(function (a, b) { return String(a.name).localeCompare(String(b.name)); });
+
+      if (ordersSum) {
+        if (rows.length) {
+          ordersSum.style.display = '';
+          ordersSum.innerHTML = '<span class="chip chip-green">' + activePurchases.length + ' Buying</span>' +
+            '<span class="chip">' + activeSales.length + ' Selling</span>';
+        } else {
+          ordersSum.style.display = 'none';
+        }
+      }
 
       if (rows.length) {
         var flag = function (on) { return '<span class="' + (on ? 'orders-flag-yes' : 'orders-flag-no') + '">' + (on ? '\u2713' : '\u2014') + '</span>'; };
@@ -434,10 +531,10 @@
         var body = rows.map(function (r) {
           var rowCls = r.buying ? 'orders-row-buy' : 'orders-row-sell';
           return '<div class="orders-cell commod ' + rowCls + '">' + esc(r.name) + (r.blackmarket ? ' &#9679;' : '') + '</div>' +
-                 '<div class="orders-cell mid">' + flag(r.buying) + '</div>' +
-                 '<div class="orders-cell mid">' + flag(r.selling) + '</div>' +
-                 '<div class="orders-cell num">' + r.qty + '</div>' +
-                 '<div class="orders-cell num">' + fmtCr(r.price) + '</div>';
+                 '<div class="orders-cell mid ' + rowCls + '">' + flag(r.buying) + '</div>' +
+                 '<div class="orders-cell mid ' + rowCls + '">' + flag(r.selling) + '</div>' +
+                 '<div class="orders-cell num ' + rowCls + '">' + r.qty + '</div>' +
+                 '<div class="orders-cell num ' + rowCls + '">' + fmtCr(r.price) + '</div>';
         }).join('');
         ordersEl.innerHTML = '<div class="orders-table">' + th + body + '</div>';
       } else {

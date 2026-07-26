@@ -1297,8 +1297,75 @@ a:focus-visible, button:focus-visible, input:focus-visible,
 .orders-cell.commod { color: var(--text); }
 .orders-flag-yes { color: var(--cyan); }
 .orders-flag-no { color: var(--text-mute); opacity: 0.4; }
-.orders-row-buy .orders-cell:first-child { box-shadow: inset 3px 0 0 0 var(--green); }
-.orders-row-sell .orders-cell:first-child { box-shadow: inset 3px 0 0 0 var(--gold); }
+.orders-cell.orders-row-buy { background: rgba(70,224,160,0.045); }
+.orders-cell.orders-row-sell { background: rgba(var(--gold-rgb),0.045); }
+.orders-cell.orders-row-buy:first-child { box-shadow: inset 3px 0 0 0 var(--green); }
+.orders-cell.orders-row-sell:first-child { box-shadow: inset 3px 0 0 0 var(--gold); }
+
+/* ── Carrier — hero header (name / system / state / balance / fuel) ────── */
+.carrier-hero {
+  display: flex;
+  align-items: center;
+  gap: 20px;
+  padding: 20px 24px;
+  background: var(--panel2);
+  border-left: 3px solid var(--gold);
+  flex-wrap: wrap;
+}
+.carrier-hero-icon {
+  font-size: 2.6667em;
+  color: var(--gold);
+  text-shadow: 0 0 20px var(--gold-glow);
+  flex-shrink: 0;
+  width: 56px;
+  text-align: center;
+}
+.carrier-hero-info { flex: 1 1 220px; min-width: 0; }
+.carrier-hero-name {
+  font-family: var(--display);
+  font-size: 1.1667em;
+  letter-spacing: 0.06em;
+  color: var(--text);
+  margin-bottom: 8px;
+  overflow-wrap: break-word;
+}
+.carrier-hero-meta { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
+.carrier-hero-sys { font-family: var(--mono); font-size: 0.8333em; color: var(--text-dim); letter-spacing: 0.04em; margin-right: 2px; }
+.chip {
+  display: inline-flex; align-items: center;
+  font-family: var(--mono); font-size: 0.6667em; letter-spacing: 0.08em; text-transform: uppercase;
+  padding: 3px 8px; border-radius: 2px;
+  background: rgba(var(--gold-rgb),0.08); color: var(--gold-dim); border: 1px solid rgba(var(--gold-rgb),0.25);
+}
+.chip.chip-cyan  { background: var(--cyan-dim); color: var(--cyan); border-color: rgba(var(--cyan-rgb),0.3); }
+.chip.chip-green { background: rgba(70,224,160,0.1); color: var(--green); border-color: rgba(70,224,160,0.3); }
+.carrier-hero-side { display: flex; align-items: center; gap: 20px; margin-left: auto; }
+.carrier-hero-balance { text-align: right; }
+.carrier-hero-balance-val { font-family: var(--mono); font-size: 1.5em; color: var(--gold); text-shadow: 0 0 10px var(--gold-glow); line-height: 1; }
+.carrier-hero-balance-lbl { font-family: var(--mono); font-size: 0.5833em; color: var(--text-mute); letter-spacing: 0.15em; text-transform: uppercase; margin-top: 4px; }
+.carrier-fuel-wrap { width: 150px; }
+.carrier-fuel-label { display: flex; justify-content: space-between; font-family: var(--mono); font-size: 0.6em; color: var(--text-mute); letter-spacing: 0.06em; text-transform: uppercase; margin-bottom: 4px; }
+
+/* ── Carrier — responsive stat-block grid (Finance / Capacity) ─────────── */
+.stats-cols-carrier { display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 14px; }
+.cap-hold-row { display: flex; justify-content: space-between; align-items: baseline; padding: 4px 0; }
+.cap-hold-row .ms-key { font-family: var(--mono); font-size: 0.6667em; color: var(--text-mute); letter-spacing: 0.05em; }
+.cap-hold-row .ms-val { font-family: var(--mono); font-size: 0.75em; color: var(--cyan); }
+.cap-hold-bar { margin-bottom: 8px; height: 5px; }
+
+/* ── Carrier — cargo card grid + flag badges ────────────────────────────── */
+.cargo-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(170px, 1fr)); gap: 10px; }
+.cargo-card { background: var(--panel); border: 1px solid var(--border); padding: 10px 12px; }
+.cargo-card-name { font-family: var(--mono); font-size: 0.75em; color: var(--text-dim); letter-spacing: 0.03em; overflow-wrap: break-word; margin-bottom: 6px; }
+.cargo-card-qty { font-family: var(--mono); font-size: 1.1667em; color: var(--gold); }
+.cargo-card-unit { font-size: 0.6em; color: var(--text-mute); }
+.cargo-card-flags { display: flex; flex-wrap: wrap; gap: 4px; margin-top: 8px; }
+.cargo-flag { font-family: var(--mono); font-size: 0.5833em; padding: 2px 6px; border-radius: 2px; letter-spacing: 0.05em; text-transform: uppercase; }
+.cargo-flag.stolen  { background: rgba(255,77,94,0.1); color: var(--red); border: 1px solid rgba(255,77,94,0.3); }
+.cargo-flag.mission { background: var(--cyan-dim); color: var(--cyan); border: 1px solid rgba(var(--cyan-rgb),0.3); }
+
+/* ── Carrier — Buying/Selling summary chip bar (Orders) ─────────────────── */
+.carrier-summary-bar { display: flex; gap: 8px; margin-bottom: 10px; }
 
 /* Body surface composition badges (System Bodies table) — grade colours
    reused from the Materials tab's own g1-g4 palette for consistency. */
