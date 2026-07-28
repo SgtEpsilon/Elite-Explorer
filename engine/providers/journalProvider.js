@@ -30,6 +30,28 @@ const _cache = {
   missionsData: null,   // last missions-data payload
 };
 
+// Raw keyed maps behind the last bodies-data payload (the worker sends both
+// the display-shaped arrays above AND these — see postBodiesData() in
+// journalWorker.js). Kept separately because reconstructing a map from the
+// array form isn't always safe (station keys can collide when StationName is
+// absent) — these are the real accumulator state, not a derived reshape.
+const _liveSeedMaps = { bodies: {}, stations: {} };
+
+// Build the seed handed to the next live worker run so it can resume from
+// where the last one left off instead of starting empty. This is what makes
+// live mode incremental (see runLiveWorker below) instead of re-parsing the
+// whole journal file — and replaying every earlier FSDJump — on every write.
+function buildLiveSeed() {
+  return {
+    liveData:       _cache.liveData ? { ..._cache.liveData } : null,
+    liveBodySystem: _cache.bodiesData ? _cache.bodiesData.system : null,
+    liveBodies:     { ..._liveSeedMaps.bodies },
+    liveSignals:    _cache.bodiesData ? { ...(_cache.bodiesData.signals || {}) } : {},
+    liveStations:   { ..._liveSeedMaps.stations },
+    liveMissions:   _cache.missionsData ? { ...(_cache.missionsData.missions || {}) } : {},
+  };
+}
+
 function replayToPage() {
   if (_cache.liveData)     send('live-data',     _cache.liveData);
   if (_cache.profileData)  send('profile-data',  _cache.profileData);
@@ -60,11 +82,11 @@ function getSortedJournalFiles(journalPath) {
 }
 
 // ── Generic worker runner ─────────────────────────────────────────────────────
-function runWorker(files, { mode = 'all', useLastProcessed = false, updateLastProcessed = false } = {}) {
+function runWorker(files, { mode = 'all', useLastProcessed = false, updateLastProcessed = false, liveSeed = null } = {}) {
   return new Promise((resolve, reject) => {
     const lp = useLastProcessed ? { ...lastProcessed } : {};
     const worker = new Worker(path.join(__dirname, 'journalWorker.js'), {
-      workerData: { files, lastProcessed: lp, mode }
+      workerData: { files, lastProcessed: lp, mode, liveSeed }
     });
 
     worker.on('message', async (msg) => {
@@ -94,6 +116,10 @@ function runWorker(files, { mode = 'all', useLastProcessed = false, updateLastPr
 
         case 'bodies-data':
           _cache.bodiesData = { system: msg.system, bodies: msg.bodies, signals: msg.signals, stations: msg.stations || [] };
+          // Raw keyed maps for seeding the next incremental live run — kept
+          // separately from the display-shaped arrays above (see _liveSeedMaps).
+          _liveSeedMaps.bodies   = msg.bodiesMap   || {};
+          _liveSeedMaps.stations = msg.stationsMap || {};
           send('bodies-data', { system: msg.system, bodies: msg.bodies, signals: msg.signals, stations: msg.stations || [] });
           eventBus.emit('journal.bodies', { system: msg.system, bodies: msg.bodies, signals: msg.signals, stations: msg.stations || [] });
           break;
@@ -159,12 +185,16 @@ function runWorker(files, { mode = 'all', useLastProcessed = false, updateLastPr
 }
 
 // ── LIVE: single latest journal only ─────────────────────────────────────────
+// Always a full read from line 0 (used at boot and by "Scan All Journals") —
+// but updateLastProcessed:true records where it left off, so the *next*
+// watcher-triggered write (runLiveWorker, below) can go straight to
+// incremental mode instead of redundantly re-parsing the whole file once more.
 async function readLiveJournal(journalPath) {
   const files = getSortedJournalFiles(journalPath);
   if (!files.length) return;
   const latest = files[0];
   logger.info('JOURNAL', 'Reading live journal: ' + latest.file);
-  await runWorker([latest.fullPath], { mode: 'live' });
+  await runWorker([latest.fullPath], { mode: 'live', updateLastProcessed: true });
 }
 
 // ── PROFILE: scan backwards until all 5 key event types are found ─────────────
@@ -248,13 +278,27 @@ function start() {
   let _liveWorkerBusy = false;
   let _pendingLiveRun = false;
 
+  // FIX: this used to always re-parse the whole file from line 0 (no
+  // useLastProcessed/updateLastProcessed), which meant every single journal
+  // write — even something as minor as entering supercruise or scooping fuel
+  // — replayed every earlier FSDJump in the session, each one wiping and
+  // rebuilding the System Bodies panel before landing back on the correct
+  // state (see the "N replayed jump(s)" log). Now it only parses the lines
+  // written since the last pass, seeded with the accumulated state from
+  // buildLiveSeed() so it still has the full current picture (current
+  // system's bodies/stations/missions/ship data) rather than starting blank.
   function runLiveWorker(filePath) {
     if (_liveWorkerBusy) {
       _pendingLiveRun = true;
       return;
     }
     _liveWorkerBusy = true;
-    runWorker([filePath], { mode: 'live' }).finally(() => {
+    runWorker([filePath], {
+      mode:                 'live',
+      useLastProcessed:     true,
+      updateLastProcessed:  true,
+      liveSeed:             buildLiveSeed(),
+    }).finally(() => {
       _liveWorkerBusy = false;
       if (_pendingLiveRun) {
         _pendingLiveRun = false;
@@ -272,6 +316,17 @@ function start() {
     const nowLatest = getLatestJournalFile(journalPath);
     if (nowLatest && nowLatest.fullPath !== watchedPath) {
       logger.info('JOURNAL', 'New game session detected — switching to new journal file', { file: nowLatest.file });
+      // A brand-new journal file means a brand-new game session — the
+      // previous file's cached bodies/stations/ship state no longer applies
+      // (and lastProcessed has no entry for this filename yet anyway, so it
+      // will read from line 0 regardless). Clear the seed so this first pass
+      // over the new file starts clean; the file's own LoadGame/Location/
+      // FSDJump events will repopulate everything correctly.
+      _cache.liveData      = null;
+      _cache.bodiesData    = null;
+      _cache.missionsData  = null;
+      _liveSeedMaps.bodies   = {};
+      _liveSeedMaps.stations = {};
       watchedPath = nowLatest.fullPath;
     }
     if (filePath === watchedPath) {

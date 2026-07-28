@@ -13,7 +13,7 @@ const { workerData, parentPort } = require('worker_threads');
 const fs   = require('fs');
 const path = require('path');
 
-const { files, lastProcessed, mode = 'all' } = workerData;
+const { files, lastProcessed, mode = 'all', liveSeed = null } = workerData;
 const PROGRESS_INTERVAL = 500;
 
 const doLive    = mode === 'live'    || mode === 'all';
@@ -46,14 +46,18 @@ async function run() {
   const totalFiles            = files.length;
   const updatedLastProcessed  = { ...lastProcessed };
 
-  // Live data accumulator (ship, fuel, location, docking)
-  let liveData = null;
+  // Live data accumulator (ship, fuel, location, docking).
+  // Seeded from journalProvider's cache (the last payload this same live
+  // journal produced) so an incremental run — one that only sees the lines
+  // written since the last pass — still starts from the true current state
+  // instead of blank. See journalProvider.js's buildLiveSeed().
+  let liveData = (liveSeed && liveSeed.liveData) ? { ...liveSeed.liveData } : null;
 
   // Live bodies accumulator — cleared on each FSDJump, built up as Scan events arrive.
   // Keyed by body name so duplicate scans just overwrite.
-  let liveBodies     = {};   // bodyName → scan entry
-  let liveBodySystem = null; // system name these bodies belong to
-  let liveSignals    = {};   // bodyName → array of signal strings (bio, geo, stations etc)
+  let liveBodies     = (liveSeed && liveSeed.liveBodies)     ? { ...liveSeed.liveBodies }  : {};   // bodyName → scan entry
+  let liveBodySystem = (liveSeed && liveSeed.liveBodySystem) ? liveSeed.liveBodySystem     : null; // system name these bodies belong to
+  let liveSignals    = (liveSeed && liveSeed.liveSignals)    ? { ...liveSeed.liveSignals }  : {};   // bodyName → array of signal strings (bio, geo, stations etc)
 
   // Live stations accumulator — cleared on each FSDJump alongside liveBodies.
   // Built from Docked (full detail) and ApproachSettlement (name/body only,
@@ -61,19 +65,20 @@ async function run() {
   // actually docked at in the current system is ground truth, so this is
   // treated as the highest-priority source when merged with EDSM/Spansh in
   // the renderer.
-  let liveStations = {};   // stationName → station entry
+  let liveStations = (liveSeed && liveSeed.liveStations) ? { ...liveSeed.liveStations } : {};   // stationName → station entry
 
   // Live missions accumulator — keyed by MissionID so updates overwrite cleanly.
-  let liveMissions = {};  // missionID → mission object
+  let liveMissions = (liveSeed && liveSeed.liveMissions) ? { ...liveSeed.liveMissions } : {};  // missionID → mission object
 
   // Records every time liveBodies/liveStations/liveSignals get wiped, and why.
-  // Live mode fully re-parses the whole current journal file from line 0 on
-  // EVERY journal write (see journalProvider.js's runLiveWorker — it never
-  // passes useLastProcessed), so a single in-game event can replay every
-  // earlier FSDJump in a long session, each one wiping and rebuilding the
-  // bodies panel again before the final, correct state is reached. This log
-  // makes that replay visible instead of it just looking like "the tab
-  // randomly cleared" — see the summary emitted at the end of run().
+  // journalProvider.js now runs live mode incrementally (only new lines since
+  // the last pass, seeded with the state above) instead of always re-parsing
+  // the whole file from line 0, so in normal play this should only ever
+  // record 0 or 1 entries per pass — one real FSDJump the player just made.
+  // More than one still means a genuine multi-jump gap happened between two
+  // passes (e.g. the app was closed mid-session, or a session boundary was
+  // just crossed and the file is being read fresh) — this log keeps that
+  // visible rather than silent.
   let bodiesClearLog = [];
 
   // Profile data accumulator (identity, ranks, rep, stats)
@@ -100,6 +105,22 @@ async function run() {
     const lines      = content.split('\n');
     const startIndex = (lastProcessed[fileName] != null) ? lastProcessed[fileName] + 1 : 0;
     const totalLines = lines.length;
+
+    // Single place that posts the bodies-data payload. Besides the arrays the
+    // renderer expects, this also includes the raw keyed maps (bodiesMap/
+    // stationsMap) — journalProvider.js stashes those so the *next* live pass
+    // can seed liveBodies/liveStations from them instead of starting empty.
+    function postBodiesData() {
+      parentPort.postMessage({
+        type: 'bodies-data',
+        system:      liveBodySystem,
+        bodies:      Object.values(liveBodies),
+        signals:     liveSignals,
+        stations:    Object.values(liveStations),
+        bodiesMap:   liveBodies,
+        stationsMap: liveStations,
+      });
+    }
 
     for (let i = startIndex; i < totalLines; i++) {
       const line = lines[i].trim();
@@ -163,13 +184,7 @@ async function run() {
               liveBodySystem = entry.StarSystem;
               // Emit whatever bodies have been collected so far in this file
               // so the panel populates on app boot when the game is already running.
-              parentPort.postMessage({
-                type: 'bodies-data',
-                system:   liveBodySystem,
-                bodies:   Object.values(liveBodies),
-                signals:  liveSignals,
-                stations: Object.values(liveStations),
-              });
+              postBodiesData();
             }
           }
 
@@ -190,7 +205,7 @@ async function run() {
             liveSignals    = {};
             liveStations   = {};
             liveBodySystem = entry.StarSystem;
-            parentPort.postMessage({ type: 'bodies-data', system: liveBodySystem, bodies: [], signals: {}, stations: [] });
+            postBodiesData();
           }
 
           // ── Scan event → add/update body in the live bodies map ───────────
@@ -236,14 +251,15 @@ async function run() {
               // wasDiscovered/wasMapped instead.
               isScoopable:  entry.StarType ? 'KGBFOAM'.includes(entry.StarType[0]) : false,
               timestamp:    entry.timestamp,
+              // "AutoScan" = the game auto-filled this body's data (arrival
+              // star, or a body someone else already catalogued) — the CMDR
+              // never actually ran FSS or the DSS probe on it. "Detailed" is
+              // a real FSS reticle scan. Captured but not yet used to filter
+              // what shows up as a "Scan Value" — see chat for the open
+              // question on which of these should count.
+              scanType:     entry.ScanType || null,
             };
-            parentPort.postMessage({
-              type: 'bodies-data',
-              system:   liveBodySystem,
-              bodies:   Object.values(liveBodies),
-              signals:  liveSignals,
-              stations: Object.values(liveStations),
-            });
+            postBodiesData();
           }
 
           // ── FSSDiscoveryScan (Discovery Scanner fired) ───────────────────────
@@ -251,13 +267,7 @@ async function run() {
           // so the System Bodies panel gets the freshest data right away.
           if (ev === 'FSSDiscoveryScan') {
             liveBodySystem = entry.SystemName || liveBodySystem;
-            parentPort.postMessage({
-              type:     'bodies-data',
-              system:   liveBodySystem,
-              bodies:   Object.values(liveBodies),
-              signals:  liveSignals,
-              stations: Object.values(liveStations),
-            });
+            postBodiesData();
             parentPort.postMessage({
               type:  'event',
               event: 'journal.fss-scan',
@@ -275,13 +285,7 @@ async function run() {
             });
             if (sigs.length) {
               liveSignals[bodyName] = sigs;
-              parentPort.postMessage({
-                type: 'bodies-data',
-                system:   liveBodySystem,
-                bodies:   Object.values(liveBodies),
-                signals:  liveSignals,
-                stations: Object.values(liveStations),
-              });
+              postBodiesData();
             }
           }
 
@@ -297,13 +301,7 @@ async function run() {
               liveSignals[bodyName] = (liveSignals[bodyName] || []).concat(
                 sigs.filter(s => !(liveSignals[bodyName] || []).includes(s))
               );
-              parentPort.postMessage({
-                type: 'bodies-data',
-                system:   liveBodySystem,
-                bodies:   Object.values(liveBodies),
-                signals:  liveSignals,
-                stations: Object.values(liveStations),
-              });
+              postBodiesData();
             }
           }
 
@@ -328,13 +326,7 @@ async function run() {
               updateTime: entry.timestamp || null,
               source: 'journal',
             };
-            parentPort.postMessage({
-              type: 'bodies-data',
-              system:   liveBodySystem,
-              bodies:   Object.values(liveBodies),
-              signals:  liveSignals,
-              stations: Object.values(liveStations),
-            });
+            postBodiesData();
           }
 
           // ── ApproachSettlement → lightweight entry for settlements seen ───
@@ -356,13 +348,7 @@ async function run() {
                 updateTime: entry.timestamp || null,
                 source: 'journal',
               };
-              parentPort.postMessage({
-                type: 'bodies-data',
-                system:   liveBodySystem,
-                bodies:   Object.values(liveBodies),
-                signals:  liveSignals,
-                stations: Object.values(liveStations),
-              });
+              postBodiesData();
             }
           }
 

@@ -1294,35 +1294,23 @@ if (window.electronAPI) {
     window.electronAPI.onBodiesData(function(data) {
       if (!data || !data.bodies) return;
 
-      // The live journal worker fully re-parses the whole current session
-      // file from scratch on every journal write, so a single in-game scan
-      // replays every earlier jump in that file too — each re-posting
-      // bodies-data (bodies + stations) for whatever system it belonged to
-      // AT THE TIME. That's fine for _journalBodies/_journalStations
-      // themselves: the final message in a replay always reflects the true
-      // current system, so accepting every message and letting the last one
-      // win is correct and self-correcting — we do that below, unguarded.
+      // journalProvider now runs live mode incrementally (only the lines
+      // written since the last pass, seeded with prior state — see
+      // journalWorker.js/journalProvider.js), so in normal play this fires
+      // once per real event rather than replaying the whole session. We
+      // still accept every message unguarded and let the latest one win,
+      // since that's simple and correct either way.
       //
       // What must NOT happen is this handler reassigning the shared
-      // _currentSystem to match whatever system a given replay message
+      // _currentSystem to match whatever system a given bodies-data message
       // belongs to. location-data (onLocation, below) is buffered by the
-      // worker and only sent once, AFTER this entire replay finishes — so
-      // if this handler advanced _currentSystem mid-replay, it would
-      // usually be pointing at a stale, already-left system for the whole
-      // replay, right up until location-data finally arrives. onEdsmBodies
-      // relies on _currentSystem to decide whether an incoming EDSM/Spansh
-      // response is stale, so a real, correct response for the system
-      // you're actually in could arrive during that window, get compared
-      // against the wrong value, and get wrongly discarded — leaving stale
-      // stations on screen (the bug this was fixed for). Conversely, if we
-      // instead only accept bodies-data that already matches _currentSystem
-      // (as this handler briefly did), the very first replay message for a
-      // *new* system is rejected too — because it's posted before
-      // location-data has updated _currentSystem to match — leaving the
-      // panel blank until some later journal write happens to trigger
-      // another pass. Neither guard works; the fix is for this handler to
-      // just leave _currentSystem alone entirely and let onLocation be its
-      // sole owner.
+      // worker and is the sole owner of _currentSystem — if this handler
+      // also touched it, a message that arrives before location-data catches
+      // up (e.g. right after a jump) could point _currentSystem at the wrong
+      // system for a moment, and onEdsmBodies uses _currentSystem to decide
+      // whether an incoming EDSM/Spansh response is stale — getting that
+      // wrong either drops a real response or accepts a stale one (the bug
+      // this was fixed for). So this handler leaves _currentSystem alone.
       var displaySystem = data.system || _currentSystem;
 
       _journalBodies  = {};
@@ -1333,7 +1321,17 @@ if (window.electronAPI) {
         // The journal's Scan event never actually carries a value field —
         // there's nothing to read here, so compute it the same way the
         // System Bodies table does (see computeBodyValue above).
-        var bv = computeBodyValue(b, null);
+        //
+        // Exclude AutoScan planets/belts from Scan Values: AutoScan means
+        // the game auto-filled this body's data (it was already catalogued
+        // by someone else) — no FSS/DSS work was done on it this session,
+        // and since it's already known there's no first-discovery/first-map
+        // bonus to speak of anyway. The arrival star's AutoScan is kept:
+        // getting its value just by jumping in is real, sellable, and by
+        // game design — not something FSS/DSS is needed for in the first
+        // place.
+        var isAutoScanPlanet = b.scanType === 'AutoScan' && b.type !== 'Star';
+        var bv = isAutoScanPlanet ? { value: null } : computeBodyValue(b, null);
         if (bv.value) {
           _scanEntries[b.name] = {
             body:   b.name,
@@ -1341,6 +1339,11 @@ if (window.electronAPI) {
             mapped: b.wasMapped === false,
             value:  bv.value,
           };
+        } else {
+          // A previous pass may have added this body before we knew its
+          // scanType, or its scanType can change across replays — make sure
+          // a now-excluded body doesn't linger from an older entry.
+          delete _scanEntries[b.name];
         }
       });
       renderBodiesDebounced(displaySystem);
