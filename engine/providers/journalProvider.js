@@ -262,8 +262,9 @@ function start() {
     return;
   }
 
-  // Boot live + profile scopes (history is owned by historyProvider)
-  readLiveJournal(journalPath);
+  // Boot: profile is independent, fine to fire separately. Live is NOT —
+  // see the lock note below, so it's started via runLiveWorker() instead of
+  // the old direct readLiveJournal(journalPath) call.
   readProfileData(journalPath);
 
   // Live watcher — only fires live-data updates
@@ -275,6 +276,20 @@ function start() {
   // time. If a change fires while one is already running, we set a flag and
   // re-run exactly once after the current worker finishes, rather than
   // spawning an unbounded number of concurrent workers.
+  //
+  // BUGFIX: this used to only guard the watcher's own runLiveWorker() calls.
+  // The old boot-time readLiveJournal(journalPath) call ran as a totally
+  // separate, unguarded worker. If the game wrote to the journal (e.g. an
+  // Undocked event) while that boot read was still parsing, both workers
+  // finished independently and both overwrote the shared `lastProcessed` —
+  // whichever 'done' landed last won, sometimes with a lower line number
+  // than what had actually been processed. That regressed value stuck
+  // around, so every later incremental read started too far back and
+  // re-walked earlier FSDJumps, over and over — the "N replayed jump(s)"
+  // log and the System Bodies panel clearing/rebuilding on launch. Routing
+  // the boot read through this same lock (below) closes that race: the
+  // watcher-triggered run now queues behind the boot read instead of
+  // running concurrently with it.
   let _liveWorkerBusy = false;
   let _pendingLiveRun = false;
 
@@ -306,6 +321,11 @@ function start() {
       }
     });
   }
+
+  // Kick off the boot read through the SAME lock/queue path as the watcher
+  // (instead of the old bare readLiveJournal(journalPath) call) so a write
+  // that lands mid-boot-read queues behind it rather than racing it.
+  if (watchedPath) runLiveWorker(watchedPath);
 
   const watcher = chokidar.watch(journalPath + path.sep + 'Journal.*.log', {
     persistent: true,
