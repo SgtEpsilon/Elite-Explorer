@@ -4,7 +4,6 @@ const path = require('path');
 const { Worker } = require('worker_threads');
 const eventBus = require('../core/eventBus');
 const logger   = require('../core/logger');
-const config = require('../../config.json');
 
 const { app: electronApp } = (() => { try { return require('electron'); } catch { return {}; } })();
 const userDataDir = (electronApp && electronApp.getPath) ? electronApp.getPath('userData') : path.join(__dirname, '../..');
@@ -12,6 +11,24 @@ const LAST_FILE = path.join(userDataDir, 'lastProcessed.json');
 let lastProcessed = {};
 if (fs.existsSync(LAST_FILE)) {
   try { lastProcessed = JSON.parse(fs.readFileSync(LAST_FILE, 'utf8')); } catch { lastProcessed = {}; }
+}
+
+// NOTE: do NOT `require('../../config.json')` here — that resolves to the
+// bundled/packaged copy sitting next to the source, not the live config that
+// main.js's readConfig()/writeConfig() actually read from and write to
+// (app.getPath('userData') + '/config.json'). A prior version of this file
+// did exactly that, which meant any journal folder the user set via
+// Options → Journal Folder was silently ignored: getJournalPath() always
+// fell back to the OS-default guess below, since it never saw the saved
+// override. Reading the live config fresh on every call (instead of once at
+// module load) also means a path saved via Options takes effect immediately,
+// without requiring an app restart.
+function loadLiveConfig() {
+  try {
+    const liveConfigPath = path.join(userDataDir, 'config.json');
+    if (fs.existsSync(liveConfigPath)) return JSON.parse(fs.readFileSync(liveConfigPath, 'utf8'));
+  } catch { /* fall through to bundled defaults below */ }
+  try { return JSON.parse(fs.readFileSync(path.join(__dirname, '../../config.json'), 'utf8')); } catch { return {}; }
 }
 
 async function saveLastProcessed() {
@@ -66,6 +83,7 @@ function send(channel, data) {
 }
 
 function getJournalPath() {
+  const config = loadLiveConfig();
   if (config.journalPath && config.journalPath.trim()) return config.journalPath.trim();
   const os = process.platform;
   if (os === 'win32')  return path.join(process.env.USERPROFILE, 'Saved Games', 'Frontier Developments', 'Elite Dangerous');
@@ -185,7 +203,8 @@ function runWorker(files, { mode = 'all', useLastProcessed = false, updateLastPr
 }
 
 // ── LIVE: single latest journal only ─────────────────────────────────────────
-// Always a full read from line 0 (used at boot and by "Scan All Journals") —
+// Always a full read from line 0 (used by "Scan All Journals" — boot uses
+// runLiveWorker(..., { forceFullRead: true }) instead, see start() below) —
 // but updateLastProcessed:true records where it left off, so the *next*
 // watcher-triggered write (runLiveWorker, below) can go straight to
 // incremental mode instead of redundantly re-parsing the whole file once more.
@@ -302,7 +321,24 @@ function start() {
   // written since the last pass, seeded with the accumulated state from
   // buildLiveSeed() so it still has the full current picture (current
   // system's bodies/stations/missions/ship data) rather than starting blank.
-  function runLiveWorker(filePath) {
+  //
+  // BUGFIX: that incremental resume relies on buildLiveSeed()/_cache.liveData
+  // to carry the accumulated state forward — but _cache lives only in this
+  // process's memory, while lastProcessed is persisted to lastProcessed.json
+  // on disk. On every fresh app launch _cache.liveData starts back at null,
+  // but lastProcessed[fileName] still points at wherever the previous run
+  // left off. If the game had already been closed (the latest journal file
+  // stopped growing after the last session), that's the *last line in the
+  // file* — so the boot read would resume from "end of file", parse zero new
+  // lines, and liveData never left null. Ship/system data would only ever
+  // populate if the game was actively writing brand-new lines after launch.
+  // `forceFullRead` lets the boot call opt out of the incremental resume for
+  // just that first pass, parsing the whole latest file from line 0 so the
+  // last known ship/system state loads correctly whether or not the game is
+  // still running. Every later watcher-triggered call goes through the
+  // normal incremental path once _cache is actually populated.
+  function runLiveWorker(filePath, opts = {}) {
+    const forceFullRead = !!opts.forceFullRead;
     if (_liveWorkerBusy) {
       _pendingLiveRun = true;
       return;
@@ -310,9 +346,9 @@ function start() {
     _liveWorkerBusy = true;
     runWorker([filePath], {
       mode:                 'live',
-      useLastProcessed:     true,
+      useLastProcessed:     !forceFullRead,
       updateLastProcessed:  true,
-      liveSeed:             buildLiveSeed(),
+      liveSeed:             forceFullRead ? null : buildLiveSeed(),
     }).finally(() => {
       _liveWorkerBusy = false;
       if (_pendingLiveRun) {
@@ -325,7 +361,7 @@ function start() {
   // Kick off the boot read through the SAME lock/queue path as the watcher
   // (instead of the old bare readLiveJournal(journalPath) call) so a write
   // that lands mid-boot-read queues behind it rather than racing it.
-  if (watchedPath) runLiveWorker(watchedPath);
+  if (watchedPath) runLiveWorker(watchedPath, { forceFullRead: true });
 
   const watcher = chokidar.watch(journalPath + path.sep + 'Journal.*.log', {
     persistent: true,

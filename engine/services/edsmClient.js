@@ -32,8 +32,19 @@
 const eventBus     = require('../core/eventBus');
 const logger       = require('../core/logger');
 const spanshClient = require('./spanshClient');
-const CONFIG_PATH  = require('path').join(__dirname, '../../config.json');
+const path         = require('path');
 const fs           = require('fs');
+
+// Same class of bug as journalProvider.js: require()'ing config.json directly
+// resolves to the bundled/packaged copy next to the source, not the live
+// config in app.getPath('userData') that main.js's Options panel actually
+// writes to (edsmEnabled, edsmCommanderName, edsmApiKey, etc.). Resolve the
+// userData path the same way journalProvider.js does, with a fallback for
+// contexts where 'electron' isn't available.
+const { app: electronApp } = (() => { try { return require('electron'); } catch { return {}; } })();
+const userDataDir = (electronApp && electronApp.getPath) ? electronApp.getPath('userData') : path.join(__dirname, '../..');
+const LIVE_CONFIG_PATH    = path.join(userDataDir, 'config.json');
+const DEFAULT_CONFIG_PATH = path.join(__dirname, '../../config.json');
 
 const BASE_URL = 'https://www.edsm.net';
 
@@ -52,7 +63,10 @@ function send(channel, data) {
 }
 
 function readConfig() {
-  try { return JSON.parse(fs.readFileSync(CONFIG_PATH, 'utf8')); } catch { return {}; }
+  try {
+    if (fs.existsSync(LIVE_CONFIG_PATH)) return JSON.parse(fs.readFileSync(LIVE_CONFIG_PATH, 'utf8'));
+  } catch { /* fall through to bundled defaults below */ }
+  try { return JSON.parse(fs.readFileSync(DEFAULT_CONFIG_PATH, 'utf8')); } catch { return {}; }
 }
 
 // ── EDSM API helpers ──────────────────────────────────────────────────────────

@@ -923,6 +923,8 @@ tr.body-section-header td {
 ═══════════════════════════════════════════════════════ */
 
 #view-spansh { display: flex; flex-direction: column; height: 100%; overflow: hidden; background: var(--bg2); }
+#view-carrier { display: none; flex: 1; min-height: 0; overflow: hidden; }
+#view-carrier.active { display: flex; flex-direction: column; overflow-y: auto; }
 
 #spansh-subtabs {
   display: flex; align-items: center; gap: 2px;
@@ -1387,3 +1389,48 @@ a:focus-visible, button:focus-visible, input:focus-visible,
 .mat-badge.g2 { background: #7ecfcf; }
 .mat-badge.g3 { background: #d4b84a; }
 .mat-badge.g4 { background: #c080d0; }
+
+/* ── ms-val colour modifier (Totals cards elsewhere use bare .ms-val) ──── */
+.ms-val.c-cyan { color: var(--cyan); }
+.ms-val.c-gold { color: var(--gold); }
+.ms-val.c-green { color: var(--green); }
+.ms-val.c-red { color: var(--red); }
+
+/* ── Carrier — Upkeep Calculator ─────────────────────────────────────────
+   Table of togglable services (Off / Suspended / Active) with a live
+   totals + long-term projection readout underneath. */
+.fc-calc-table { border: 1px solid var(--border); background: var(--panel); }
+.fc-calc-head, .fc-calc-row {
+  display: grid;
+  grid-template-columns: minmax(120px,1.4fr) minmax(180px,1.3fr) minmax(70px,0.8fr) minmax(80px,0.9fr) minmax(60px,0.7fr);
+  align-items: center;
+  gap: 10px;
+  padding: 8px 12px;
+}
+.fc-calc-head {
+  font-family: var(--mono); font-size: 0.6em; letter-spacing: 0.1em; text-transform: uppercase;
+  color: var(--text-mute); border-bottom: 1px solid var(--border2);
+}
+.fc-calc-head-state, .fc-calc-head-num { text-align: right; }
+.fc-calc-row { border-bottom: 1px solid var(--border); font-family: var(--mono); font-size: 0.78em; }
+.fc-calc-row:last-child { border-bottom: none; }
+.fc-calc-row.fc-calc-row-core { color: var(--text-dim); }
+.fc-calc-name { color: var(--text); overflow-wrap: break-word; }
+.fc-calc-row-core .fc-calc-name { color: var(--text-dim); }
+.fc-calc-num { text-align: right; color: var(--text-dim); }
+.fc-calc-num.fc-calc-num-active { color: var(--cyan); }
+
+.fc-calc-state { display: flex; gap: 4px; justify-content: flex-end; }
+.fc-calc-state-btn {
+  font-family: var(--mono); font-size: 0.68em; letter-spacing: 0.04em; text-transform: uppercase;
+  padding: 4px 8px; background: var(--panel2); border: 1px solid var(--border2); color: var(--text-mute);
+  cursor: pointer; transition: all 0.15s;
+}
+.fc-calc-state-btn:hover { color: var(--text-dim); border-color: var(--cyan); }
+.fc-calc-state-btn.active-off { color: var(--text-mute); }
+.fc-calc-state-btn.active-off.is-selected { background: rgba(var(--cyan-rgb),0.06); color: var(--text-dim); border-color: var(--border2); }
+.fc-calc-state-btn.active-suspended.is-selected { background: rgba(255,157,31,0.12); color: var(--gold); border-color: var(--gold); }
+.fc-calc-state-btn.active-online.is-selected { background: rgba(70,224,160,0.12); color: var(--green); border-color: var(--green); }
+
+.fc-calc-jumps { display: flex; align-items: center; gap: 8px; margin-top: 14px; flex-wrap: wrap; }
+.fc-calc-jumps label { font-family: var(--mono); font-size: 0.72em; color: var(--text-dim); letter-spacing: 0.05em; }

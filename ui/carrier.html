@@ -56,10 +56,11 @@
 
     <div id="carrier-owned-content" style="display:none;">
 
-      <!-- Sub-tabs: Overview / Cargo & Orders -->
+      <!-- Sub-tabs: Overview / Cargo & Orders / Upkeep Calculator -->
       <div id="prof-subtab-bar">
         <button class="prof-subtab active" data-subtab="overview">Overview</button>
         <button class="prof-subtab" data-subtab="cargo-orders">Cargo &amp; Orders</button>
+        <button class="prof-subtab" data-subtab="calculator">Upkeep Calculator</button>
       </div>
 
       <div id="prof-subpage-overview" class="prof-subpage active">
@@ -103,6 +104,54 @@
           <div id="capi-carrier-orders"></div>
         </div>
       </div><!-- /prof-subpage-cargo-orders -->
+
+      <div id="prof-subpage-calculator" class="prof-subpage">
+        <div class="prof-section" style="border-bottom:1px solid var(--border);">
+          <div class="opt-hint" style="margin-bottom:12px;">
+            Toggle the services you have (or plan to have) fitted to estimate weekly upkeep, upfront install cost, and cargo capacity consumed by installed infrastructure. Figures are community-sourced reference values &mdash; actual costs may vary slightly by patch. This is a planning tool and isn&rsquo;t tied to your logged-in carrier&rsquo;s live data unless you load it below.
+          </div>
+
+          <button type="button" class="opt-action-btn" id="fc-calc-sync-btn" style="margin-bottom:14px;max-width:320px;" disabled>
+            <span class="opt-btn-icon">&#8635;</span>
+            <div><div class="opt-btn-label">Load My Carrier&rsquo;s Services</div><div class="opt-btn-sub" id="fc-calc-sync-sub">Connect via Options &amp; refresh cAPI to enable</div></div>
+          </button>
+
+          <div class="fc-calc-table">
+            <div class="fc-calc-head">
+              <div>Service</div>
+              <div class="fc-calc-head-state">State</div>
+              <div class="fc-calc-head-num">Install</div>
+              <div class="fc-calc-head-num">Weekly</div>
+              <div class="fc-calc-head-num">Cargo</div>
+            </div>
+            <div id="fc-calc-rows"></div>
+          </div>
+
+          <div class="fc-calc-jumps">
+            <label for="fc-calc-jumps-input">Planned Jumps / Week</label>
+            <input type="number" id="fc-calc-jumps-input" class="opt-input" min="0" max="50" step="1" value="0" style="width:90px;">
+            <span class="opt-hint" style="margin:0 0 0 10px;">100,000 cr wear-and-tear fee per jump</span>
+          </div>
+
+          <div class="stats-cols-carrier" style="margin-top:16px;">
+            <div class="stat-block">
+              <div class="stat-block-title c-gold">Totals</div>
+              <div class="mini-stat"><span class="ms-key">Upfront Install Cost</span><span class="ms-val" id="fc-calc-total-install">0 cr</span></div>
+              <div class="mini-stat"><span class="ms-key">Weekly Service Upkeep</span><span class="ms-val" id="fc-calc-total-services">0 cr</span></div>
+              <div class="mini-stat"><span class="ms-key">Weekly Jump Fees</span><span class="ms-val" id="fc-calc-total-jumps">0 cr</span></div>
+              <div class="mini-stat"><span class="ms-key">Total Weekly Upkeep</span><span class="ms-val c-cyan" id="fc-calc-total-weekly">5,000,000 cr</span></div>
+              <div class="mini-stat"><span class="ms-key">Cargo Used by Services</span><span class="ms-val" id="fc-calc-total-cargo">0 / 25,000 t</span></div>
+            </div>
+            <div class="stat-block">
+              <div class="stat-block-title c-cyan">Long-Term Upkeep</div>
+              <div class="mini-stat"><span class="ms-key">Per Month (~4.345 wks)</span><span class="ms-val" id="fc-calc-month">0 cr</span></div>
+              <div class="mini-stat"><span class="ms-key">Per Year (52 wks)</span><span class="ms-val" id="fc-calc-year">0 cr</span></div>
+              <div class="mini-stat"><span class="ms-key">3 Years</span><span class="ms-val" id="fc-calc-3y">0 cr</span></div>
+              <div class="mini-stat"><span class="ms-key">5 Years</span><span class="ms-val" id="fc-calc-5y">0 cr</span></div>
+            </div>
+          </div>
+        </div>
+      </div><!-- /prof-subpage-calculator -->
 
     </div><!-- /carrier-owned-content -->
 
@@ -564,6 +613,190 @@
     }
   }
 
+}());
+</script>
+<script>
+// ═════════════════════════════════════════════════════════════════════════════
+// Fleet Carrier Upkeep Calculator — standalone reference tool.
+// Values are the commonly-cited community/wiki figures for install cost,
+// weekly upkeep (active vs. suspended), and cargo capacity consumed by each
+// optional service. Base upkeep (5,000,000 cr/wk) covers the three core
+// services (Bridge Crew, Commodity Trading, Tritium Depot) and is fixed.
+// Installed services still occupy cargo and are still billed a (reduced)
+// retainer even while suspended — only removing a service drops it to zero.
+// ═════════════════════════════════════════════════════════════════════════════
+(function () {
+  'use strict';
+
+  var BASE_UPKEEP  = 5000000;
+  var JUMP_FEE     = 100000;
+  var TOTAL_HOLD   = 25000;
+
+  var SERVICES = [
+    { id: 'refuel',   name: 'Refuel Station',           install: 40000000,  active: 1500000, suspended: 750000,  cargo: 500  },
+    { id: 'repair',   name: 'Repair Crews',             install: 50000000,  active: 1500000, suspended: 750000,  cargo: 180  },
+    { id: 'armoury',  name: 'Armoury',                  install: 95000000,  active: 1500000, suspended: 750000,  cargo: 250  },
+    { id: 'redeem',   name: 'Redemption Office',        install: 150000000, active: 1850000, suspended: 850000,  cargo: 100  },
+    { id: 'shipyard', name: 'Shipyard',                 install: 250000000, active: 6500000, suspended: 1800000, cargo: 3000 },
+    { id: 'outfit',   name: 'Outfitting',                install: 250000000, active: 5000000, suspended: 1500000, cargo: 1750 },
+    { id: 'warehouse',name: 'Secure Warehouse',          install: 165000000, active: 2000000, suspended: 1250000, cargo: 250  },
+    { id: 'cartos',   name: 'Universal Cartographics',  install: 150000000, active: 1850000, suspended: 700000,  cargo: 120  },
+    { id: 'bar',      name: 'Concourse Bar',             install: 200000000, active: 1750000, suspended: 1250000, cargo: 250  },
+    { id: 'vista',    name: 'Vista Genomics',            install: 150000000, active: 1500000, suspended: 700000,  cargo: 120  },
+    { id: 'pioneer',  name: 'Pioneer Supplies',          install: 250000000, active: 5000000, suspended: 1500000, cargo: 200  }
+  ];
+
+  var state = {}; // id -> 'off' | 'suspended' | 'online'
+  SERVICES.forEach(function (s) { state[s.id] = 'off'; });
+
+  // Maps Frontier cAPI /fleetcarrier servicesCrew keys to our SERVICES ids.
+  // (servicesCrew[key] only exists if that service is actually installed;
+  // crewMember.enabled is 'YES' when active, 'NO' when suspended.)
+  var CREW_KEY_MAP = {
+    refuel: 'refuel', repair: 'repair', rearm: 'armoury', shipyard: 'shipyard',
+    outfitting: 'outfit', voucherredemption: 'redeem', exploration: 'cartos',
+    blackmarket: 'warehouse', bartender: 'bar', vistagenomics: 'vista', pioneersupplies: 'pioneer'
+  };
+  var latestFc = null;
+
+  function setSyncStatus(text) {
+    var el = document.getElementById('fc-calc-sync-sub');
+    if (el) el.textContent = text;
+  }
+
+  function applyLiveCarrierData(fc) {
+    latestFc = fc && fc.servicesCrew ? fc : null;
+    var btn = document.getElementById('fc-calc-sync-btn');
+    if (btn) btn.disabled = !latestFc;
+    if (!fc) setSyncStatus('No fleet carrier owned — connect via Options');
+    else if (!latestFc) setSyncStatus('Carrier data has no service details yet — try refreshing cAPI');
+    else setSyncStatus('Fill toggles from your carrier\u2019s live cAPI data');
+  }
+
+  function syncFromCarrier() {
+    if (!latestFc) return;
+    var crew = latestFc.servicesCrew || {};
+    SERVICES.forEach(function (svc) { state[svc.id] = 'off'; });
+    var found = 0;
+    Object.keys(CREW_KEY_MAP).forEach(function (apiKey) {
+      var entry = crew[apiKey];
+      if (entry && entry.crewMember) {
+        state[CREW_KEY_MAP[apiKey]] = (entry.crewMember.enabled === 'YES') ? 'online' : 'suspended';
+        found++;
+      }
+    });
+    renderRows();
+    renderTotals();
+    setSyncStatus(found ? ('Loaded ' + found + ' installed service' + (found === 1 ? '' : 's') + ' from your carrier') : 'Your carrier has no optional services installed');
+  }
+
+  function fmtCr(n) {
+    return Math.round(n).toLocaleString() + ' cr';
+  }
+
+  function weeklyFor(svc) {
+    var st = state[svc.id];
+    if (st === 'online') return svc.active;
+    if (st === 'suspended') return svc.suspended;
+    return 0;
+  }
+  function cargoFor(svc) {
+    return state[svc.id] === 'off' ? 0 : svc.cargo;
+  }
+  function installFor(svc) {
+    return state[svc.id] === 'off' ? 0 : svc.install;
+  }
+
+  function stateBtn(svc, key, label) {
+    var cls = 'fc-calc-state-btn active-' + key + (state[svc.id] === key ? ' is-selected' : '');
+    return '<button type="button" class="' + cls + '" data-svc="' + svc.id + '" data-state="' + key + '">' + label + '</button>';
+  }
+
+  function renderRows() {
+    var rowsEl = document.getElementById('fc-calc-rows');
+    if (!rowsEl) return;
+
+    var coreRow = '<div class="fc-calc-row fc-calc-row-core">' +
+      '<div class="fc-calc-name">Core Services <span style="opacity:0.6;">(Bridge Crew, Trading, Tritium Depot)</span></div>' +
+      '<div class="fc-calc-state" style="justify-content:flex-end;color:var(--text-mute);">Always On</div>' +
+      '<div class="fc-calc-num">&#8212;</div>' +
+      '<div class="fc-calc-num">' + fmtCr(BASE_UPKEEP) + '</div>' +
+      '<div class="fc-calc-num">0 t</div>' +
+      '</div>';
+
+    var svcRows = SERVICES.map(function (svc) {
+      var wk = weeklyFor(svc);
+      return '<div class="fc-calc-row">' +
+        '<div class="fc-calc-name">' + svc.name + '</div>' +
+        '<div class="fc-calc-state">' +
+          stateBtn(svc, 'off', 'Off') +
+          stateBtn(svc, 'suspended', 'Suspended') +
+          stateBtn(svc, 'online', 'Online') +
+        '</div>' +
+        '<div class="fc-calc-num">' + (state[svc.id] === 'off' ? '&#8212;' : fmtCr(svc.install)) + '</div>' +
+        '<div class="fc-calc-num' + (wk > 0 ? ' fc-calc-num-active' : '') + '">' + (wk > 0 ? fmtCr(wk) : '&#8212;') + '</div>' +
+        '<div class="fc-calc-num">' + (cargoFor(svc) > 0 ? cargoFor(svc).toLocaleString() + ' t' : '&#8212;') + '</div>' +
+        '</div>';
+    }).join('');
+
+    rowsEl.innerHTML = coreRow + svcRows;
+
+    rowsEl.querySelectorAll('.fc-calc-state-btn').forEach(function (btn) {
+      btn.addEventListener('click', function () {
+        state[btn.getAttribute('data-svc')] = btn.getAttribute('data-state');
+        renderRows();
+        renderTotals();
+      });
+    });
+  }
+
+  function renderTotals() {
+    var totalInstall = 0, totalServices = 0, totalCargo = 0;
+    SERVICES.forEach(function (svc) {
+      totalInstall  += installFor(svc);
+      totalServices += weeklyFor(svc);
+      totalCargo    += cargoFor(svc);
+    });
+
+    var jumpsInput = document.getElementById('fc-calc-jumps-input');
+    var jumps = jumpsInput ? (parseInt(jumpsInput.value, 10) || 0) : 0;
+    var jumpFees = jumps * JUMP_FEE;
+
+    var totalWeekly = BASE_UPKEEP + totalServices + jumpFees;
+
+    var set = function (id, text) { var el = document.getElementById(id); if (el) el.textContent = text; };
+    set('fc-calc-total-install',  fmtCr(totalInstall));
+    set('fc-calc-total-services', fmtCr(totalServices));
+    set('fc-calc-total-jumps',    fmtCr(jumpFees));
+    set('fc-calc-total-weekly',   fmtCr(totalWeekly));
+    set('fc-calc-total-cargo',    totalCargo.toLocaleString() + ' / ' + TOTAL_HOLD.toLocaleString() + ' t');
+
+    set('fc-calc-month', fmtCr(totalWeekly * 4.345));
+    set('fc-calc-year',  fmtCr(totalWeekly * 52));
+    set('fc-calc-3y',     fmtCr(totalWeekly * 52 * 3));
+    set('fc-calc-5y',     fmtCr(totalWeekly * 52 * 5));
+  }
+
+  var jumpsInputEl = document.getElementById('fc-calc-jumps-input');
+  if (jumpsInputEl) jumpsInputEl.addEventListener('input', renderTotals);
+
+  var syncBtnEl = document.getElementById('fc-calc-sync-btn');
+  if (syncBtnEl) syncBtnEl.addEventListener('click', syncFromCarrier);
+
+  renderRows();
+  renderTotals();
+
+  // ── Wire up to the same cAPI fleet-carrier data already used by the
+  // Overview/Cargo tabs above — no extra request, just another listener
+  // on the same push channel plus the replay cache script.js keeps.
+  if (window.electronAPI) {
+    if (window.electronAPI.onCapiFleetCarrierData) {
+      window.electronAPI.onCapiFleetCarrierData(applyLiveCarrierData);
+    }
+    if (window._capiCache && window._capiCache.fleetCarrier !== undefined) {
+      applyLiveCarrierData(window._capiCache.fleetCarrier);
+    }
+  }
 }());
 </script>
 </body>
