@@ -7,6 +7,125 @@ const EMPIRE_RANKS  = ['None','Outsider','Serf','Master','Squire','Knight','Lord
 const FED_RANKS     = ['None','Recruit','Cadet','Midshipman','Petty Officer','Chief Petty Officer','Warrant Officer','Ensign','Lieutenant','Lt. Commander','Post Commander','Post Captain','Rear Admiral','Vice Admiral','Admiral'];
 const EXOBIO_RANKS  = ['Directionless','Mostly Directionless','Compiler','Collector','Cataloguer','Taxonomist','Ecologist','Geneticist','Elite'];
 
+// ─── SHIP TYPE NAMES — journal "Ship" symbol → display name ───────────────
+// The Loadout/LoadGame events never include a Ship_Localised field (that only
+// appears on events describing *other* commanders' ships, e.g. Interdicted).
+// For our own ship, "Ship" is Frontier's raw internal symbol, and those are
+// inconsistent — some are readable ("FerDeLance"), most aren't ("diamondbackxl",
+// "empire_courier", "explorer_nx" for the Caspian Explorer). So the type must
+// always be looked up here rather than shown as-is. Keys are lower-cased.
+const SHIP_NAMES = {
+  sidewinder: 'Sidewinder',
+  eagle: 'Eagle',
+  empire_eagle: 'Imperial Eagle',
+  hauler: 'Hauler',
+  adder: 'Adder',
+  viper: 'Viper Mk III',
+  viper_mkiv: 'Viper Mk IV',
+  cobramkiii: 'Cobra Mk III',
+  cobramkiv: 'Cobra Mk IV',
+  cobramkv: 'Cobra Mk V',
+  type6: 'Type-6 Transporter',
+  type7: 'Type-7 Transporter',
+  type8: 'Type-8 Transporter',
+  type9: 'Type-9 Heavy',
+  type9_military: 'Type-10 Defender',
+  dolphin: 'Dolphin',
+  asp: 'Asp Explorer',
+  asp_scout: 'Asp Scout',
+  vulture: 'Vulture',
+  federation_dropship: 'Federal Dropship',
+  federation_dropship_mkii: 'Federal Assault Ship',
+  federation_gunship: 'Federal Gunship',
+  federation_corvette: 'Federal Corvette',
+  independant_trader: 'Keelback',
+  orca: 'Orca',
+  empire_courier: 'Imperial Courier',
+  empire_trader: 'Imperial Clipper',
+  imperial_corsair: 'Corsair',
+  cutter: 'Imperial Cutter',
+  diamondback: 'Diamondback Scout',
+  diamondbackxl: 'Diamondback Explorer',
+  ferdelance: 'Fer-de-Lance',
+  python: 'Python',
+  python_nx: 'Python Mk II',
+  typex: 'Alliance Challenger',
+  typex_2: 'Alliance Crusader',
+  typex_3: 'Alliance Chieftain',
+  belugaliner: 'Beluga Liner',
+  anaconda: 'Anaconda',
+  krait_light: 'Krait Phantom',
+  krait_mkii: 'Krait Mk II',
+  mamba: 'Mamba',
+  mandalay: 'Mandalay',
+  explorer_nx: 'Caspian Explorer',
+};
+
+// Fallback for anything not in the map above (brand-new ships this list
+// hasn't been updated for yet). Turns a raw symbol into a readable guess
+// instead of showing it verbatim, e.g. "type11_prospector" -> "Type11 Prospector".
+function formatShipType(raw) {
+  if (!raw) return '\u2014';
+  var known = SHIP_NAMES[String(raw).toLowerCase()];
+  if (known) return known;
+  var s = String(raw).replace(/_/g, ' ').replace(/([a-z])([A-Z])/g, '$1 $2').trim();
+  return s.split(' ').filter(Boolean).map(function (w) {
+    return w.charAt(0).toUpperCase() + w.slice(1);
+  }).join(' ');
+}
+
+// ─── RAW MATERIALS — symbol + grade lookup (surface composition badges) ────
+// Grade grouping matches the app's own Materials tab (profile.html's
+// MATERIAL_GRADES) so the colour language stays consistent across pages.
+const RAW_MATERIAL_SYMBOL = {
+  carbon:'C', iron:'Fe', lead:'Pb', nickel:'Ni', phosphorus:'P', rhenium:'Re', sulphur:'S', sulfur:'S',
+  arsenic:'As', chromium:'Cr', germanium:'Ge', manganese:'Mn', vanadium:'V', zinc:'Zn', zirconium:'Zr',
+  boron:'B', cadmium:'Cd', mercury:'Hg', molybdenum:'Mo', niobium:'Nb', tin:'Sn', tungsten:'W',
+  antimony:'Sb', polonium:'Po', ruthenium:'Ru', selenium:'Se', technetium:'Tc', tellurium:'Te', yttrium:'Y',
+};
+const RAW_MATERIAL_GRADE = {
+  carbon:1, iron:1, lead:1, nickel:1, phosphorus:1, rhenium:1, sulphur:1, sulfur:1,
+  arsenic:2, chromium:2, germanium:2, manganese:2, vanadium:2, zinc:2, zirconium:2,
+  boron:3, cadmium:3, mercury:3, molybdenum:3, niobium:3, tin:3, tungsten:3,
+  antimony:4, polonium:4, ruthenium:4, selenium:4, technetium:4, tellurium:4, yttrium:4,
+};
+
+// Normalizes a body's surface material composition regardless of source:
+//  - journal Scan/FSSBodyScanned (jb.materials): array of {Name, Percent},
+//    the freshest possible data since it's this commander's own scan.
+//  - EDSM (eb.materials): object map of {elementname: percent}, crowd-sourced
+//    from anyone who's scanned the body — used as a fallback so unscanned
+//    (this session) bodies still show composition if EDSM already knows it.
+// Journal data wins when both are present. Returns [] when neither has it.
+function getBodyMaterials(jb, eb) {
+  var out = [];
+  if (jb && Array.isArray(jb.materials) && jb.materials.length) {
+    jb.materials.forEach(function (m) {
+      var key = String(m.Name || m.name || '').toLowerCase();
+      if (!key) return;
+      out.push({ key: key, percent: m.Percent != null ? m.Percent : m.percent });
+    });
+  } else if (eb && eb.materials && typeof eb.materials === 'object') {
+    Object.keys(eb.materials).forEach(function (key) {
+      out.push({ key: key.toLowerCase(), percent: eb.materials[key] });
+    });
+  }
+  out.sort(function (a, b) { return (b.percent || 0) - (a.percent || 0); });
+  return out;
+}
+
+function materialBadgesHtml(materials) {
+  if (!materials || !materials.length) return '';
+  return '<div class="mat-badge-row">' + materials.map(function (m) {
+    var symbol = RAW_MATERIAL_SYMBOL[m.key] || (m.key.charAt(0).toUpperCase() + m.key.slice(1, 3));
+    var grade  = RAW_MATERIAL_GRADE[m.key] || 1;
+    var pct    = m.percent != null ? m.percent.toFixed(1) : '?';
+    return '<span class="mat-badge g' + grade + '" title="' + (m.key.charAt(0).toUpperCase() + m.key.slice(1)) + '">' +
+             symbol + ' <span class="mat-badge-pct">' + pct + '%</span>' +
+           '</span>';
+  }).join('') + '</div>';
+}
+
 // ─── UTILITIES ────────────────────────────────────────────────────
 function fmt(n)    { return (n == null || n === 0) ? '\u2014' : Number(n).toLocaleString() + ' cr'; }
 function fmtNum(n) { return n == null ? '\u2014' : Number(n).toLocaleString(); }
@@ -46,14 +165,34 @@ function log(msg, type = 'info') {
   }
 }
 
+// ─── STATION/SETTLEMENT TYPE TABLES ───────────────────────────────
+// Authoritative station type strings, ported from ICARUS Terminal
+// (src/shared/consts.js), used to classify a station's icon/role instead of
+// guessing from a regex over the free-text `type` string.
+const SPACE_STATIONS = ['Coriolis Starport', 'Ocellus Starport', 'Orbis Starport', 'Asteroid base', 'Outpost'];
+const SURFACE_PORTS = ['Planetary Port', 'Planetary Outpost', 'Workshop'];
+const PLANETARY_OUTPOSTS = ['Military Outpost', 'Scientific Outpost', 'Commercial Outpost', 'Mining Outpost', 'Industrial Outpost', 'Civilian Outpost', 'Planetary Settlement'];
+const SETTLEMENTS = ['Odyssey Settlement', 'Planetary settlement']; // EDSM/Spansh both use various casings
+const PLANETARY_BASES = SURFACE_PORTS.concat(PLANETARY_OUTPOSTS).concat(SETTLEMENTS);
+const MEGASHIPS = ['Mega ship', 'Installation', 'Capital Ship Dock', 'Carrier Construction Dock'];
+// Every recognised station/settlement type. In-game, orbital starports and
+// outposts orbit one specific body just as much as a surface settlement
+// sits on one — EDSM/Spansh simply don't always say which. So the nearest-
+// body-by-distance fallback (see groupStationsByBody) applies to this whole
+// list, not just surface facilities, mirroring ICARUS's system-map.js scope
+// (`SPACE_STATIONS.concat(PLANETARY_BASES).concat(MEGASHIPS)`).
+const ALL_STATION_TYPES = SPACE_STATIONS.concat(PLANETARY_BASES).concat(MEGASHIPS);
+
 // ─── BODY RENDERING ───────────────────────────────────────────────
 // State: journal scan data + EDSM data are merged here.
 var _journalBodies = {};   // bodyName → journal Scan entry
 var _journalSignals = {};  // bodyName → [signal strings]
-var _edsmBodies     = [];  // array of EDSM body objects
-var _edsmStations   = [];  // array of EDSM station objects
+var _edsmBodies     = [];  // array of EDSM body objects (cross-referenced with Spansh in the main process)
+var _edsmStations   = [];  // array of EDSM/Spansh station objects (see edsmClient.js)
+var _journalStations = []; // array of stations docked at / approached this session — ground truth, highest priority
 var _currentSystem  = null;
 var _showStations   = true; // toggle: show stations/settlements in bodies table
+var _expandedBodyGroups = new Set(); // bodyKey (lowercased body name) → expanded in the bodies table
 
 // Map journal scan data → icon type
 function bodyIconType(b) {
@@ -73,6 +212,31 @@ function bodyIconType(b) {
 }
 
 // Shorten body name relative to system name
+// Apply Security/Allegiance/Economy/Population to the Navigation panel.
+// Used both by onLocation (instant, straight from the journal event — no
+// network round-trip) and onEdsmSystem (arrives later, can supplement or
+// correct the journal's picture e.g. if faction control changed since the
+// commander last visited). Either source can supply a partial object —
+// only the fields actually present overwrite what's on screen, so a
+// same-system EDSM reply arriving after journal-populated dashes never
+// blanks out fields the other source doesn't know about.
+function applySystemInfoFields(d) {
+  if (d.security != null) {
+    var secColor = 'var(--text-dim)';
+    var s = String(d.security).toLowerCase();
+    if (s.includes('high'))        secColor = 'var(--green)';
+    else if (s.includes('medium')) secColor = 'var(--gold)';
+    else if (s.includes('low') || s.includes('anarchy') || s.includes('lawless')) secColor = 'var(--red, #e05252)';
+    var secEl = document.getElementById('sys-security');
+    if (secEl) { secEl.textContent = d.security || '\u2014'; secEl.style.color = secColor; }
+  }
+  if (d.allegiance != null) set('sys-allegiance', d.allegiance || '\u2014');
+  if (d.economy    != null) set('sys-economy',    d.economy    || '\u2014');
+  if (d.population != null) {
+    set('sys-population', typeof d.population === 'number' ? d.population.toLocaleString() : d.population);
+  }
+}
+
 function shortBodyName(name, system) {
   if (!system || !name) return name || '—';
   if (name.toLowerCase().startsWith(system.toLowerCase() + ' ')) {
@@ -90,24 +254,86 @@ function fmtLS(ls) {
   return (ls / 499.004785).toFixed(2) + ' AU';
 }
 
-// Estimate base scan value from planet class (fallback when journal doesn't give it)
-function estimateValue(b) {
-  if (!b.planetClass) return null;
-  var pc = b.planetClass.toLowerCase();
-  if (pc.includes('earth'))   return 700000;
-  if (pc.includes('ammonia'))  return 500000;
-  if (pc.includes('water giant')) return 100000;
-  if (pc.includes('water'))   return 100000;
-  if (pc.includes('metal'))   return 20000;
-  if (pc.includes('high metal')) return 20000;
-  if (pc.includes('class i gas'))  return 3000;
-  if (pc.includes('class ii gas')) return 8000;
-  if (pc.includes('class iii'))    return 5000;
-  if (pc.includes('class iv'))     return 5000;
-  if (pc.includes('class v'))      return 6000;
-  if (pc.includes('icy'))     return 1000;
-  if (pc.includes('rocky'))   return 500;
-  return null;
+// ─── EXPLORATION VALUE ESTIMATION ──────────────────────────────────
+// The journal's Scan event does NOT include a value field (no
+// "EstimatedValue"/"MappedValue" key exists on it) and neither EDSM's nor
+// Spansh's body payloads carry a ready-made credit figure either — so
+// there is no field to just "read off" any of the three sources. Instead
+// we reproduce the same reverse-engineered 3.3+ exploration-value formula
+// EDDiscovery/EDSY use (see https://forums.frontier.co.uk/showthread.php/232000-Exploration-value-formulae/
+// and EDDiscovery's own EliteDangerousCore/.../EstimatedValues.cs), fed
+// from whichever inputs are available: full detail from a journal Scan
+// (jb) if we've scanned it ourselves this session, otherwise the
+// coarser class/mass data EDSM or Spansh already gave us (eb). This is
+// why edsmClient.js was extended to pass earthMasses/solarMasses/
+// terraformingState through for Spansh-sourced bodies (EDSM's raw shape
+// already carries them) — without mass+class we can't compute anything.
+
+function starValueK(starTypeCode, subTypeText) {
+  var code = (starTypeCode || '').toUpperCase();
+  var t    = (subTypeText  || '').toLowerCase();
+  if (t.indexOf('supermassive') !== -1) return 33.5678;
+  if (/^D/.test(code) || t.indexOf('white dwarf') !== -1) return 14057;
+  if (code === 'N' || code === 'H' || t.indexOf('neutron') !== -1 || t.indexOf('black hole') !== -1) return 22628;
+  return 1200; // ordinary main-sequence/giant/proto stars
+}
+
+function planetValueK(planetClassText, terraformable) {
+  var t = (planetClassText || '').toLowerCase();
+  if (t.indexOf('metal') !== -1 && t.indexOf('high metal') === -1) // "metal-rich body" but not "high metal content"
+    return 21790 + (terraformable ? 65631 : 0);
+  if (t.indexOf('ammonia') !== -1) return 96932;
+  if (t.indexOf('earth') !== -1) return 64831 + 116295; // Earthlike is always terraformable
+  if (t.indexOf('water world') !== -1) return 64831 + (terraformable ? 116295 : 0);
+  if (t.indexOf('high metal content') !== -1) return 9654 + (terraformable ? 100677 : 0);
+  if (t.indexOf('class i gas giant') !== -1) return 1656;
+  if (t.indexOf('class ii gas giant') !== -1) return 9654 + (terraformable ? 100677 : 0);
+  return 300 + (terraformable ? 93328 : 0); // class III/IV/V giants, rocky, icy, rocky ice, water giant, belts
+}
+
+function odysseyBonus(v) { return v + Math.max(v * 0.3, 555); }
+
+// jb = journal-scanned body data (may be absent), eb = EDSM/Spansh body data (may be absent)
+// Returns { value, maxValue } in credits, or nulls when there isn't enough data to estimate.
+function computeBodyValue(jb, eb) {
+  var isStar = (jb && jb.type === 'Star') || (eb && eb.type === 'Star');
+
+  if (isStar) {
+    var starCode = jb && jb.starType || null;
+    var starSub  = (eb && (eb.subType || eb.type)) || '';
+    var kValue   = starValueK(starCode, starSub);
+    var sMass    = (jb && jb.solarMasses != null) ? parseFloat(jb.solarMasses)
+                 : (eb && eb.solarMasses != null) ? parseFloat(eb.solarMasses)
+                 : 1;
+    var sBase    = kValue + (sMass * kValue / 66.25);
+    var sFirstDiscovery = jb ? !jb.wasDiscovered : false; // unknown from EDSM/Spansh alone — assume already known
+    var sValue   = sBase * (sFirstDiscovery ? 2.6 : 1);
+    // Stars can't be DSS-mapped, so there's no separate "Max" figure for them.
+    return { value: Math.round(sValue), maxValue: null };
+  }
+
+  var planetClassText = (jb && jb.planetClass) || (eb && eb.subType) || null;
+  if (!planetClassText) return { value: null, maxValue: null }; // e.g. belts, or no data at all yet
+
+  var terraformable = !!(jb && jb.terraformable) ||
+    !!(eb && eb.terraformingState && eb.terraformingState !== 'Not terraformable');
+  var pkValue = planetValueK(planetClassText, terraformable);
+  var pMass   = (jb && jb.massEM != null) ? parseFloat(jb.massEM)
+              : (eb && eb.earthMasses != null) ? parseFloat(eb.earthMasses)
+              : 1;
+  var pBase = Math.max(pkValue + (pkValue * Math.pow(pMass, 0.2) * 0.56591828), 500);
+
+  var firstDiscovery = jb ? !jb.wasDiscovered : false; // unknown from EDSM/Spansh alone — assume already known
+  var firstMapped    = jb ? !jb.wasMapped     : false; // unknown from EDSM/Spansh alone — assume already mapped
+
+  var value = pBase * (firstDiscovery ? 2.6 : 1);
+
+  var maxValue;
+  if (firstDiscovery && firstMapped)      maxValue = odysseyBonus(pBase * 3.699622554) * 2.6;
+  else if (firstMapped)                   maxValue = odysseyBonus(pBase * 8.0956);
+  else                                    maxValue = odysseyBonus(pBase * 3.3333333);
+
+  return { value: Math.round(value), maxValue: Math.round(maxValue) };
 }
 
 // Determine if a body is a moon (has a parent that is not a belt or barycentre)
@@ -199,6 +425,185 @@ function buildMergedBodies(system) {
   });
 }
 
+// Merge all three station sources: journal (docked/approached this session —
+// ground truth) takes priority, then whatever edsmClient.js already merged
+// from EDSM+Spansh for anything the journal hasn't seen this session.
+function mergeAllStations(journalStations, edsmStations) {
+  var byName = {};
+  (edsmStations || []).forEach(function(s) { byName[(s.name || '').toLowerCase()] = s; });
+  (journalStations || []).forEach(function(s) { byName[(s.name || '').toLowerCase()] = s; });
+  return Object.values(byName);
+}
+
+// Group stations by the planetary body they belong to.
+// EDSM/Spansh include a "body" field ({name, id, ...}) on stations/settlements
+// that sit on or orbit a specific body, but in practice this field is often
+// missing entirely — EDSM's crowd-submitted station data frequently lacks it
+// (especially for entries no Spansh cross-reference has confirmed), and it's
+// also legitimately absent if the body itself has never been scanned by
+// anyone (a station can exist in EDSM/Spansh's static data before any
+// commander has ever scanned the body it sits on). Either way, id/name
+// matching alone can't place these.
+//
+// Matching happens in three stages, in order of trust:
+//   1. Body id (most reliable — stable even if display names drift or a
+//      body gets renamed). Mirrors ICARUS Terminal's system-map.js, which
+//      matches `systemObjectParent.id === systemObject.body.id`.
+//   2. Body name (fallback when only a bare name survived, no id).
+//   3. Nearest body by distanceToArrival — for surface-type stations only
+//      (settlements/outposts/ports; never plain orbital stations, which
+//      really don't have "a" body). This mirrors ICARUS's getNearestPlanet
+//      heuristic (system-map.js), used there to position stations with no
+//      known body on the system map. It's a best guess, not a confirmed
+//      placement, so these are tagged `_bodyMatchApprox: true` for the UI
+//      to flag as such.
+//
+// Ids are only ever compared within the same data source (EDSM ids and
+// Spansh ids are separate, unrelated numbering spaces — a raw numeric match
+// across the two would be a coincidence, not a real match).
+function groupStationsByBody(stations, bodies) {
+  var byBody    = {}; // lowercased body name → [station, ...]
+  var unassigned = [];
+
+  // sourceKey:id → lowercased body name
+  var idToBodyName = {};
+  // Candidates for the nearest-by-distance fallback: non-star bodies with a
+  // known distance from arrival (a settlement/outpost sits on a planet or
+  // moon, never directly on the star itself).
+  var planetCandidates = [];
+
+  (bodies || []).forEach(function(entry) {
+    var jb = entry.journal, eb = entry.edsm;
+    var name = (jb && jb.name) || (eb && eb.name);
+    if (!name) return;
+    var key = name.toLowerCase();
+
+    if (eb && eb.id != null) {
+      idToBodyName[(eb.source || 'edsm') + ':' + eb.id] = key;
+    }
+
+    var type = (jb && jb.type) || (eb && eb.type);
+    var distance = (jb && jb.distanceFromArrival) || (eb && eb.distanceToArrival);
+    if (type !== 'Star' && distance != null) {
+      planetCandidates.push({ key: key, distance: distance });
+    }
+  });
+
+  (stations || []).forEach(function(st) {
+    var body = st.body;
+    var key = null;
+
+    if (body) {
+      if (body.id != null) {
+        var srcKey = (body.source || st.source || 'edsm') + ':' + body.id;
+        if (idToBodyName[srcKey]) key = idToBodyName[srcKey];
+      }
+      if (!key && body.name) key = body.name.toLowerCase();
+    }
+
+    // Fallback: nearest body by distance. Applies to any station type
+    // except Fleet Carriers (which move around and aren't meaningfully tied
+    // to one body). Deliberately not gated on an exact type-string match
+    // against ALL_STATION_TYPES — EDSM/Spansh don't always report the full
+    // type string consistently (e.g. a plain "Orbis" instead of "Orbis
+    // Starport" has been seen in practice), and every *real* station in the
+    // game does orbit or sit on something, even if that something is just
+    // the nearest star in a planet-less system. planetCandidates being
+    // empty (nothing to guess from) is what actually keeps a station
+    // unassigned, not its type string.
+    var isFleetCarrier = /fleet carrier/i.test(st.type || '');
+    if (!key && !isFleetCarrier && st.distanceToArrival != null && planetCandidates.length) {
+      var best = null, bestDiff = Infinity;
+      planetCandidates.forEach(function(c) {
+        var diff = Math.abs(c.distance - st.distanceToArrival);
+        if (diff < bestDiff) { bestDiff = diff; best = c; }
+      });
+      if (best) {
+        key = best.key;
+        st._bodyMatchApprox = true;
+      }
+    }
+
+    if (key) {
+      if (!byBody[key]) byBody[key] = [];
+      byBody[key].push(st);
+    } else {
+      unassigned.push(st);
+    }
+  });
+
+  return { byBody: byBody, unassigned: unassigned };
+}
+
+// Build a single <tr> for one station/settlement/carrier.
+// extraClass lets callers mark a row as a hidden child of a body group.
+function buildStationRowHtml(st, extraClass) {
+  var stType = st.type || 'Station';
+  var isCarrier    = /fleet carrier/i.test(stType);
+  // Match against the ported ICARUS type tables first (exact, authoritative);
+  // fall back to the old regex for any type string EDSM/Spansh return that
+  // isn't in those tables yet, so nothing silently stops being flagged.
+  var isSettlement = !isCarrier && (
+    PLANETARY_BASES.some(function(t) { return t.toLowerCase() === stType.toLowerCase(); }) ||
+    /settlement|surface|planetary|installation/i.test(stType)
+  );
+  var iconCls      = isSettlement ? 'settlement' : isCarrier ? 'carrier' : 'station';
+  var rowCls       = 'body-station' + (isSettlement ? ' body-settlement' : '') + (extraClass ? ' ' + extraClass : '');
+
+  var distDisplay = st.distanceToArrival != null ? fmtLS(st.distanceToArrival) : '\u2014';
+
+  var services = st.otherServices || [];
+  var serviceHtml = '';
+  if (st.haveMarket)   serviceHtml += '<span class="info-tag poi">Market</span>';
+  if (st.haveShipyard) serviceHtml += '<span class="info-tag poi">Shipyard</span>';
+  if (st.haveOutfitting) serviceHtml += '<span class="info-tag poi">Outfitting</span>';
+  if (services.indexOf('Black Market') !== -1) serviceHtml += '<span class="info-tag alien">B.Market</span>';
+  if (services.indexOf('Material Trader') !== -1) serviceHtml += '<span class="info-tag geo">Materials</span>';
+  if (services.indexOf('Technology Broker') !== -1) serviceHtml += '<span class="info-tag geo">Tech Broker</span>';
+  if (services.indexOf('Interstellar Factors Contact') !== -1) serviceHtml += '<span class="info-tag human">I.Factors</span>';
+
+  var factionHtml = st.controllingFaction && st.controllingFaction.name
+    ? '<div style="font-size:0.75em;color:var(--text-mute);margin-top:1px">' + st.controllingFaction.name + '</div>'
+    : '';
+
+  // Stations that only came from EDSM (Spansh didn't have/confirm them)
+  // are flagged — EDSM's crowd-submitted list is the one known to carry
+  // stale/incorrect entries, so this is a hint to double-check in game.
+  var unverifiedHtml = st.source === 'edsm'
+    ? '<span class="info-tag" title="Not confirmed by Spansh — may be stale" style="opacity:0.7">Unverified</span>'
+    : '';
+
+  // Stations placed under a body via the nearest-by-distance fallback (no
+  // id or name match survived from the source data) are a best guess, not
+  // a confirmed placement — flag them the same way as "Unverified" so it's
+  // clear this row's body assignment could be wrong.
+  var approxHtml = st._bodyMatchApprox
+    ? '<span class="info-tag" title="No body data from source — placed under nearest body by distance" style="opacity:0.7">Approx</span>'
+    : '';
+
+  return (
+    '<tr class="' + rowCls + '">' +
+      '<td style="text-align:center;padding:4px;">' +
+        '<div style="display:flex;justify-content:center;">' +
+          '<div class="body-icon ' + iconCls + '"></div>' +
+        '</div>' +
+      '</td>' +
+      '<td class="body-indent">' +
+        '<div class="body-name-cell">' +
+          '<span class="station-indicator"></span>' +
+          '<span style="font-size:0.9em;font-weight:400;color:var(--text)">' + (st.name || '?') + '</span>' +
+        '</div>' +
+        factionHtml +
+      '</td>' +
+      '<td class="body-class" style="color:var(--text-dim)">' + stType + '</td>' +
+      '<td style="font-size:0.75em;color:var(--text-dim);overflow-wrap:break-word">' + distDisplay + '</td>' +
+      '<td>' + (serviceHtml || unverifiedHtml || approxHtml ? '<div style="margin-top:2px">' + serviceHtml + unverifiedHtml + approxHtml + '</div>' : '') + '</td>' +
+      '<td class="val-cell">\u2014</td>' +
+      '<td class="val-cell muted" style="font-size:0.75em">\u2014</td>' +
+    '</tr>'
+  );
+}
+
 function renderBodies(system) {
   var tbody = document.getElementById('bodies-tbody');
   if (!tbody) return;
@@ -215,6 +620,9 @@ function renderBodies(system) {
   var stars = 0, planets = 0, moons = 0;
   var rows = [];
 
+  var mergedStations = mergeAllStations(_journalStations, _edsmStations);
+  var stationGroups = _showStations ? groupStationsByBody(mergedStations, bodies) : { byBody: {}, unassigned: [] };
+
   bodies.forEach(function(entry) {
     var jb  = entry.journal;
     var eb  = entry.edsm;
@@ -225,6 +633,11 @@ function renderBodies(system) {
     var shortName    = shortBodyName(name, sys);
     var isMain       = jb ? (jb.type === 'Star' || !isMoonBody(jb, sys)) : (eb ? eb.type === 'Star' || !isMoonBody(eb, sys) : true);
     var isStar       = (jb && jb.type === 'Star') || (eb && eb.type === 'Star');
+
+    // ── Stations/settlements attached to this body ──
+    var bodyKey          = name.toLowerCase();
+    var attachedStations = stationGroups.byBody[bodyKey] || [];
+    var groupExpanded    = _expandedBodyGroups.has(bodyKey);
 
     var displayClass;
     if (jb && jb.type === 'Star') {
@@ -272,6 +685,13 @@ function renderBodies(system) {
     if (jb && jb.rings)  infoLines.push('Rings: ' + (jb.ringTypes.join(', ') || 'present'));
     else if (eb && eb.rings) infoLines.push('Rings');
 
+    // ── Surface composition (materials) ─────────────────────────────────────
+    // Only meaningful for landable rocky/icy bodies — stars and gas giants
+    // never carry a materials list from either source, so this naturally
+    // stays empty (and unrendered) for them.
+    var bodyMaterials = getBodyMaterials(jb, eb);
+    var materialsHtml = materialBadgesHtml(bodyMaterials);
+
     // ── Tags ──
     var tags = [];
 
@@ -306,9 +726,10 @@ function renderBodies(system) {
       // nothing extra
     }
 
-    // ── Value ──
-    var value    = (jb && jb.estimatedValue) || estimateValue(jb || {});
-    var maxValue = (jb && jb.mappedValue)    || (value ? Math.round(value * 3.3) : null);
+    // ── Value ── computed from whichever of journal/EDSM/Spansh data we have (see computeBodyValue)
+    var bodyValue = computeBodyValue(jb, eb);
+    var value     = bodyValue.value;
+    var maxValue  = bodyValue.maxValue;
 
     // Count body types
     if (isStar)      stars++;
@@ -323,6 +744,17 @@ function renderBodies(system) {
 
     var infoHtml = infoLines.map(function(l) { return '<div>' + l + '</div>'; }).join('');
 
+    // Clickable "N stations ▾/▸" badge shown inline next to the body name,
+    // only when this body actually has stations/settlements attached.
+    var stationBadgeHtml = '';
+    if (attachedStations.length) {
+      stationBadgeHtml =
+        '<span class="body-station-toggle' + (groupExpanded ? ' expanded' : '') + '" data-group="' + bodyKey.replace(/"/g, '&quot;') + '">' +
+          '<span class="body-station-toggle-arrow">' + (groupExpanded ? '\u25be' : '\u25b8') + '</span>' +
+          ' ' + attachedStations.length + ' station' + (attachedStations.length !== 1 ? 's' : '') +
+        '</span>';
+    }
+
     rows.push(
       '<tr class="' + rowClass + '">' +
         '<td style="text-align:center;padding:4px;">' +
@@ -334,73 +766,42 @@ function renderBodies(system) {
           '<div class="body-name-cell">' +
             (!isMain ? '<span class="moon-indicator"></span>' : '') +
             '<span style="font-size:' + (isMain ? '1em' : '0.9em') + ';font-weight:' + (isMain ? '600' : '400') + ';color:' + (isMain ? 'var(--text)' : 'var(--text-dim)') + '">' + shortName + '</span>' +
+            stationBadgeHtml +
           '</div>' +
         '</td>' +
         '<td class="body-class">' + displayClass + '</td>' +
-        '<td style="font-size:0.75em;color:var(--text-dim);white-space:nowrap">' + distDisplay + '</td>' +
+        '<td style="font-size:0.75em;color:var(--text-dim);overflow-wrap:break-word">' + distDisplay + '</td>' +
         '<td>' +
           '<div class="info-text">' + infoHtml + '</div>' +
           (tagHtml ? '<div style="margin-top:3px">' + tagHtml + '</div>' : '') +
+          materialsHtml +
         '</td>' +
         '<td class="val-cell">' + (value ? value.toLocaleString() + ' cr' : '—') + '</td>' +
         '<td class="val-cell muted" style="font-size:0.75em">' + (maxValue ? maxValue.toLocaleString() + ' cr' : '—') + '</td>' +
       '</tr>'
     );
+
+    // Hidden-until-expanded rows for this body's stations/settlements.
+    if (attachedStations.length) {
+      attachedStations.forEach(function(st) {
+        rows.push(buildStationRowHtml(st, 'body-station-child' + (groupExpanded ? ' expanded' : '')));
+      });
+    }
   });
 
-  // ── Station / Settlement rows ────────────────────────────────────────────
-  if (_showStations && _edsmStations.length) {
-    _edsmStations.forEach(function(st) {
-      var stType = st.type || 'Station';
-      // Classify: settlement vs station
-      var isSettlement = /settlement|surface|planetary|installation/i.test(stType);
-      var isCarrier    = /fleet carrier/i.test(stType);
-      var isMegaship   = /megaship|dockable/i.test(stType);
-      var iconCls      = isSettlement ? 'settlement' : isCarrier ? 'carrier' : 'station';
-      var rowCls       = 'body-station' + (isSettlement ? ' body-settlement' : '');
-
-      var distDisplay = st.distanceToArrival != null ? fmtLS(st.distanceToArrival) : '—';
-
-      // Services as small tags
-      var services = st.otherServices || [];
-      var serviceHtml = '';
-      if (st.haveMarket)   serviceHtml += '<span class="info-tag poi">Market</span>';
-      if (st.haveShipyard) serviceHtml += '<span class="info-tag poi">Shipyard</span>';
-      if (st.haveOutfitting) serviceHtml += '<span class="info-tag poi">Outfitting</span>';
-      if (services.indexOf('Black Market') !== -1) serviceHtml += '<span class="info-tag alien">B.Market</span>';
-      if (services.indexOf('Material Trader') !== -1) serviceHtml += '<span class="info-tag geo">Materials</span>';
-      if (services.indexOf('Technology Broker') !== -1) serviceHtml += '<span class="info-tag geo">Tech Broker</span>';
-      if (services.indexOf('Interstellar Factors Contact') !== -1) serviceHtml += '<span class="info-tag human">I.Factors</span>';
-
-      var factionHtml = st.controllingFaction && st.controllingFaction.name
-        ? '<div style="font-size:0.75em;color:var(--text-mute);margin-top:1px">' + st.controllingFaction.name + '</div>'
-        : '';
-
-      rows.push(
-        '<tr class="' + rowCls + '">' +
-          '<td style="text-align:center;padding:4px;">' +
-            '<div style="display:flex;justify-content:center;">' +
-              '<div class="body-icon ' + iconCls + '"></div>' +
-            '</div>' +
-          '</td>' +
-          '<td>' +
-            '<div class="body-name-cell">' +
-              '<span style="font-size:0.9em;font-weight:400;color:var(--text)">' + (st.name || '?') + '</span>' +
-            '</div>' +
-            factionHtml +
-          '</td>' +
-          '<td class="body-class" style="color:var(--text-dim)">' + stType + '</td>' +
-          '<td style="font-size:0.75em;color:var(--text-dim);white-space:nowrap">' + distDisplay + '</td>' +
-          '<td>' + (serviceHtml ? '<div style="margin-top:2px">' + serviceHtml + '</div>' : '') + '</td>' +
-          '<td class="val-cell">—</td>' +
-          '<td class="val-cell muted" style="font-size:0.75em">—</td>' +
-        '</tr>'
-      );
+  // ── Stations EDSM didn't attach to any specific body ──────────────────────
+  // (mostly plain orbital starports that just orbit the system, not a body)
+  if (_showStations && stationGroups.unassigned.length) {
+    rows.push(
+      '<tr class="body-section-header"><td colspan="7">Other Stations (Orbital / No Body Data)</td></tr>'
+    );
+    stationGroups.unassigned.forEach(function(st) {
+      rows.push(buildStationRowHtml(st, ''));
     });
   }
 
   tbody.innerHTML = rows.join('');
-  var stationCount = _showStations ? _edsmStations.length : 0;
+  var stationCount = _showStations ? mergedStations.length : 0;
   var bodyTotal    = bodies.length;
   var countLabel   = bodyTotal + ' bod' + (bodyTotal !== 1 ? 'ies' : 'y');
   if (stationCount) countLabel += ' · ' + stationCount + ' station' + (stationCount !== 1 ? 's' : '');
@@ -410,6 +811,18 @@ function renderBodies(system) {
   set('sum-moons',   moons);
   set('sum-total',   stars + planets + moons);
 }
+
+// One delegated listener handles every "N stations ▸" badge, in every body
+// row, forever — even after the table is fully rebuilt by renderBodies().
+document.addEventListener('click', function(e) {
+  var toggle = e.target.closest && e.target.closest('.body-station-toggle');
+  if (!toggle) return;
+  var key = toggle.getAttribute('data-group');
+  if (!key) return;
+  if (_expandedBodyGroups.has(key)) _expandedBodyGroups.delete(key);
+  else _expandedBodyGroups.add(key);
+  renderBodies();
+});
 
 function populateBodies() {
   renderBodies(_currentSystem);
@@ -430,6 +843,15 @@ function renderBodiesDebounced(system) {
 // ─── SCAN VALUES PANEL ────────────────────────────────────────────
 var _scanEntries = {};  // bodyName → { value, mapped }
 
+function scanBodyCell(name, system) {
+  if (!name) return '—';
+  if (system && name.toLowerCase().startsWith(system.toLowerCase() + ' ')) {
+    var rest = name.slice(system.length + 1);
+    return '<span style="color:var(--text-dim)">' + system + '</span> ' + rest;
+  }
+  return name;
+}
+
 function renderScans() {
   var tbody = document.getElementById('scan-tbody');
   if (!tbody) return;
@@ -444,7 +866,7 @@ function renderScans() {
   var rows = entries.map(function(s) {
     total += (s.value || 0);
     return '<tr>' +
-      '<td style="font-size:0.75em">' + shortBodyName(s.body, _currentSystem) + '</td>' +
+      '<td style="font-size:0.75em">' + scanBodyCell(s.body, _currentSystem) + '</td>' +
       '<td style="font-size:0.6667em;color:var(--text-dim)">' + (s.type || '') + '</td>' +
       '<td style="text-align:center"><span class="mapped-icon ' + (s.mapped ? 'yes' : 'no') + '"></span></td>' +
       '<td class="scan-val">' + (s.value ? s.value.toLocaleString() : '—') + '</td>' +
@@ -578,8 +1000,8 @@ if (window.electronAPI) {
     if (d.currentSystem) set('sys-name',   d.currentSystem);
     if (d.pos)           set('sys-pos',    d.pos);
     if (d.ship || d.shipName)
-      set('ship-name', [d.shipName, d.ship].filter(Boolean).join(' \u00B7 ') || '\u2014');
-    if (d.ship)          set('ship-type',  d.ship);
+      set('ship-name', [d.shipName, d.ship ? formatShipType(d.ship) : null].filter(Boolean).join(' \u00B7 ') || '\u2014');
+    if (d.ship)          set('ship-type',  formatShipType(d.ship));
     if (d.shipIdent)     set('ship-ident', d.shipIdent);
     if (d.maxJumpRange)  set('ship-range', d.maxJumpRange);
     if (d.cargoCapacity != null) set('ship-cargo', d.cargoCapacity + ' T');
@@ -637,7 +1059,7 @@ if (window.electronAPI) {
     if (d.maxJumpRange)  set('prof-jump',   d.maxJumpRange);
     // Ship identity on profile page — kept in sync with live Loadout events
     if (d.ship || d.shipName) {
-      set('prof-ship-type',  d.ship      || '\u2014');
+      set('prof-ship-type',  d.ship ? formatShipType(d.ship) : '\u2014');
       set('prof-ship-name',  d.shipName  || '\u2014');
     }
     if (d.shipIdent)     set('prof-ship-ident', d.shipIdent);
@@ -671,7 +1093,7 @@ if (window.electronAPI) {
 
     var shipTypeEl = document.getElementById('prof-ship-type');
     if (shipTypeEl && (shipTypeEl.textContent === '\u2014' || shipTypeEl.textContent === '—'))
-      shipTypeEl.textContent = id.ship || '\u2014';
+      shipTypeEl.textContent = id.ship ? formatShipType(id.ship) : '\u2014';
 
     var shipNameEl = document.getElementById('prof-ship-name');
     if (shipNameEl && (shipNameEl.textContent === '\u2014' || shipNameEl.textContent === '—'))
@@ -820,19 +1242,26 @@ if (window.electronAPI) {
     set('tb-sys',   data.system);
 
     if (isNewSystem) {
-      log('Jump: ' + data.system, 'info');
+      log('Jump: ' + (_currentSystem || '(none)') + ' \u2192 ' + data.system + ' \u2014 bodies panel cleared', 'info');
 
       // Clear body state - entering a new system
       _currentSystem  = data.system;
       _journalBodies  = {};
       _journalSignals = {};
+      _journalStations = [];
       _edsmBodies     = [];
       _edsmStations   = [];
       _scanEntries    = {};
+      _expandedBodyGroups = new Set();
       renderBodiesDebounced(data.system);
       renderScans();
 
-      // Clear EDSM fields until new system data arrives
+      // Clear EDSM fields until new system data arrives — applySystemInfoFields
+      // below will immediately overwrite these with whatever this Location/
+      // FSDJump event already told us. The journal itself carries security/
+      // allegiance/economy/population, so there's no need to wait on an EDSM
+      // round-trip (which may also be slow, rate-limited, or fail entirely
+      // for a system not in its database).
       set('sys-security',   '\u2014');
       set('sys-allegiance', '\u2014');
       set('sys-economy',    '\u2014');
@@ -855,7 +1284,9 @@ if (window.electronAPI) {
       if (dot) { dot.style.background = 'var(--text-mute)'; dot.title = 'EDSM: fetching\u2026'; }
     }
     // Same-system Location events (FSS entry, supercruise exit, approach body, etc.)
-    // are intentionally ignored here - body state is preserved.
+    // are intentionally ignored for body/scan state — but still worth applying,
+    // in case the journal reports anything new (e.g. population changed).
+    applySystemInfoFields(data);
   });
 
   // ── JOURNAL SCAN DATA → live bodies panel ───────────────────────────────────────────
@@ -863,31 +1294,102 @@ if (window.electronAPI) {
     window.electronAPI.onBodiesData(function(data) {
       if (!data || !data.bodies) return;
 
-      var incomingSystem = data.system || _currentSystem;
+      // journalProvider now runs live mode incrementally (only the lines
+      // written since the last pass, seeded with prior state — see
+      // journalWorker.js/journalProvider.js), so in normal play this fires
+      // once per real event rather than replaying the whole session. We
+      // still accept every message unguarded and let the latest one win,
+      // since that's simple and correct either way.
+      //
+      // What must NOT happen is this handler reassigning the shared
+      // _currentSystem to match whatever system a given bodies-data message
+      // belongs to. location-data (onLocation, below) is buffered by the
+      // worker and is the sole owner of _currentSystem — if this handler
+      // also touched it, a message that arrives before location-data catches
+      // up (e.g. right after a jump) could point _currentSystem at the wrong
+      // system for a moment, and onEdsmBodies uses _currentSystem to decide
+      // whether an incoming EDSM/Spansh response is stale — getting that
+      // wrong either drops a real response or accepts a stale one (the bug
+      // this was fixed for). So this handler leaves _currentSystem alone.
+      var displaySystem = data.system || _currentSystem;
 
-      // If the system changed, flush stale EDSM bodies and scan entries
-      if (incomingSystem && incomingSystem !== _currentSystem) {
-        _edsmBodies   = [];
-        _edsmStations = [];
-        _scanEntries  = {};
-      }
-
-      _currentSystem  = incomingSystem;
       _journalBodies  = {};
       _journalSignals = data.signals || {};
+      _journalStations = data.stations || [];
       (data.bodies || []).forEach(function(b) {
         _journalBodies[b.name] = b;
-        if (b.estimatedValue || b.mappedValue) {
+        // The journal's Scan event never actually carries a value field —
+        // there's nothing to read here, so compute it the same way the
+        // System Bodies table does (see computeBodyValue above).
+        //
+        // Exclude AutoScan planets/belts from Scan Values: AutoScan means
+        // the game auto-filled this body's data (it was already catalogued
+        // by someone else) — no FSS/DSS work was done on it this session,
+        // and since it's already known there's no first-discovery/first-map
+        // bonus to speak of anyway. The arrival star's AutoScan is kept:
+        // getting its value just by jumping in is real, sellable, and by
+        // game design — not something FSS/DSS is needed for in the first
+        // place.
+        var isAutoScanPlanet = b.scanType === 'AutoScan' && b.type !== 'Star';
+        var bv = isAutoScanPlanet ? { value: null } : computeBodyValue(b, null);
+        if (bv.value) {
           _scanEntries[b.name] = {
             body:   b.name,
             type:   b.planetClass || b.starType || b.type || '',
             mapped: b.wasMapped === false,
-            value:  b.estimatedValue || null,
+            value:  bv.value,
           };
+        } else {
+          // A previous pass may have added this body before we knew its
+          // scanType, or its scanType can change across replays — make sure
+          // a now-excluded body doesn't linger from an older entry.
+          delete _scanEntries[b.name];
         }
       });
-      renderBodiesDebounced(_currentSystem);
+      renderBodiesDebounced(displaySystem);
       renderScans();
+    });
+  }
+
+  // ── BODIES-CLEAR SUMMARY → surfaces *why* the panel just cleared ───────────
+  // Live mode re-parses the whole current journal file from scratch on every
+  // journal write, so one in-game event (even something as minor as entering
+  // supercruise) can replay every earlier jump this session, each one wiping
+  // and rebuilding the panel again before landing on the real, current one.
+  // A single-transition summary is just the normal "you jumped" case; more
+  // than one in the same pass means a replay just happened, which is the
+  // "randomly clearing" symptom — this makes that visible instead of silent.
+  var _bodiesReplayNoteTimer = null;
+  if (window.electronAPI.onBodiesClearSummary) {
+    window.electronAPI.onBodiesClearSummary(function (data) {
+      if (!data) return;
+      if (data.count > 1) {
+        log('System Bodies: rebuilt via ' + data.count + ' replayed jump(s) this pass (ended in ' +
+            (data.finalSystem || '?') + ')', 'warn');
+
+        // Also surface it right on the System Bodies panel itself — the
+        // Application Log lives in a different column and someone just
+        // watching the table has no reason to have it open. Without this,
+        // a mid-session journal write (even something unrelated, like a
+        // fuel scoop event) re-parses the whole file from line 0, replays
+        // every earlier FSDJump, and the panel appears to blank and
+        // repopulate for no visible reason.
+        var note = document.getElementById('bodies-replay-note');
+        if (note) {
+          var text = '\u21bb replayed ' + data.count + ' jump(s)';
+          note.textContent = text;
+          note.title = 'Live mode re-parsed the whole journal file this write and replayed ' +
+                       data.count + ' earlier jump(s) before settling on ' +
+                       (data.finalSystem || 'the current system') + '. The panel is correct now.';
+          note.classList.add('show');
+          if (_bodiesReplayNoteTimer) clearTimeout(_bodiesReplayNoteTimer);
+          _bodiesReplayNoteTimer = setTimeout(function () {
+            note.classList.remove('show');
+          }, 4000);
+        }
+      } else {
+        log('System Bodies: cleared for jump into ' + (data.finalSystem || '?'), 'info');
+      }
     });
   }
 
@@ -911,24 +1413,24 @@ if (window.electronAPI) {
       _edsmStations = data.stations || [];
       renderBodiesDebounced(data.system || _currentSystem);
       log('EDSM: ' + _edsmBodies.length + ' bodies, ' + _edsmStations.length + ' stations for ' + (data.system || _currentSystem || '?'), 'info');
+      if (data.spanshVerified === false && _edsmStations.length > 0) {
+        log('Spansh: cross-reference unavailable for ' + (data.system || _currentSystem || '?') +
+            ' \u2014 station list is unverified EDSM data only', 'warn');
+      }
     });
   }
 
   window.electronAPI.onEdsmSystem(function(d) {
-    // Security colour coding
-    var secColor = 'var(--text-dim)';
-    if (d.security) {
-      var s = d.security.toLowerCase();
-      if (s.includes('high'))   secColor = 'var(--green)';
-      else if (s.includes('medium')) secColor = 'var(--gold)';
-      else if (s.includes('low') || s.includes('anarchy') || s.includes('lawless')) secColor = 'var(--red, #e05252)';
-    }
-    var secEl = document.getElementById('sys-security');
-    if (secEl) { secEl.textContent = d.security || '\u2014'; secEl.style.color = secColor; }
-
-    set('sys-allegiance', d.allegiance || '\u2014');
-    set('sys-economy',    d.economy    || '\u2014');
-    set('sys-population', d.population != null ? Number(d.population).toLocaleString() : '\u2014');
+    // EDSM is the authoritative refresh — always apply, even if a field is
+    // missing (unlike the journal-sourced pass, which only overwrites the
+    // dashes with what it actually has). Fall back to '—' for anything EDSM
+    // doesn't know either, rather than leaving stale journal-only text.
+    applySystemInfoFields({
+      security:   d.security   || '\u2014',
+      allegiance: d.allegiance || '\u2014',
+      economy:    d.economy    || '\u2014',
+      population: d.population != null ? d.population : '\u2014',
+    });
 
     // Update EDSM link — edsmUrl is always provided by the service, even on error
     var link = document.getElementById('edsm-link');
@@ -1199,7 +1701,6 @@ function openOptions() {
     el = document.getElementById('opt-edsm-enabled'); if (el) el.checked = !!cfg.edsmEnabled;
     el = document.getElementById('opt-edsm-cmdr');    if (el) el.value  = cfg.edsmCommanderName || '';
     el = document.getElementById('opt-edsm-key');     if (el) el.value  = cfg.edsmApiKey        || '';
-    el = document.getElementById('capi-client-id');   if (el) el.value  = cfg.capiClientId      || '';
     // Inara settings
     el = document.getElementById('opt-inara-cmdr-name');  if (el) el.value = cfg.inaraCommanderName || '';
     // Network server settings
@@ -1377,24 +1878,13 @@ if (networkSaveBtn) networkSaveBtn.addEventListener('click', async function() {
 });
 
 // ─── FRONTIER cAPI BUTTONS ────────────────────────────────────────
-// Save Client ID whenever it changes (needed before login)
-var capiClientIdInput = document.getElementById('capi-client-id');
-if (capiClientIdInput) capiClientIdInput.addEventListener('change', async function() {
-  if (!window.electronAPI) return;
-  var val = capiClientIdInput.value.trim();
-  try { await window.electronAPI.saveConfig({ capiClientId: val }); }
-  catch { log('Failed to save cAPI Client ID', 'error'); }
-});
+// (Client ID is baked into the app itself — see capiService.js — so there's
+// no user-facing Client ID field to save anymore.)
 
 // Login button — starts the OAuth2 flow in capiService.js
 var capiLoginBtn = document.getElementById('capi-login-btn');
 if (capiLoginBtn) capiLoginBtn.addEventListener('click', async function() {
   if (!window.electronAPI) return;
-  // Save the client ID field first (in case user just typed it)
-  var clientIdEl = document.getElementById('capi-client-id');
-  if (clientIdEl && clientIdEl.value.trim()) {
-    try { await window.electronAPI.saveConfig({ capiClientId: clientIdEl.value.trim() }); } catch {}
-  }
   var sub = document.getElementById('capi-login-sub');
   if (sub) sub.textContent = 'Waiting for browser login\u2026';
   capiLoginBtn.disabled = true;
@@ -1408,7 +1898,7 @@ if (capiLoginBtn) capiLoginBtn.addEventListener('click', async function() {
     } else {
       var errMsg = (result && result.error) ? result.error : 'Login failed';
       log('cAPI: ' + errMsg, 'error');
-      if (sub) sub.textContent = 'Login failed \u2014 check Client ID and try again';
+      if (sub) sub.textContent = 'Login failed \u2014 see log';
       // Reset after a moment
       setTimeout(function() { if (sub) sub.textContent = 'Opens Frontier auth in your browser'; }, 4000);
     }
@@ -1431,6 +1921,42 @@ if (capiLogoutBtn) capiLogoutBtn.addEventListener('click', async function() {
     log('cAPI logged out', 'info');
   } catch { log('cAPI logout failed', 'error'); }
 });
+
+// Refresh button — manually triggers capiProvider.refreshAll() (profile,
+// market/shipyard if docked, fleet carrier, community goals)
+var capiRefreshBtn = document.getElementById('capi-refresh-btn');
+if (capiRefreshBtn) capiRefreshBtn.addEventListener('click', async function() {
+  if (!window.electronAPI || !window.electronAPI.capiRefreshAll) return;
+  var sub = document.getElementById('capi-refresh-sub');
+  capiRefreshBtn.disabled = true;
+  if (sub) sub.textContent = 'Refreshing\u2026';
+  try {
+    var result = await window.electronAPI.capiRefreshAll();
+    if (result && result.success) {
+      log('cAPI data refreshed', 'good');
+      if (sub) sub.textContent = 'Fetch profile, fleet carrier & community goals';
+    } else {
+      var errMsg = (result && result.error) ? result.error : 'Refresh failed';
+      log('cAPI: ' + errMsg, 'error');
+      if (sub) sub.textContent = errMsg;
+      setTimeout(function() { if (sub) sub.textContent = 'Fetch profile, fleet carrier & community goals'; }, 4000);
+    }
+  } catch (err) {
+    log('cAPI refresh error: ' + (err.message || err), 'error');
+  } finally {
+    capiRefreshBtn.disabled = false;
+  }
+});
+
+// ── cAPI push data — cache latest results for use by profile.html's cAPI subtab
+window._capiCache = window._capiCache || {};
+if (window.electronAPI) {
+  if (window.electronAPI.onCapiProfileData) window.electronAPI.onCapiProfileData(function(data) { window._capiCache.profile = data; });
+  if (window.electronAPI.onCapiMarketData) window.electronAPI.onCapiMarketData(function(data) { window._capiCache.market = data; });
+  if (window.electronAPI.onCapiShipyardData) window.electronAPI.onCapiShipyardData(function(data) { window._capiCache.shipyard = data; });
+  if (window.electronAPI.onCapiFleetCarrierData) window.electronAPI.onCapiFleetCarrierData(function(data) { window._capiCache.fleetCarrier = data; });
+  if (window.electronAPI.onCapiCommunityGoalsData) window.electronAPI.onCapiCommunityGoalsData(function(data) { window._capiCache.communityGoals = data; });
+}
 
 // --- EDSM FLIGHT LOG SYNC (from index/profile options panel) ---
 if (window.electronAPI && window.electronAPI.onEdsmSyncProgress) {
@@ -1476,151 +2002,9 @@ if (edsmSyncBtnMain) edsmSyncBtnMain.addEventListener('click', async function() 
 // scanlines/glow/border) are handled by display-settings.js, shared by
 // every page — see that file for the single implementation.
 
-// ─── LIVE LAYOUT: toggleable panes, reflow, persistence (index.html) ─
-(function () {
-  var viewLive = document.getElementById('view-live');
-  if (!viewLive) return;
+// Live panels are always visible — the per-panel minimize/restore
+// feature was removed as it made the layout too easy to break.
 
-  var LIVE_PANEL_KEYS = ['commander', 'summary', 'system', 'progress', 'scan', 'missions', 'log'];
-  var LIVE_PANEL_ID = {
-    commander: 'panel-commander',
-    summary: 'panel-summary',
-    system: 'panel-system',
-    progress: 'panel-progress',
-    scan: 'panel-scan',
-    missions: 'panel-missions',
-    log: 'panel-log',
-  };
-  var LIVE_PANEL_TOG = {
-    commander: 'tog-commander',
-    summary: 'tog-summary',
-    system: 'tog-system',
-    progress: 'tog-progress',
-    scan: 'tog-scan',
-    missions: 'tog-missions',
-    log: 'tog-log',
-  };
-  var LIVE_PANEL_LABELS = {
-    commander: 'Commander',
-    summary: 'Scan Summary',
-    system: 'System Bodies',
-    progress: 'Journal Scan',
-    scan: 'Scan Values',
-    missions: 'Missions',
-    log: 'Application Log',
-  };
-  var LIVE_COL_LAYOUT = [
-    { col: 'live-col-left', restore: 'live-col-left-restore', keys: ['commander', 'summary'] },
-    { col: 'live-col-mid', restore: 'live-col-mid-restore', keys: ['system', 'progress'] },
-    { col: 'live-col-right', restore: 'live-col-right-restore', keys: ['scan', 'missions', 'log'] },
-  ];
-
-  function panelEl(key) {
-    return document.getElementById(LIVE_PANEL_ID[key]);
-  }
-
-  function isLivePanelVisible(key) {
-    var el = panelEl(key);
-    return !!(el && !el.classList.contains('live-pane-hidden'));
-  }
-
-  function saveLivePanelPrefs() {
-    var o = {};
-    LIVE_PANEL_KEYS.forEach(function (k) { o[k] = isLivePanelVisible(k); });
-    try { localStorage.setItem('ee-live-panels', JSON.stringify(o)); } catch (e) {}
-  }
-
-  function setLivePanelVisible(key, visible, opts) {
-    opts = opts || {};
-    var el = panelEl(key);
-    if (!el) return;
-    el.classList.toggle('live-pane-hidden', !visible);
-    var cb = document.getElementById(LIVE_PANEL_TOG[key]);
-    if (cb) cb.checked = visible;
-    if (!opts.skipSave) saveLivePanelPrefs();
-    if (!opts.skipReflow) reflowLiveLayout();
-  }
-
-  function reflowLiveLayout() {
-    LIVE_COL_LAYOUT.forEach(function (block) {
-      var colEl = document.getElementById(block.col);
-      var restoreEl = document.getElementById(block.restore);
-      if (!colEl || !restoreEl) return;
-      var visibleEls = [];
-      var hiddenKeys = [];
-      block.keys.forEach(function (k) {
-        var el = panelEl(k);
-        if (!el) return;
-        el.classList.remove('live-pane-grow');
-        if (el.classList.contains('live-pane-hidden')) hiddenKeys.push(k);
-        else visibleEls.push(el);
-      });
-      if (visibleEls.length === 1) visibleEls[0].classList.add('live-pane-grow');
-      colEl.classList.toggle('live-col-empty', visibleEls.length === 0);
-      restoreEl.innerHTML = '';
-      if (hiddenKeys.length) {
-        restoreEl.style.display = 'flex';
-        hiddenKeys.forEach(function (k) {
-          var b = document.createElement('button');
-          b.type = 'button';
-          b.className = 'live-restore-btn';
-          b.setAttribute('data-live-panel', k);
-          b.textContent = '\u002B ' + LIVE_PANEL_LABELS[k];
-          restoreEl.appendChild(b);
-        });
-      } else restoreEl.style.display = 'none';
-    });
-
-    var L = document.getElementById('live-col-left');
-    var M = document.getElementById('live-col-mid');
-    var R = document.getElementById('live-col-right');
-    var lVis = L && !L.classList.contains('live-col-empty');
-    var mVis = M && !M.classList.contains('live-col-empty');
-    var rVis = R && !R.classList.contains('live-col-empty');
-    viewLive.classList.remove(
-      'live-grid-lmr', 'live-grid-lm', 'live-grid-lr', 'live-grid-mr',
-      'live-grid-l', 'live-grid-m', 'live-grid-r'
-    );
-    if (lVis && mVis && rVis) viewLive.classList.add('live-grid-lmr');
-    else if (lVis && mVis) viewLive.classList.add('live-grid-lm');
-    else if (lVis && rVis) viewLive.classList.add('live-grid-lr');
-    else if (mVis && rVis) viewLive.classList.add('live-grid-mr');
-    else if (lVis) viewLive.classList.add('live-grid-l');
-    else if (mVis) viewLive.classList.add('live-grid-m');
-    else if (rVis) viewLive.classList.add('live-grid-r');
-  }
-
-  viewLive.addEventListener('click', function (e) {
-    var t = e.target.closest('.live-pane-toggle');
-    if (t && t.getAttribute('data-live-panel')) {
-      var k = t.getAttribute('data-live-panel');
-      if (LIVE_PANEL_KEYS.indexOf(k) >= 0) setLivePanelVisible(k, !isLivePanelVisible(k));
-      return;
-    }
-    var r = e.target.closest('.live-restore-btn');
-    if (r && r.getAttribute('data-live-panel')) {
-      var k2 = r.getAttribute('data-live-panel');
-      if (LIVE_PANEL_KEYS.indexOf(k2) >= 0) setLivePanelVisible(k2, true);
-    }
-  });
-
-  LIVE_PANEL_KEYS.forEach(function (k) {
-    var cb = document.getElementById(LIVE_PANEL_TOG[k]);
-    var el = panelEl(k);
-    if (!cb || !el) return;
-    cb.addEventListener('change', function () {
-      setLivePanelVisible(k, cb.checked);
-    });
-  });
-
-  var saved = {};
-  try { saved = JSON.parse(localStorage.getItem('ee-live-panels') || '{}'); } catch (e) {}
-  LIVE_PANEL_KEYS.forEach(function (k) {
-    var vis = saved[k] !== false;
-    setLivePanelVisible(k, vis, { skipSave: true, skipReflow: true });
-  });
-  reflowLiveLayout();
-}());
 
 // ─── BOOT ─────────────────────────────────────────────────────────
 populateBodies();

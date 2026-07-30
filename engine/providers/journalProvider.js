@@ -4,7 +4,6 @@ const path = require('path');
 const { Worker } = require('worker_threads');
 const eventBus = require('../core/eventBus');
 const logger   = require('../core/logger');
-const config = require('../../config.json');
 
 const { app: electronApp } = (() => { try { return require('electron'); } catch { return {}; } })();
 const userDataDir = (electronApp && electronApp.getPath) ? electronApp.getPath('userData') : path.join(__dirname, '../..');
@@ -12,6 +11,24 @@ const LAST_FILE = path.join(userDataDir, 'lastProcessed.json');
 let lastProcessed = {};
 if (fs.existsSync(LAST_FILE)) {
   try { lastProcessed = JSON.parse(fs.readFileSync(LAST_FILE, 'utf8')); } catch { lastProcessed = {}; }
+}
+
+// NOTE: do NOT `require('../../config.json')` here — that resolves to the
+// bundled/packaged copy sitting next to the source, not the live config that
+// main.js's readConfig()/writeConfig() actually read from and write to
+// (app.getPath('userData') + '/config.json'). A prior version of this file
+// did exactly that, which meant any journal folder the user set via
+// Options → Journal Folder was silently ignored: getJournalPath() always
+// fell back to the OS-default guess below, since it never saw the saved
+// override. Reading the live config fresh on every call (instead of once at
+// module load) also means a path saved via Options takes effect immediately,
+// without requiring an app restart.
+function loadLiveConfig() {
+  try {
+    const liveConfigPath = path.join(userDataDir, 'config.json');
+    if (fs.existsSync(liveConfigPath)) return JSON.parse(fs.readFileSync(liveConfigPath, 'utf8'));
+  } catch { /* fall through to bundled defaults below */ }
+  try { return JSON.parse(fs.readFileSync(path.join(__dirname, '../../config.json'), 'utf8')); } catch { return {}; }
 }
 
 async function saveLastProcessed() {
@@ -30,6 +47,28 @@ const _cache = {
   missionsData: null,   // last missions-data payload
 };
 
+// Raw keyed maps behind the last bodies-data payload (the worker sends both
+// the display-shaped arrays above AND these — see postBodiesData() in
+// journalWorker.js). Kept separately because reconstructing a map from the
+// array form isn't always safe (station keys can collide when StationName is
+// absent) — these are the real accumulator state, not a derived reshape.
+const _liveSeedMaps = { bodies: {}, stations: {} };
+
+// Build the seed handed to the next live worker run so it can resume from
+// where the last one left off instead of starting empty. This is what makes
+// live mode incremental (see runLiveWorker below) instead of re-parsing the
+// whole journal file — and replaying every earlier FSDJump — on every write.
+function buildLiveSeed() {
+  return {
+    liveData:       _cache.liveData ? { ..._cache.liveData } : null,
+    liveBodySystem: _cache.bodiesData ? _cache.bodiesData.system : null,
+    liveBodies:     { ..._liveSeedMaps.bodies },
+    liveSignals:    _cache.bodiesData ? { ...(_cache.bodiesData.signals || {}) } : {},
+    liveStations:   { ..._liveSeedMaps.stations },
+    liveMissions:   _cache.missionsData ? { ...(_cache.missionsData.missions || {}) } : {},
+  };
+}
+
 function replayToPage() {
   if (_cache.liveData)     send('live-data',     _cache.liveData);
   if (_cache.profileData)  send('profile-data',  _cache.profileData);
@@ -44,6 +83,7 @@ function send(channel, data) {
 }
 
 function getJournalPath() {
+  const config = loadLiveConfig();
   if (config.journalPath && config.journalPath.trim()) return config.journalPath.trim();
   const os = process.platform;
   if (os === 'win32')  return path.join(process.env.USERPROFILE, 'Saved Games', 'Frontier Developments', 'Elite Dangerous');
@@ -60,11 +100,11 @@ function getSortedJournalFiles(journalPath) {
 }
 
 // ── Generic worker runner ─────────────────────────────────────────────────────
-function runWorker(files, { mode = 'all', useLastProcessed = false, updateLastProcessed = false } = {}) {
+function runWorker(files, { mode = 'all', useLastProcessed = false, updateLastProcessed = false, liveSeed = null } = {}) {
   return new Promise((resolve, reject) => {
     const lp = useLastProcessed ? { ...lastProcessed } : {};
     const worker = new Worker(path.join(__dirname, 'journalWorker.js'), {
-      workerData: { files, lastProcessed: lp, mode }
+      workerData: { files, lastProcessed: lp, mode, liveSeed }
     });
 
     worker.on('message', async (msg) => {
@@ -93,9 +133,13 @@ function runWorker(files, { mode = 'all', useLastProcessed = false, updateLastPr
           break;
 
         case 'bodies-data':
-          _cache.bodiesData = { system: msg.system, bodies: msg.bodies, signals: msg.signals };
-          send('bodies-data', { system: msg.system, bodies: msg.bodies, signals: msg.signals });
-          eventBus.emit('journal.bodies', { system: msg.system, bodies: msg.bodies, signals: msg.signals });
+          _cache.bodiesData = { system: msg.system, bodies: msg.bodies, signals: msg.signals, stations: msg.stations || [] };
+          // Raw keyed maps for seeding the next incremental live run — kept
+          // separately from the display-shaped arrays above (see _liveSeedMaps).
+          _liveSeedMaps.bodies   = msg.bodiesMap   || {};
+          _liveSeedMaps.stations = msg.stationsMap || {};
+          send('bodies-data', { system: msg.system, bodies: msg.bodies, signals: msg.signals, stations: msg.stations || [] });
+          eventBus.emit('journal.bodies', { system: msg.system, bodies: msg.bodies, signals: msg.signals, stations: msg.stations || [] });
           break;
 
         case 'missions-data':
@@ -119,6 +163,26 @@ function runWorker(files, { mode = 'all', useLastProcessed = false, updateLastPr
           eventBus.emit('journal.profile', msg.data);
           break;
 
+        case 'bodies-clear-summary': {
+          const { count, transitions, finalSystem } = msg.data;
+          // Full transition list goes into the exportable debug log (getDebugLog/
+          // saveDebugLog) — this is the detail needed to actually see *why* a
+          // pass cleared the panel, not just that it happened.
+          logger.info(
+            'JOURNAL',
+            `Bodies panel rebuilt via ${count} clear/rebuild pass(es) this read, ending in ${finalSystem || '?'}`,
+            transitions.map((t) => `${t.prevSystem || '(none)'} → ${t.newSystem} @ ${t.timestamp}`).join('; ')
+          );
+          send('bodies-clear-summary', msg.data);
+          break;
+        }
+
+        case 'carrier-event':
+          // Not cached/replayed — this is a one-shot trigger for capiProvider
+          // (docked-at-carrier / trade-order / trade), not renderer-facing data.
+          eventBus.emit('journal.carrierEvent', msg.data);
+          break;
+
         case 'done':
           if (updateLastProcessed) {
             lastProcessed = { ...lastProcessed, ...msg.updatedLastProcessed };
@@ -139,12 +203,17 @@ function runWorker(files, { mode = 'all', useLastProcessed = false, updateLastPr
 }
 
 // ── LIVE: single latest journal only ─────────────────────────────────────────
+// Always a full read from line 0 (used by "Scan All Journals" — boot uses
+// runLiveWorker(..., { forceFullRead: true }) instead, see start() below) —
+// but updateLastProcessed:true records where it left off, so the *next*
+// watcher-triggered write (runLiveWorker, below) can go straight to
+// incremental mode instead of redundantly re-parsing the whole file once more.
 async function readLiveJournal(journalPath) {
   const files = getSortedJournalFiles(journalPath);
   if (!files.length) return;
   const latest = files[0];
   logger.info('JOURNAL', 'Reading live journal: ' + latest.file);
-  await runWorker([latest.fullPath], { mode: 'live' });
+  await runWorker([latest.fullPath], { mode: 'live', updateLastProcessed: true });
 }
 
 // ── PROFILE: scan backwards until all 5 key event types are found ─────────────
@@ -212,8 +281,9 @@ function start() {
     return;
   }
 
-  // Boot live + profile scopes (history is owned by historyProvider)
-  readLiveJournal(journalPath);
+  // Boot: profile is independent, fine to fire separately. Live is NOT —
+  // see the lock note below, so it's started via runLiveWorker() instead of
+  // the old direct readLiveJournal(journalPath) call.
   readProfileData(journalPath);
 
   // Live watcher — only fires live-data updates
@@ -225,16 +295,61 @@ function start() {
   // time. If a change fires while one is already running, we set a flag and
   // re-run exactly once after the current worker finishes, rather than
   // spawning an unbounded number of concurrent workers.
+  //
+  // BUGFIX: this used to only guard the watcher's own runLiveWorker() calls.
+  // The old boot-time readLiveJournal(journalPath) call ran as a totally
+  // separate, unguarded worker. If the game wrote to the journal (e.g. an
+  // Undocked event) while that boot read was still parsing, both workers
+  // finished independently and both overwrote the shared `lastProcessed` —
+  // whichever 'done' landed last won, sometimes with a lower line number
+  // than what had actually been processed. That regressed value stuck
+  // around, so every later incremental read started too far back and
+  // re-walked earlier FSDJumps, over and over — the "N replayed jump(s)"
+  // log and the System Bodies panel clearing/rebuilding on launch. Routing
+  // the boot read through this same lock (below) closes that race: the
+  // watcher-triggered run now queues behind the boot read instead of
+  // running concurrently with it.
   let _liveWorkerBusy = false;
   let _pendingLiveRun = false;
 
-  function runLiveWorker(filePath) {
+  // FIX: this used to always re-parse the whole file from line 0 (no
+  // useLastProcessed/updateLastProcessed), which meant every single journal
+  // write — even something as minor as entering supercruise or scooping fuel
+  // — replayed every earlier FSDJump in the session, each one wiping and
+  // rebuilding the System Bodies panel before landing back on the correct
+  // state (see the "N replayed jump(s)" log). Now it only parses the lines
+  // written since the last pass, seeded with the accumulated state from
+  // buildLiveSeed() so it still has the full current picture (current
+  // system's bodies/stations/missions/ship data) rather than starting blank.
+  //
+  // BUGFIX: that incremental resume relies on buildLiveSeed()/_cache.liveData
+  // to carry the accumulated state forward — but _cache lives only in this
+  // process's memory, while lastProcessed is persisted to lastProcessed.json
+  // on disk. On every fresh app launch _cache.liveData starts back at null,
+  // but lastProcessed[fileName] still points at wherever the previous run
+  // left off. If the game had already been closed (the latest journal file
+  // stopped growing after the last session), that's the *last line in the
+  // file* — so the boot read would resume from "end of file", parse zero new
+  // lines, and liveData never left null. Ship/system data would only ever
+  // populate if the game was actively writing brand-new lines after launch.
+  // `forceFullRead` lets the boot call opt out of the incremental resume for
+  // just that first pass, parsing the whole latest file from line 0 so the
+  // last known ship/system state loads correctly whether or not the game is
+  // still running. Every later watcher-triggered call goes through the
+  // normal incremental path once _cache is actually populated.
+  function runLiveWorker(filePath, opts = {}) {
+    const forceFullRead = !!opts.forceFullRead;
     if (_liveWorkerBusy) {
       _pendingLiveRun = true;
       return;
     }
     _liveWorkerBusy = true;
-    runWorker([filePath], { mode: 'live' }).finally(() => {
+    runWorker([filePath], {
+      mode:                 'live',
+      useLastProcessed:     !forceFullRead,
+      updateLastProcessed:  true,
+      liveSeed:             forceFullRead ? null : buildLiveSeed(),
+    }).finally(() => {
       _liveWorkerBusy = false;
       if (_pendingLiveRun) {
         _pendingLiveRun = false;
@@ -242,6 +357,11 @@ function start() {
       }
     });
   }
+
+  // Kick off the boot read through the SAME lock/queue path as the watcher
+  // (instead of the old bare readLiveJournal(journalPath) call) so a write
+  // that lands mid-boot-read queues behind it rather than racing it.
+  if (watchedPath) runLiveWorker(watchedPath, { forceFullRead: true });
 
   const watcher = chokidar.watch(journalPath + path.sep + 'Journal.*.log', {
     persistent: true,
@@ -252,6 +372,17 @@ function start() {
     const nowLatest = getLatestJournalFile(journalPath);
     if (nowLatest && nowLatest.fullPath !== watchedPath) {
       logger.info('JOURNAL', 'New game session detected — switching to new journal file', { file: nowLatest.file });
+      // A brand-new journal file means a brand-new game session — the
+      // previous file's cached bodies/stations/ship state no longer applies
+      // (and lastProcessed has no entry for this filename yet anyway, so it
+      // will read from line 0 regardless). Clear the seed so this first pass
+      // over the new file starts clean; the file's own LoadGame/Location/
+      // FSDJump events will repopulate everything correctly.
+      _cache.liveData      = null;
+      _cache.bodiesData    = null;
+      _cache.missionsData  = null;
+      _liveSeedMaps.bodies   = {};
+      _liveSeedMaps.stations = {};
       watchedPath = nowLatest.fullPath;
     }
     if (filePath === watchedPath) {

@@ -29,11 +29,33 @@ var _lastRoute      = null;   // { type, systems: [] }
 var _liveSystem     = null;   // from IPC
 var _liveJumpRange  = null;   // from IPC (e.g. "24.55 ly")
 
-// Per-tab saved state so results survive tab switching.
+// Per-tab saved state so results survive tab switching AND full page
+// navigation away from spansh.html (this is a plain multi-page app, not an
+// SPA, so every other nav link is a full reload — an in-memory-only cache
+// would be wiped every time you left the tab). Persisted to localStorage
+// under TAB_STATE_KEY and only cleared when the user hits "Clear Cache" or
+// starts a fresh calculation for that specific panel.
 // Key = panel name ('neutron', 'riches', 'exobio', 'carrier').
 // Value = { theadHtml, tbodyHtml, tableVisible, summaryVisible, summaryVals,
 //           statusText, statusState, statusMeta, lastRoute }
+var TAB_STATE_KEY = 'ee-spansh-tabstate';
 var _tabState = {};
+
+function persistTabState() {
+  try { localStorage.setItem(TAB_STATE_KEY, JSON.stringify(_tabState)); } catch (e) {}
+}
+
+function loadPersistedTabState() {
+  try { _tabState = JSON.parse(localStorage.getItem(TAB_STATE_KEY) || '{}'); }
+  catch (e) { _tabState = {}; }
+}
+
+function clearAllCachedRoutes() {
+  _tabState  = {};
+  _lastRoute = null;
+  try { localStorage.removeItem(TAB_STATE_KEY); } catch (e) {}
+  restoreTabState(_currentPanel);
+}
 
 function saveTabState(panel) {
   var thead   = document.getElementById('spansh-thead');
@@ -60,6 +82,8 @@ function saveTabState(panel) {
     statusMeta:  sMet ? sMet.textContent : '',
     lastRoute:   _lastRoute,
   };
+
+  persistTabState();
 }
 
 function restoreTabState(panel) {
@@ -245,6 +269,27 @@ function setRunning(yes) {
   btn.disabled = yes;
   btn.classList.toggle('loading', yes);
   set('submit-label', yes ? 'Calculating\u2026' : 'Calculate Route');
+}
+
+// ─── RESTORE CACHED ROUTES ON PAGE LOAD ────────────────────────────
+// This is a full page (not an SPA), so every visit to spansh.html starts
+// with an empty in-memory _tabState. Load whatever was cached last time
+// and paint it into the currently-active sub-tab right away.
+loadPersistedTabState();
+restoreTabState(_currentPanel);
+
+// Snapshot whatever's on screen before the page unloads (e.g. clicking
+// another top nav tab) — saveTabState is otherwise only triggered by
+// switching sub-tabs *within* spansh.html, so a route left on the active
+// sub-tab would never get captured before navigating away.
+window.addEventListener('pagehide', function() { saveTabState(_currentPanel); });
+
+var clearCacheBtn = document.getElementById('clear-cache-btn');
+if (clearCacheBtn) {
+  clearCacheBtn.addEventListener('click', function() {
+    if (_isRunning) return;
+    clearAllCachedRoutes();
+  });
 }
 
 // ─── SUB-TAB SWITCHING ────────────────────────────────────────────
@@ -469,6 +514,7 @@ document.getElementById('spansh-submit').addEventListener('click', function() {
   stopPoll();
   // Clear any saved state for this tab so the old results don't flash back
   delete _tabState[_currentPanel];
+  persistTabState();
 
   if (_currentPanel === 'neutron')  submitNeutron();
   else if (_currentPanel === 'riches')  submitRiches();
@@ -1250,7 +1296,6 @@ function openOptions() {
     el = document.getElementById('opt-edsm-enabled'); if (el) el.checked = !!cfg.edsmEnabled;
     el = document.getElementById('opt-edsm-cmdr');    if (el) el.value   = cfg.edsmCommanderName   || '';
     el = document.getElementById('opt-edsm-key');     if (el) el.value   = cfg.edsmApiKey          || '';
-    el = document.getElementById('capi-client-id');   if (el) el.value   = cfg.capiClientId        || '';
     el = document.getElementById('opt-inara-cmdr-name'); if (el) el.value = cfg.inaraCommanderName || '';
     el = document.getElementById('opt-network-enabled'); if (el) el.checked = !!cfg.networkServerEnabled;
     el = document.getElementById('opt-network-port');    if (el) el.value   = cfg.networkServerPort || 3722;
@@ -1272,6 +1317,10 @@ function openOptions() {
           urlsDiv.style.display = 'none';
         }
       }).catch(function() {});
+    }
+    // Reflect current cAPI login status (was missing here — other pages already do this)
+    if (window.electronAPI.capiGetStatus) {
+      window.electronAPI.capiGetStatus().then(capiUpdateUI).catch(function() {});
     }
   }).catch(function() {});
 }
@@ -1439,18 +1488,10 @@ function capiUpdateUI(status) {
     if (logoutBtn) logoutBtn.style.display = 'none';
   }
 }
-var capiClientIdInputS = document.getElementById('capi-client-id');
-if (capiClientIdInputS) capiClientIdInputS.addEventListener('change', async function() {
-  if (!window.electronAPI) return;
-  try { await window.electronAPI.saveConfig({ capiClientId: capiClientIdInputS.value.trim() }); } catch {}
-});
+// (Client ID is baked into the app — no user-facing field anymore.)
 var capiLoginBtnS = document.getElementById('capi-login-btn');
 if (capiLoginBtnS) capiLoginBtnS.addEventListener('click', async function() {
   if (!window.electronAPI) return;
-  var clientIdEl = document.getElementById('capi-client-id');
-  if (clientIdEl && clientIdEl.value.trim()) {
-    try { await window.electronAPI.saveConfig({ capiClientId: clientIdEl.value.trim() }); } catch {}
-  }
   var sub = document.getElementById('capi-login-sub');
   if (sub) sub.textContent = 'Waiting for browser login\u2026';
   capiLoginBtnS.disabled = true;
@@ -1472,6 +1513,15 @@ var capiLogoutBtnS = document.getElementById('capi-logout-btn');
 if (capiLogoutBtnS) capiLogoutBtnS.addEventListener('click', async function() {
   if (!window.electronAPI) return;
   try { await window.electronAPI.capiLogout(); capiUpdateUI({ isLoggedIn: false, tokenValid: false }); } catch {}
+});
+
+var capiRefreshBtnS = document.getElementById('capi-refresh-btn');
+if (capiRefreshBtnS) capiRefreshBtnS.addEventListener('click', async function() {
+  if (!window.electronAPI || !window.electronAPI.capiRefreshAll) return;
+  capiRefreshBtnS.disabled = true;
+  try { await window.electronAPI.capiRefreshAll(); }
+  catch {}
+  finally { capiRefreshBtnS.disabled = false; }
 });
 
 // Theme swatches and display sliders (font/density/brightness/opacity/

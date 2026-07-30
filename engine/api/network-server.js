@@ -382,7 +382,7 @@ function start({ mainWindow, journalProvider, historyProvider, edsmSyncService,
   patchWebContents(mainWindow);
 
   const app = buildApp();
-  app.listen(port, '0.0.0.0', () => {
+  const server = app.listen(port, '0.0.0.0', () => {
     const ips = getLocalIPs();
     if (logger) {
       logger.info('NETWORK', `UI network server running on port ${port}`);
@@ -393,6 +393,22 @@ function start({ mainWindow, journalProvider, historyProvider, edsmSyncService,
     for (const ip of ips) console.log(`   http://${ip}:${port}`);
     console.log('');
   });
+
+  // Same reasoning as engine/api/server.js — an unhandled 'error' event here
+  // (e.g. EADDRINUSE) would otherwise crash the whole Electron process instead
+  // of just skipping this optional feature.
+  server.on('error', (err) => {
+    if (err && err.code === 'EADDRINUSE') {
+      const msg = `Network UI server: port ${port} is already in use — is another copy of Elite Explorer already running? Skipping network server startup.`;
+      if (logger) logger.error('NETWORK', msg); else console.error(msg);
+    } else if (logger) {
+      logger.error('NETWORK', 'Network server failed to start', err);
+    } else {
+      console.error('Network server failed to start:', err);
+    }
+  });
+
+  return server;
 }
 
 module.exports = { start };
