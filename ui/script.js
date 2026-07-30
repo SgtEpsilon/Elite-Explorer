@@ -598,8 +598,7 @@ function buildStationRowHtml(st, extraClass) {
       '<td class="body-class" style="color:var(--text-dim)">' + stType + '</td>' +
       '<td style="font-size:0.75em;color:var(--text-dim);overflow-wrap:break-word">' + distDisplay + '</td>' +
       '<td>' + (serviceHtml || unverifiedHtml || approxHtml ? '<div style="margin-top:2px">' + serviceHtml + unverifiedHtml + approxHtml + '</div>' : '') + '</td>' +
-      '<td class="val-cell">\u2014</td>' +
-      '<td class="val-cell muted" style="font-size:0.75em">\u2014</td>' +
+      '<td class="val-cell" style="font-size:0.75em">\u2014</td>' +
     '</tr>'
   );
 }
@@ -611,7 +610,7 @@ function renderBodies(system) {
   var bodies = buildMergedBodies(system || _currentSystem);
 
   if (!bodies.length) {
-    tbody.innerHTML = '<tr><td colspan="7"><div class="empty-state"><div class="icon">&#9678;</div><div class="msg">Awaiting scan data</div></div></td></tr>';
+    tbody.innerHTML = '<tr><td colspan="6"><div class="empty-state"><div class="icon">&#9678;</div><div class="msg">Awaiting scan data</div></div></td></tr>';
     set('body-count', '0 bodies');
     set('sum-stars', 0); set('sum-planets', 0); set('sum-moons', 0); set('sum-total', 0);
     return;
@@ -726,9 +725,8 @@ function renderBodies(system) {
       // nothing extra
     }
 
-    // ── Value ── computed from whichever of journal/EDSM/Spansh data we have (see computeBodyValue)
+    // ── Mapped value estimate ── computed from whichever of journal/EDSM/Spansh data we have (see computeBodyValue)
     var bodyValue = computeBodyValue(jb, eb);
-    var value     = bodyValue.value;
     var maxValue  = bodyValue.maxValue;
 
     // Count body types
@@ -776,8 +774,7 @@ function renderBodies(system) {
           (tagHtml ? '<div style="margin-top:3px">' + tagHtml + '</div>' : '') +
           materialsHtml +
         '</td>' +
-        '<td class="val-cell">' + (value ? value.toLocaleString() + ' cr' : '—') + '</td>' +
-        '<td class="val-cell muted" style="font-size:0.75em">' + (maxValue ? maxValue.toLocaleString() + ' cr' : '—') + '</td>' +
+        '<td class="val-cell" style="font-size:0.75em">' + (maxValue ? maxValue.toLocaleString() + ' cr' : '—') + '</td>' +
       '</tr>'
     );
 
@@ -793,7 +790,7 @@ function renderBodies(system) {
   // (mostly plain orbital starports that just orbit the system, not a body)
   if (_showStations && stationGroups.unassigned.length) {
     rows.push(
-      '<tr class="body-section-header"><td colspan="7">Other Stations (Orbital / No Body Data)</td></tr>'
+      '<tr class="body-section-header"><td colspan="6">Other Stations (Orbital / No Body Data)</td></tr>'
     );
     stationGroups.unassigned.forEach(function(st) {
       rows.push(buildStationRowHtml(st, ''));
@@ -1639,112 +1636,19 @@ if (window.electronAPI && window.electronAPI.onMissionsData) {
 }
 
 // ─── OPTIONS PANEL ────────────────────────────────────────────────
-function capiUpdateUI(status) {
-  // status: { hasClientId, isLoggedIn, tokenValid, tokenExpiry } from capiGetStatus()
-  // OR null/undefined when not available
-  var dot       = document.getElementById('capi-dot');
-  var label     = document.getElementById('capi-status-label');
-  var badge     = document.getElementById('capi-cmdr-badge');
-  var expiryRow = document.getElementById('capi-expiry-row');
-  var expiryVal = document.getElementById('capi-expiry-val');
-  var loginBtn  = document.getElementById('capi-login-btn');
-  var logoutBtn = document.getElementById('capi-logout-btn');
-  var loginSub  = document.getElementById('capi-login-sub');
-  if (!dot) return;
-
-  if (status && status.isLoggedIn && status.tokenValid) {
-    dot.style.background  = 'var(--green)';
-    label.textContent     = 'AUTHENTICATED';
-    label.style.color     = 'var(--green)';
-    if (status.tokenExpiry) {
-      expiryVal.textContent  = new Date(status.tokenExpiry).toLocaleString();
-      expiryRow.style.display = '';
-    }
-    if (loginBtn)  loginBtn.style.display  = 'none';
-    if (logoutBtn) logoutBtn.style.display = '';
-  } else if (status && status.isLoggedIn && !status.tokenValid) {
-    dot.style.background  = 'var(--gold)';
-    label.textContent     = 'TOKEN EXPIRED — re-login required';
-    label.style.color     = 'var(--gold)';
-    if (status.tokenExpiry) {
-      expiryVal.textContent  = new Date(status.tokenExpiry).toLocaleString() + ' (expired)';
-      expiryRow.style.display = '';
-    }
-    if (loginSub)  loginSub.textContent  = 'Re-authenticate to refresh token';
-    if (loginBtn)  loginBtn.style.display  = '';
-    if (logoutBtn) logoutBtn.style.display = '';
-  } else {
-    dot.style.background  = 'var(--border2)';
-    label.textContent     = 'NOT AUTHENTICATED';
-    label.style.color     = 'var(--text-mute)';
-    if (badge) badge.style.display = 'none';
-    expiryRow.style.display = 'none';
-    if (loginSub)  loginSub.textContent  = 'Opens Frontier auth in your browser';
-    if (loginBtn)  loginBtn.style.display  = '';
-    if (logoutBtn) logoutBtn.style.display = 'none';
-  }
-}
-
+// Network UI Server, EDDN, EDSM, Frontier cAPI, Inara and Journal Folder
+// settings now live in the Preferences popup (see prefs-modal.js) —
+// this panel only retains Journal Scan, Ship alerts, Theme & Display.
 function openOptions() {
   document.getElementById('options-panel').classList.add('open');
   document.getElementById('options-overlay').classList.add('open');
   if (!window.electronAPI) return;
-  // Load journal path
-  window.electronAPI.getJournalPath()
-    .then(function(p) { if (p) document.getElementById('opt-journal-path').value = p; })
-    .catch(function() {});
-  // Load full config for EDDN/EDSM/cAPI fields
   window.electronAPI.getConfig().then(function(cfg) {
     var el;
-    el = document.getElementById('opt-eddn-enabled'); if (el) el.checked = !!cfg.eddnEnabled;
-    el = document.getElementById('opt-cmdr-name');    if (el) el.value  = cfg.commanderName    || '';
-    el = document.getElementById('opt-edsm-enabled'); if (el) el.checked = !!cfg.edsmEnabled;
-    el = document.getElementById('opt-edsm-cmdr');    if (el) el.value  = cfg.edsmCommanderName || '';
-    el = document.getElementById('opt-edsm-key');     if (el) el.value  = cfg.edsmApiKey        || '';
-    // Inara settings
-    el = document.getElementById('opt-inara-cmdr-name');  if (el) el.value = cfg.inaraCommanderName || '';
-    // Network server settings
-    el = document.getElementById('opt-network-enabled'); if (el) el.checked = !!cfg.networkServerEnabled;
-    el = document.getElementById('opt-network-port');    if (el) el.value  = cfg.networkServerPort || 3722;
     el = document.getElementById('opt-fuel-alert-pct'); if (el) el.value = cfg.fuelAlertThresholdPct != null ? cfg.fuelAlertThresholdPct : 25;
     el = document.getElementById('opt-hull-alert-pct'); if (el) el.value = cfg.hullAlertThresholdPct != null ? cfg.hullAlertThresholdPct : 70;
     syncShipAlertCfgFromObject(cfg);
-    // Fetch live network info and render clickable URLs
-    if (window.electronAPI.getNetworkInfo) {
-      window.electronAPI.getNetworkInfo().then(function(info) {
-        var urlsDiv = document.getElementById('opt-network-urls');
-        if (!urlsDiv) return;
-        if (info && info.enabled && info.ips && info.ips.length) {
-          var port = info.port || 3722;
-          var links = info.ips.map(function(ip) {
-            var url = 'http://' + ip + ':' + port;
-            return '<a href="' + url + '" style="color:var(--green);text-decoration:none;font-family:monospace;font-size:1.05em;" ' +
-              'onclick="if(window.electronAPI&&window.electronAPI.openExternal){event.preventDefault();window.electronAPI.openExternal(\'' + url + '\');}">' +
-              url + '</a>';
-          }).join('<br>');
-          urlsDiv.style.display = 'block';
-          urlsDiv.innerHTML =
-            '<div style="margin-bottom:4px;color:var(--text-mute);">Network UI is active — open on any device:</div>' +
-            links;
-        } else if (info && info.enabled && (!info.ips || !info.ips.length)) {
-          urlsDiv.style.display = 'block';
-          urlsDiv.innerHTML = '<span style="color:var(--text-dim);">No network interfaces found. Check your network connection.</span>';
-        } else {
-          urlsDiv.style.display = 'none';
-        }
-      }).catch(function() {
-        var urlsDiv = document.getElementById('opt-network-urls');
-        if (urlsDiv) urlsDiv.style.display = 'none';
-      });
-    }
-    // Reflect enabled state in dots
-    var eddnDot = document.getElementById('eddn-dot');
-    if (eddnDot) { eddnDot.style.background = cfg.eddnEnabled ? 'var(--text-mute)' : 'var(--border2)'; eddnDot.title = cfg.eddnEnabled ? 'EDDN: enabled' : 'EDDN: disabled'; }
-    var edsmDot = document.getElementById('edsm-dot');
-    if (edsmDot) { edsmDot.style.background = cfg.edsmEnabled ? 'var(--text-mute)' : 'var(--border2)'; edsmDot.title = cfg.edsmEnabled ? 'EDSM: enabled' : 'EDSM: disabled'; }
   }).catch(function() {});
-  // Load cAPI auth state
-  window.electronAPI.capiGetStatus().then(capiUpdateUI).catch(function() {});
 }
 function closeOptions() {
   document.getElementById('options-panel').classList.remove('open');
@@ -1760,26 +1664,6 @@ if (scanBtn) scanBtn.addEventListener('click', function() {
   if (window.electronAPI) window.electronAPI.triggerScanAll();
   log('Scan All Journals triggered', 'warn');
   closeOptions();
-});
-
-var browseBtn = document.getElementById('opt-browse-btn');
-if (browseBtn) browseBtn.addEventListener('click', async function() {
-  if (!window.electronAPI) return;
-  try {
-    var chosen = await window.electronAPI.browseJournalPath();
-    if (chosen) {
-      document.getElementById('opt-journal-path').value = chosen;
-      document.getElementById('opt-path-hint').textContent = 'Path saved \u2014 restart to apply';
-      document.getElementById('opt-path-hint').style.color = 'var(--green)';
-    }
-  } catch { log('Browse not available', 'warn'); }
-});
-
-var openBtn = document.getElementById('opt-open-btn');
-if (openBtn) openBtn.addEventListener('click', async function() {
-  if (!window.electronAPI) return;
-  try { await window.electronAPI.openJournalFolder(document.getElementById('opt-journal-path').value.trim() || null); }
-  catch { log('Could not open folder', 'warn'); }
 });
 
 var shipAlertsSaveBtn = document.getElementById('opt-ship-alerts-save-btn');
@@ -1802,149 +1686,6 @@ if (shipAlertsSaveBtn) shipAlertsSaveBtn.addEventListener('click', async functio
     log('Ship alert thresholds saved', 'good');
   } catch (e) {
     log('Failed to save ship alerts', 'error');
-  }
-});
-
-var journalPath = document.getElementById('opt-journal-path');
-if (journalPath) journalPath.addEventListener('change', async function() {
-  if (!window.electronAPI) return;
-  var val = journalPath.value.trim();
-  try {
-    await window.electronAPI.saveJournalPath(val);
-    document.getElementById('opt-path-hint').textContent = val ? 'Path saved \u2014 restart to apply' : 'Leave blank to use the default path for your OS';
-    document.getElementById('opt-path-hint').style.color = val ? 'var(--green)' : '';
-  } catch {}
-});
-
-// ─── EDDN / EDSM SAVE BUTTON ──────────────────────────────────────
-var saveApiBtn = document.getElementById('opt-save-api-btn');
-if (saveApiBtn) saveApiBtn.addEventListener('click', async function() {
-  if (!window.electronAPI) return;
-  var eddnEnabled = (document.getElementById('opt-eddn-enabled') || {}).checked || false;
-  var edsmEnabled = (document.getElementById('opt-edsm-enabled') || {}).checked || false;
-  var commanderName     = ((document.getElementById('opt-cmdr-name')  || {}).value || '').trim();
-  var edsmCommanderName = ((document.getElementById('opt-edsm-cmdr') || {}).value || '').trim();
-  var edsmApiKey        = ((document.getElementById('opt-edsm-key')  || {}).value || '').trim();
-  try {
-    await window.electronAPI.saveConfig({ eddnEnabled, edsmEnabled, commanderName, edsmCommanderName, edsmApiKey });
-    var hint = document.getElementById('opt-api-hint');
-    if (hint) { hint.textContent = 'Saved \u2714'; hint.style.color = 'var(--green)'; setTimeout(function() { hint.textContent = 'Changes take effect immediately'; hint.style.color = ''; }, 2500); }
-    // Update dots
-    var eddnDot = document.getElementById('eddn-dot');
-    if (eddnDot) { eddnDot.style.background = eddnEnabled ? 'var(--text-mute)' : 'var(--border2)'; eddnDot.title = eddnEnabled ? 'EDDN: enabled' : 'EDDN: disabled'; }
-    var edsmDot = document.getElementById('edsm-dot');
-    if (edsmDot) { edsmDot.style.background = edsmEnabled ? 'var(--text-mute)' : 'var(--border2)'; edsmDot.title = edsmEnabled ? 'EDSM: enabled' : 'EDSM: disabled'; }
-    log('API settings saved', 'good');
-  } catch { log('Failed to save API settings', 'error'); }
-});
-
-// ─── NETWORK UI SERVER BUTTON ─────────────────────────────────────
-var networkSaveBtn = document.getElementById('opt-network-save-btn');
-if (networkSaveBtn) networkSaveBtn.addEventListener('click', async function() {
-  if (!window.electronAPI) return;
-  var networkServerEnabled = (document.getElementById('opt-network-enabled') || {}).checked || false;
-  var portVal = parseInt(((document.getElementById('opt-network-port') || {}).value || '3722'), 10);
-  var networkServerPort = (portVal >= 1024 && portVal <= 65535) ? portVal : 3722;
-  try {
-    await window.electronAPI.saveConfig({ networkServerEnabled, networkServerPort });
-    var hint = document.getElementById('opt-network-hint');
-    if (hint) { hint.textContent = 'Saved \u2714 — restart the app to apply'; hint.style.color = 'var(--green)'; setTimeout(function() { hint.textContent = 'Restart required to apply changes'; hint.style.color = ''; }, 3000); }
-    // Show live URLs if the server is already running (e.g. was enabled before)
-    if (window.electronAPI.getNetworkInfo) {
-      window.electronAPI.getNetworkInfo().then(function(info) {
-        var urlsDiv = document.getElementById('opt-network-urls');
-        if (!urlsDiv) return;
-        if (info && info.enabled && info.ips && info.ips.length) {
-          var port = networkServerPort;
-          var links = info.ips.map(function(ip) {
-            var url = 'http://' + ip + ':' + port;
-            return '<a href="' + url + '" style="color:var(--green);text-decoration:none;font-family:monospace;font-size:1.05em;" ' +
-              'onclick="if(window.electronAPI&&window.electronAPI.openExternal){event.preventDefault();window.electronAPI.openExternal(\'' + url + '\');}">' +
-              url + '</a>';
-          }).join('<br>');
-          urlsDiv.style.display = 'block';
-          urlsDiv.innerHTML =
-            '<div style="margin-bottom:4px;color:var(--text-mute);">Will be available after restart:</div>' + links;
-        } else if (networkServerEnabled) {
-          urlsDiv.style.display = 'block';
-          urlsDiv.innerHTML = '<span style="color:var(--text-dim);">Will start on port <strong>' + networkServerPort + '</strong> after restart.</span>';
-        } else {
-          urlsDiv.style.display = 'none';
-        }
-      }).catch(function() {});
-    }
-    log('Network settings saved — restart to apply', 'good');
-  } catch { log('Failed to save network settings', 'error'); }
-});
-
-// ─── FRONTIER cAPI BUTTONS ────────────────────────────────────────
-// (Client ID is baked into the app itself — see capiService.js — so there's
-// no user-facing Client ID field to save anymore.)
-
-// Login button — starts the OAuth2 flow in capiService.js
-var capiLoginBtn = document.getElementById('capi-login-btn');
-if (capiLoginBtn) capiLoginBtn.addEventListener('click', async function() {
-  if (!window.electronAPI) return;
-  var sub = document.getElementById('capi-login-sub');
-  if (sub) sub.textContent = 'Waiting for browser login\u2026';
-  capiLoginBtn.disabled = true;
-  try {
-    var result = await window.electronAPI.capiLogin();
-    if (result && result.success) {
-      log('cAPI login successful', 'good');
-      // Re-fetch status to update the UI (profile fetch happens in capiService)
-      var status = await window.electronAPI.capiGetStatus();
-      capiUpdateUI(status);
-    } else {
-      var errMsg = (result && result.error) ? result.error : 'Login failed';
-      log('cAPI: ' + errMsg, 'error');
-      if (sub) sub.textContent = 'Login failed \u2014 see log';
-      // Reset after a moment
-      setTimeout(function() { if (sub) sub.textContent = 'Opens Frontier auth in your browser'; }, 4000);
-    }
-  } catch (err) {
-    log('cAPI login error: ' + (err.message || err), 'error');
-    if (sub) sub.textContent = 'Error \u2014 see log';
-    setTimeout(function() { if (sub) sub.textContent = 'Opens Frontier auth in your browser'; }, 4000);
-  } finally {
-    capiLoginBtn.disabled = false;
-  }
-});
-
-// Logout button — clears stored tokens
-var capiLogoutBtn = document.getElementById('capi-logout-btn');
-if (capiLogoutBtn) capiLogoutBtn.addEventListener('click', async function() {
-  if (!window.electronAPI) return;
-  try {
-    await window.electronAPI.capiLogout();
-    capiUpdateUI({ isLoggedIn: false, tokenValid: false });
-    log('cAPI logged out', 'info');
-  } catch { log('cAPI logout failed', 'error'); }
-});
-
-// Refresh button — manually triggers capiProvider.refreshAll() (profile,
-// market/shipyard if docked, fleet carrier, community goals)
-var capiRefreshBtn = document.getElementById('capi-refresh-btn');
-if (capiRefreshBtn) capiRefreshBtn.addEventListener('click', async function() {
-  if (!window.electronAPI || !window.electronAPI.capiRefreshAll) return;
-  var sub = document.getElementById('capi-refresh-sub');
-  capiRefreshBtn.disabled = true;
-  if (sub) sub.textContent = 'Refreshing\u2026';
-  try {
-    var result = await window.electronAPI.capiRefreshAll();
-    if (result && result.success) {
-      log('cAPI data refreshed', 'good');
-      if (sub) sub.textContent = 'Fetch profile, fleet carrier & community goals';
-    } else {
-      var errMsg = (result && result.error) ? result.error : 'Refresh failed';
-      log('cAPI: ' + errMsg, 'error');
-      if (sub) sub.textContent = errMsg;
-      setTimeout(function() { if (sub) sub.textContent = 'Fetch profile, fleet carrier & community goals'; }, 4000);
-    }
-  } catch (err) {
-    log('cAPI refresh error: ' + (err.message || err), 'error');
-  } finally {
-    capiRefreshBtn.disabled = false;
   }
 });
 
@@ -2025,75 +1766,5 @@ if (window.electronAPI && window.electronAPI.triggerProfileRefresh) {
   }, 10 * 60 * 1000);
 }
 
-// ── Inara options panel — shared across all pages ─────────────────────────────
-// Save button: persists name, then triggers a sync.
-(function () {
-  var inaraSaveBtn    = document.getElementById('opt-inara-save-btn');
-  var inaraSaveStatus = document.getElementById('opt-inara-save-status');
-  var inaraSyncBtn    = document.getElementById('opt-inara-sync-now-btn');
-  var inaraSyncStatus = document.getElementById('opt-inara-sync-status');
-
-  function inaraSetStatus(el, msg, color, resetMs) {
-    if (!el) return;
-    el.textContent  = msg;
-    el.style.color  = color || '';
-    if (resetMs) setTimeout(function () { el.textContent = el.dataset.default || ''; el.style.color = ''; }, resetMs);
-  }
-
-  // Preserve default sub-text so we can restore it after a timeout
-  if (inaraSaveStatus) inaraSaveStatus.dataset.default = inaraSaveStatus.textContent;
-  if (inaraSyncStatus) inaraSyncStatus.dataset.default = inaraSyncStatus.textContent;
-
-  if (inaraSaveBtn && window.electronAPI) {
-    inaraSaveBtn.addEventListener('click', function () {
-      var cmdrName = (document.getElementById('opt-inara-cmdr-name') || {}).value || '';
-      inaraSetStatus(inaraSaveStatus, 'Saving\u2026');
-      window.electronAPI.saveConfig({ inaraCommanderName: cmdrName.trim() })
-        .then(function () {
-          inaraSetStatus(inaraSaveStatus, '\u2713 Saved', 'var(--green)', 3000);
-          // Kick off a sync immediately after saving — fire-and-forget from the options panel
-          if (window.electronAPI.inaraSyncProfile) {
-            window.electronAPI.inaraSyncProfile(cmdrName.trim()).then(function (r) {
-              if (r && r.success) {
-                inaraSetStatus(inaraSyncStatus, '\u2713 Synced at ' + new Date().toLocaleTimeString(), 'var(--green)', 5000);
-              } else if (r && !r.skipped) {
-                inaraSetStatus(inaraSyncStatus, '\u26a0 ' + (r.error || 'Sync failed'), 'var(--gold)', 6000);
-              }
-            }).catch(function () {});
-          }
-        })
-        .catch(function (err) {
-          inaraSetStatus(inaraSaveStatus, 'Error: ' + err.message, 'var(--red)', 5000);
-        });
-    });
-  }
-
-  if (inaraSyncBtn && window.electronAPI && window.electronAPI.inaraSyncProfile) {
-    inaraSyncBtn.addEventListener('click', function () {
-      var cmdrName = (document.getElementById('opt-inara-cmdr-name') || {}).value || '';
-      inaraSetStatus(inaraSyncStatus, 'Syncing\u2026');
-      inaraSyncBtn.disabled = true;
-      window.electronAPI.inaraSyncProfile(cmdrName.trim()).then(function (r) {
-        inaraSyncBtn.disabled = false;
-        if (!r) { inaraSetStatus(inaraSyncStatus, 'No response', 'var(--red)', 4000); return; }
-        if (r.skipped) {
-          var remaining = r.nextSyncAt ? Math.max(0, Math.round((r.nextSyncAt - Date.now()) / 1000)) : null;
-          var msg = 'Rate-limited' + (remaining !== null ? ' \u2014 ' + remaining + 's remaining' : '');
-          inaraSetStatus(inaraSyncStatus, msg, 'var(--text-mute)', 5000);
-        } else if (r.success) {
-          var cache = r.fromCache ? ' (cached)' : '';
-          inaraSetStatus(inaraSyncStatus, '\u2713 Synced at ' + new Date().toLocaleTimeString() + cache, 'var(--green)', 5000);
-        } else if (r.retryable) {
-          var remaining2 = r.nextSyncAt ? Math.max(0, Math.round((r.nextSyncAt - Date.now()) / 1000)) : null;
-          var retryMsg = (r.error || 'Server unavailable') + (remaining2 !== null ? ' \u2014 retrying in ' + remaining2 + 's' : '');
-          inaraSetStatus(inaraSyncStatus, '\u26a0 ' + retryMsg, 'var(--gold)', 8000);
-        } else {
-          inaraSetStatus(inaraSyncStatus, '\u26a0 ' + (r.error || 'Failed'), 'var(--gold)', 6000);
-        }
-      }).catch(function (err) {
-        inaraSyncBtn.disabled = false;
-        inaraSetStatus(inaraSyncStatus, 'Error: ' + err.message, 'var(--red)', 5000);
-      });
-    });
-  }
-}());
+// Inara, Network UI Server, EDDN, EDSM, Frontier cAPI and Journal Folder
+// settings/actions now live in the Preferences popup — see prefs-modal.js.

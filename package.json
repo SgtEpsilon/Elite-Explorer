@@ -1,11 +1,11 @@
 {
   "name": "elite-explorer",
-  "version": "0.1.8",
+  "version": "0.1.8-beta.5",
   "description": "Elite Dangerous exploration desktop engine",
   "main": "main.js",
   "scripts": {
   "start": "electron .",
-  "dev": "electron .",
+  "dev": "node scripts/dev.js",
   "start-ui": "electron .",
   "build": "node scripts/check-client-id.js && electron-builder",
   "build:win": "node scripts/check-client-id.js && electron-builder --win",
