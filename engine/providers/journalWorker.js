@@ -350,6 +350,55 @@ async function run() {
               };
               postBodiesData();
             }
+
+            // ── Guardian site detection ─────────────────────────────────────
+            // Whether the Name matches a $Ancient_* Guardian identifier is
+            // decided in ONE place — guardianSitesService.parseApproachSettlementName
+            // — so this worker doesn't duplicate that classification table; it
+            // just forwards the raw fields the main-thread listener needs.
+            // ApproachSettlement itself has no StarSystem field, so we tack on
+            // liveBodySystem (the system this worker is already tracking) —
+            // needed later to key a Canonn lookup by system name.
+            if (key && key.startsWith('$Ancient')) {
+              parentPort.postMessage({
+                type: 'event',
+                event: 'journal.approachSettlement',
+                data: {
+                  name:          key,
+                  systemName:    liveBodySystem,
+                  systemAddress: entry.SystemAddress != null ? entry.SystemAddress : null,
+                  bodyId:        entry.BodyID != null ? entry.BodyID : null,
+                  bodyName:      entry.BodyName || null,
+                  latitude:      entry.Latitude  != null ? entry.Latitude  : null,
+                  longitude:     entry.Longitude != null ? entry.Longitude : null,
+                  timestamp:     entry.timestamp || null,
+                },
+              });
+            }
+          }
+
+          // ── CodexEntry (Guardian fallback) ────────────────────────────────
+          // Secondary location fix for a site whose ApproachSettlement wasn't
+          // captured (e.g. scanned a Codex entry at range). Never classifies
+          // siteType by itself — only ApproachSettlement's $Ancient_* Name can
+          // do that (see guardianSitesService.parseApproachSettlementName) —
+          // this just supplies/confirms an origin lat/long for an already-known
+          // site.
+          if (ev === 'CodexEntry' && entry.SubCategory === '$Codex_SubCategory_Guardian;') {
+            parentPort.postMessage({
+              type: 'event',
+              event: 'journal.codexGuardian',
+              data: {
+                subCategory:   entry.SubCategory,
+                name:          entry.Name || null,
+                nameLocalised: entry.Name_Localised || null,
+                systemAddress: entry.SystemAddress != null ? entry.SystemAddress : null,
+                bodyId:        entry.BodyID != null ? entry.BodyID : null,
+                latitude:      entry.Latitude  != null ? entry.Latitude  : null,
+                longitude:     entry.Longitude != null ? entry.Longitude : null,
+                timestamp:     entry.timestamp || null,
+              },
+            });
           }
 
           // ── Fleet Carrier — order/trade events ──────────────────────────

@@ -125,6 +125,10 @@ function runWorker(files, { mode = 'all', useLastProcessed = false, updateLastPr
           }
           if (msg.event === 'journal.fss-scan')
             eventBus.emit('journal.fss-scan', msg.data);
+          if (msg.event === 'journal.approachSettlement')
+            eventBus.emit('journal.approachSettlement', msg.data);
+          if (msg.event === 'journal.codexGuardian')
+            eventBus.emit('journal.codexGuardian', msg.data);
           break;
 
         case 'raw':

@@ -69,11 +69,18 @@ function save() {
 // Thin wrapper so callers don't need to worry about async init
 const db = {
   run(sql, params = []) {
+    // IMPORTANT: sql.js's run(sql, params) only executes the FIRST statement
+    // in `sql` once a params argument is present — even an empty array.
+    // run(sql) with no second argument at all is what lets a semicolon-
+    // separated multi-statement string (e.g. a schema block with several
+    // CREATE TABLEs) run in full. So only pass params through when there
+    // actually are some; a param-less call falls back to the no-arg form.
+    const hasParams = Array.isArray(params) && params.length > 0;
     if (_ready) {
-      _db.run(sql, params);
+      if (hasParams) _db.run(sql, params); else _db.run(sql);
       save();
     } else {
-      _queue.push(d => { d.run(sql, params); save(); });
+      _queue.push(d => { if (hasParams) d.run(sql, params); else d.run(sql); save(); });
     }
   },
   get(sql, params = []) {

@@ -86,6 +86,115 @@ function parseApproachSettlementName(name) {
   };
 }
 
+/**
+ * Looks up a cached site row by (systemAddress, bodyId) only — ignoring
+ * siteType — for the CodexEntry fallback path below, which can confirm/fill
+ * an origin fix but has no way to independently classify siteType itself.
+ * Returns the raw row (not the reshaped record getCachedSite() returns).
+ */
+function getSiteRowByLocation(systemAddress, bodyId) {
+  ensureSchema();
+  return db.get(
+    `SELECT * FROM guardian_sites WHERE system_address = ? AND body_id = ? LIMIT 1`,
+    [String(systemAddress), bodyId]
+  );
+}
+
+/**
+ * Upserts a site record from a live journal sighting (ApproachSettlement),
+ * independent of whether Canonn POI data has been fetched yet — this is what
+ * lets a site "exist" in our cache (with at least an origin fix) the moment
+ * it's approached, rather than only once mapCanonnResponseToSite() is wired
+ * up. Deliberately NOT an INSERT OR REPLACE: that would drop any POIs already
+ * cached against this site's id (saveSite()'s INSERT OR REPLACE reassigns the
+ * AUTOINCREMENT id on conflict, orphaning guardian_site_pois rows that still
+ * point at the old id). This does a targeted UPDATE instead, and never
+ * downgrades a field that's already populated.
+ */
+function recordSighting({ systemAddress, bodyId, bodyName, siteType, variant, origin, source, timestamp }) {
+  ensureSchema();
+  const existing = db.get(
+    `SELECT * FROM guardian_sites WHERE system_address = ? AND body_id = ? AND site_type = ?`,
+    [String(systemAddress), bodyId, siteType]
+  );
+
+  if (existing) {
+    const nextBodyName = existing.body_name || bodyName || null;
+    const nextVariant  = existing.variant    || variant  || null;
+    const nextLat      = existing.origin_lat != null ? existing.origin_lat : (origin ? origin.latitude  : null);
+    const nextLon      = existing.origin_lon != null ? existing.origin_lon : (origin ? origin.longitude : null);
+    db.run(
+      `UPDATE guardian_sites SET body_name = ?, variant = ?, origin_lat = ?, origin_lon = ? WHERE id = ?`,
+      [nextBodyName, nextVariant, nextLat, nextLon, existing.id]
+    );
+  } else {
+    db.run(
+      `INSERT INTO guardian_sites
+        (system_address, body_id, body_name, site_type, variant, origin_lat, origin_lon,
+         scale_width_m, scale_height_m, source, canonn_site_id, fetched_at, schema_version)
+       VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)`,
+      [
+        String(systemAddress), bodyId, bodyName || null, siteType, variant || null,
+        origin ? origin.latitude : null, origin ? origin.longitude : null,
+        null, null, source || 'journal', null, timestamp || null, 1,
+      ]
+    );
+  }
+  return getCachedSite(systemAddress, bodyId, siteType);
+}
+
+/**
+ * Main-thread handler for the worker's 'journal.approachSettlement' event.
+ * Classifies the Name via parseApproachSettlementName() (the one place that
+ * decision is made), records/updates the sighting, and — fire-and-forget —
+ * kicks off Canonn enrichment for it. Returns null (not a Guardian site, or
+ * missing the systemAddress we key on) without touching the cache.
+ */
+function handleApproachSettlementEvent({ name, systemName, systemAddress, bodyId, bodyName, latitude, longitude, timestamp } = {}) {
+  if (!systemAddress) return null;
+  const classified = parseApproachSettlementName(name);
+  if (!classified) return null;
+
+  const origin = (latitude != null && longitude != null) ? { latitude, longitude } : null;
+  const site = recordSighting({
+    systemAddress, bodyId, bodyName,
+    siteType: classified.siteType,
+    variant:  classified.variant,
+    origin,
+    source: 'journal',
+    timestamp,
+  });
+
+  if (systemName) {
+    // Errors here (network down, Canonn unreachable, or the still-pending
+    // mapCanonnResponseToSite() throwing) must never break journal
+    // processing — this is a background enrichment, not the source of truth.
+    getOrFetchSite({ systemAddress, bodyId, siteType: classified.siteType, systemName }).catch(() => {});
+  }
+
+  return site;
+}
+
+/**
+ * Main-thread handler for the worker's 'journal.codexGuardian' event — only
+ * ever fills/confirms an origin fix on a site record that already exists
+ * (created via handleApproachSettlementEvent above). Never creates a new
+ * record and never guesses siteType, since a Codex entry's Name doesn't
+ * carry the $Ancient_* size/layout info ApproachSettlement does.
+ */
+function handleCodexEntryEvent({ subCategory, systemAddress, bodyId, latitude, longitude } = {}) {
+  if (subCategory !== '$Codex_SubCategory_Guardian;') return null;
+  if (!systemAddress || latitude == null || longitude == null) return null;
+
+  const row = getSiteRowByLocation(systemAddress, bodyId);
+  if (!row) return null; // nothing to confirm yet — wait for ApproachSettlement
+
+  if (row.origin_lat == null || row.origin_lon == null) {
+    db.run(`UPDATE guardian_sites SET origin_lat = ?, origin_lon = ? WHERE id = ?`, [latitude, longitude, row.id]);
+  }
+  return getCachedSite(systemAddress, bodyId, row.site_type);
+}
+
 function getCachedSite(systemAddress, bodyId, siteType) {
   ensureSchema();
   const row = db.get(
@@ -187,6 +296,10 @@ module.exports = {
   ensureSchema,
   parseApproachSettlementName,
   getCachedSite,
+  getSiteRowByLocation,
+  recordSighting,
   saveSite,
   getOrFetchSite,
+  handleApproachSettlementEvent,
+  handleCodexEntryEvent,
 };
