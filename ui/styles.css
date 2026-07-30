@@ -138,23 +138,39 @@ body {
 body::after { content: ''; position: fixed; inset: 0; background: repeating-linear-gradient(0deg, transparent, transparent 2px, rgba(0,0,0,0.04) 2px, rgba(0,0,0,0.04) 4px); pointer-events: none; z-index: 9999; }
 
 /* ─── TOPBAR ─────────────────────────────────────────────────────── */
-#topbar { display: flex; flex-wrap: wrap; align-items: center; min-height: 44px; border-bottom: 1px solid var(--border); background: var(--panel); padding: 6px 14px; gap: 6px 10px; flex-shrink: 0; position: relative; z-index: 100; }
+#topbar { display: flex; flex-wrap: wrap; align-items: center; min-height: 44px; border-bottom: 1px solid var(--border); background: var(--panel); padding: 6px 14px; gap: 6px 8px; flex-shrink: 0; position: relative; z-index: 100; }
 .tb-logo { font-family: var(--display); font-size:0.8333em; font-weight: 500; letter-spacing: 0.2em; color: var(--gold); text-shadow: 0 0 16px var(--gold-glow); white-space: nowrap; margin-right: 6px; flex-shrink: 0; }
 .tb-sep { width: 1px; height: 20px; background: var(--border2); margin: 0 4px; flex-shrink: 0; }
-.tb-cmdr { font-family: var(--mono); font-size:0.8333em; color: var(--cyan); letter-spacing: 0.08em; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 30vw; }
-.tb-sys { font-family: var(--mono); font-size:0.8333em; color: var(--text-dim); letter-spacing: 0.05em; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 30vw; }
-.tab-nav { display: flex; flex-wrap: wrap; align-items: center; gap: 2px; margin-left: auto; row-gap: 4px; }
+.tb-cmdr { font-family: var(--mono); font-size:0.8333em; color: var(--cyan); letter-spacing: 0.08em; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 260px; }
+.tb-sys { font-family: var(--mono); font-size:0.8333em; color: var(--text-dim); letter-spacing: 0.05em; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 220px; }
+/* display: contents removes .tab-nav's own box from the layout — its
+   children (the .tab-btn links) become direct flex items of #topbar
+   instead of items of a single nested flex container. That's the key
+   change: before this, #topbar saw .tab-nav as *one* flex item, so once
+   the bar ran out of room the entire nav (all seven tabs at once) jumped
+   down to its own line together. Now each tab participates in #topbar's
+   own flex-wrap individually, peeling off onto the next line one at a
+   time as space runs out, alongside the commander/system text. */
+.tab-nav { display: contents; }
 .tab-btn { font-family: var(--mono); font-size:0.75em; letter-spacing: 0.12em; text-transform: uppercase; color: var(--text-mute); background: transparent; border: 1px solid transparent; padding: 4px 12px; cursor: pointer; transition: all 0.18s; white-space: nowrap; }
+/* Keeps the tab group (and everything after it — credits, status dots,
+   options) hugging the right edge, same as .tab-nav's old margin-left:
+   auto did — auto margins resolve per flex line, so this still works
+   correctly once a tab wraps onto its own row. */
+.tab-nav .tab-btn:first-child { margin-left: auto; }
 .tab-btn:hover { color: var(--text-dim); border-color: var(--border2); }
 .tab-btn.active { color: var(--cyan); border-color: rgba(var(--cyan-rgb),0.3); background: var(--cyan-dim); }
 .tb-credits { font-family: var(--mono); font-size:0.9167em; color: var(--gold2); letter-spacing: 0.04em; margin-left: 10px; white-space: nowrap; }
 #options-btn { font-size:1.0833em; color: var(--gold2); text-shadow: 0 0 6px var(--gold-glow), 0 0 12px var(--gold-glow); opacity: 0.85; background: transparent; border: none; cursor: pointer; padding: 2px 4px; line-height: 1; transition: color 0.2s, transform 0.3s, text-shadow 0.2s, opacity 0.2s; flex-shrink: 0; margin-left: 6px; }
 #options-btn:hover { color: var(--gold2); opacity: 1; text-shadow: 0 0 8px var(--gold), 0 0 18px var(--gold-glow); transform: rotate(45deg); }
 
-/* Narrow window: shrink tab labels/padding before they'd otherwise wrap
-   onto their own line and push the topbar taller than is comfortable. */
+/* Narrow viewport (mainly relevant to network mode / a real browser tab,
+   since the desktop app enforces a comfortable minimum window width — see
+   main.js BrowserWindow minWidth): drop secondary top-bar info rather than
+   shrinking it. The tabs themselves are left alone here — they already
+   wrap individually via #topbar's own flex-wrap when they don't fit,
+   which reads better than shrinking the labels down to fit one line. */
 @media (max-width: 900px) {
-  .tab-btn { padding: 4px 8px; font-size: 0.68em; letter-spacing: 0.08em; }
   .tb-credits { display: none; } /* still visible in the Live panel itself */
 }
 @media (max-width: 620px) {

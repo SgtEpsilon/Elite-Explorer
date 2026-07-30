@@ -111,7 +111,21 @@
     canvas.style.height = rect.height + 'px';
     draw();
   }
-  window.addEventListener('resize', resizeCanvas);
+  // PERF ROUND 2: this canvas is only ever redrawn on demand (not on a
+  // continuous animation loop), so there's no need to keep it visually in
+  // sync frame-by-frame while the window is actively being dragged — doing
+  // so just means running a layout-forcing getBoundingClientRect() read plus
+  // a backing-store reallocation and full redraw dozens of times a second,
+  // fighting the browser's own resize/paint work for the same frame budget.
+  // Instead, wait until resizing actually stops (~150ms of quiet) and do the
+  // one real resize + redraw then. The panel briefly keeps its old size
+  // during the drag itself, which is imperceptible and much smoother.
+  var _gdnSettleTimer = null;
+  function onWindowResize() {
+    clearTimeout(_gdnSettleTimer);
+    _gdnSettleTimer = setTimeout(resizeCanvas, 150);
+  }
+  window.addEventListener('resize', onWindowResize);
 
   // ── Pan / zoom / drag ─────────────────────────────────────────────────
   var dragging = false, dragStartX = 0, dragStartY = 0, panStartX = 0, panStartY = 0;

@@ -119,8 +119,13 @@ function createWindow() {
   mainWindow = new BrowserWindow({
     width:  1280,
     height: 880,
-    minWidth:  900,
-    minHeight: 600,
+    // Minimum window size: enforced here (rather than shrinking the nav
+    // labels down to squeeze them onto one row — see the tab-nav comment in
+    // styles.css) so the topbar always has comfortable room. At this width
+    // the page-name tabs will wrap onto a second row if they don't all fit,
+    // which is the desired behavior, not a bug.
+    minWidth:  960,
+    minHeight: 620,
     icon: path.join(__dirname, 'icon.png'),
     backgroundColor: '#090e18',
     webPreferences: {
@@ -381,6 +386,13 @@ app.on('second-instance', (_e, argv) => {
     if (mainWindow.isMinimized()) mainWindow.restore();
     mainWindow.focus();
   }
+});
+
+// Database writes are now debounced (see engine/db/database.js) rather than
+// synced to disk after every insert, so make sure anything still pending
+// gets flushed before the process actually exits.
+app.on('before-quit', () => {
+  try { require('./engine/db/database').flushSync(); } catch (err) { console.error('DB flush on quit failed:', err); }
 });
 
 app.on('window-all-closed', () => {

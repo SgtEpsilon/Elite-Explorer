@@ -59,11 +59,66 @@ async function init() {
   console.log('Database ready at', dbPath);
 }
 
-// Persist the in-memory DB to disk
-function save() {
-  if (!_db) return;
-  const data = _db.export();
-  fs.writeFileSync(getDbPath(), Buffer.from(data));
+// Persist the in-memory DB to disk.
+//
+// PERF: sql.js has no incremental persistence — export() always serializes
+// the *entire* database to a fresh buffer, however big it's grown. The old
+// code called this synchronously (via writeFileSync) after every single
+// db.run(), which meant every journal scan event during play (FSS/DSS can
+// fire dozens in a few seconds) did a full O(n)-sized blocking export+write
+// on the Electron *main* process — the same thread that services all IPC
+// and window messaging. As personal_scans grows over weeks of play this
+// gets slower and slower, and every scan stutters the whole app.
+//
+// Fix: mark the DB dirty and flush it on a short debounce timer instead of
+// on every write. Bursts of inserts (mapping a whole system) now cost one
+// export+write instead of one per row. The write itself is also async
+// (fs.promises.writeFile) so it never blocks the event loop, and it goes to
+// a temp file + rename so a mid-write crash can't corrupt explorer.db.
+let _saveTimer = null;
+let _dirty = false;
+let _saving = false;
+const SAVE_DEBOUNCE_MS = 2000;
+
+function scheduleSave() {
+  _dirty = true;
+  if (_saveTimer) return;
+  _saveTimer = setTimeout(flush, SAVE_DEBOUNCE_MS);
+  // Don't let a pending save keep the process alive on its own.
+  if (_saveTimer.unref) _saveTimer.unref();
+}
+
+async function flush() {
+  _saveTimer = null;
+  if (!_db || !_dirty || _saving) return;
+  _saving = true;
+  _dirty = false;
+  try {
+    const data = _db.export();
+    const dbPath = getDbPath();
+    const tmpPath = dbPath + '.tmp';
+    await fs.promises.writeFile(tmpPath, Buffer.from(data));
+    await fs.promises.rename(tmpPath, dbPath);
+  } catch (err) {
+    console.error('Database save failed:', err);
+    _dirty = true; // retry on the next write or flush
+  } finally {
+    _saving = false;
+  }
+}
+
+// Synchronous last-resort flush for app shutdown (before-quit), where an
+// async write might not get a chance to finish. Only used at exit time.
+function flushSync() {
+  if (!_db || !_dirty) return;
+  try {
+    if (_saveTimer) { clearTimeout(_saveTimer); _saveTimer = null; }
+    const data = _db.export();
+    fs.writeFileSync(getDbPath(), Buffer.from(data));
+    _dirty = false;
+  } catch (err) {
+    console.error('Database sync flush failed:', err);
+  }
 }
 
 // Thin wrapper so callers don't need to worry about async init
@@ -78,11 +133,14 @@ const db = {
     const hasParams = Array.isArray(params) && params.length > 0;
     if (_ready) {
       if (hasParams) _db.run(sql, params); else _db.run(sql);
-      save();
+      scheduleSave();
     } else {
-      _queue.push(d => { if (hasParams) d.run(sql, params); else d.run(sql); save(); });
+      _queue.push(d => { if (hasParams) d.run(sql, params); else d.run(sql); scheduleSave(); });
     }
   },
+  // Force an immediate write (rarely needed — e.g. right before quitting).
+  flush,
+  flushSync,
   get(sql, params = []) {
     if (!_ready) return null;
     const stmt = _db.prepare(sql);
