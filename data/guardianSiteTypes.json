@@ -1,0 +1,14 @@
+{
+  "_readme": "Hand-built mapping from Elite Dangerous journal identifiers to Elite Explorer's own Guardian site-type enum. Sourced independently from the public journal manual (https://elite-journal.readthedocs.io/) and our own CodexEntry cross-checks. Not derived from any third-party tool's source. Extend only from things we've verified ourselves.",
+  "schemaVersion": 1,
+  "prefixes": [
+    { "match": "Ancient",        "siteType": "structure", "label": "Guardian Structure" },
+    { "match": "Ancient_Tiny",   "siteType": "ruins",      "label": "Guardian Ruins (Tiny)" },
+    { "match": "Ancient_Small",  "siteType": "ruins",      "label": "Guardian Ruins (Small)" },
+    { "match": "Ancient_Medium", "siteType": "ruins",      "label": "Guardian Ruins (Medium)" }
+  ],
+  "codexFallback": {
+    "subCategory": "$Codex_SubCategory_Guardian;",
+    "note": "Used only to confirm/fill origin lat-long when ApproachSettlement wasn't seen; Name_Localised is stored as a secondary label, not used for siteType classification since it's a display string that can be ambiguous across ruin sizes."
+  }
+}
