@@ -88,16 +88,30 @@ the trailing `:#index=N;`, and the `_NNN` suffix, and look up what's left:
 
 | Prefix (after stripping)      | siteType    | notes                                   |
 |--------------------------------|------------|------------------------------------------|
-| `Ancient`                      | `structure` | plain "Guardian Structure"               |
-| `Ancient_Tiny`                  | `ruins`     | tiny ruins layout                        |
-| `Ancient_Small`                 | `ruins`     | small ruins layout                       |
-| `Ancient_Medium`                | `ruins`     | medium ruins layout                      |
+| `Ancient`                      | `ruins`     | Alpha/Beta/Gamma "broken ground" ruins   |
+| `Ancient_Tiny`                  | `structure` | tiny structure layout (e.g. Lacrosse)    |
+| `Ancient_Small`                 | `structure` | small structure layout (e.g. Hammerbot)  |
+| `Ancient_Medium`                | `structure` | medium structure layout (e.g. Robolobster)|
+
+**Correction (schemaVersion 2):** an earlier draft of this table had ruins
+and structures swapped. Cross-referencing Canonn's public `/grtypes` and
+`/gstypes` endpoints confirmed the fix: `/grtypes` (Guardian Ruins — Alpha/
+Beta/Gamma) lists an **empty** `journalName` for every type, meaning the
+journal doesn't disambiguate ruin type at all — bare `$Ancient` is all we
+ever get for a ruin. `/gstypes` (Guardian Structures) is the one that
+actually carries `journalName` values like `ancient_tiny_001` mapped to
+named layouts (Lacrosse, Hammerbot, Robolobster, …), confirming the sized
+`$Ancient_Tiny/Small/Medium_NNN` forms belong to structures, not ruins.
+See `data/guardianSiteTypes.json`'s `structureVariants` array for the full
+cross-reference list.
 
 The `_NNN` numeric suffix (e.g. `_001`) is kept as the `variant` (e.g.
-`tiny-001`) since it likely distinguishes ground layouts within a size class,
-but we have **not** independently verified how many distinct suffixes exist
-per size or whether they map 1:1 to a physical layout. This table starts
-deliberately small and is meant to be extended only from things we can
+`tiny-001`) and, for structures, maps 1:1 to a named layout per Canonn's
+`/gstypes` table. Ruins have no such per-layout journal signal — telling
+Alpha/Beta/Gamma apart requires matching our recorded lat/long origin
+against Canonn's own site data for that system, not the journal alone.
+This table starts deliberately small and is meant to be extended only from
+things we can
 verify ourselves (in-game + `CodexEntry`), not copied from a reference we
 haven't checked.
 

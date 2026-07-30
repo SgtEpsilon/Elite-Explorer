@@ -2,6 +2,7 @@ const db = require('../db/database');
 const eventBus = require('./eventBus');
 const journalProvider = require('../providers/journalProvider');
 const guardianSitesService = require('../services/guardianSitesService');
+const guardianLiveState = require('../services/guardianLiveState');
 const logger = require('./logger');
 
 function start() {
@@ -20,6 +21,16 @@ function start() {
        VALUES (1, ?, ?)`,
       [data.system ?? null, data.timestamp ?? null]
     );
+
+    // A Location/FSDJump event means the commander has left (or re-entered
+    // via load) a system — if a Guardian site was marked active for a
+    // *different* system, it's now stale and should be cleared. A missing
+    // SystemAddress on the incoming event is treated as "unknown, don't
+    // clear" rather than as a mismatch.
+    const active = guardianLiveState.getActive();
+    if (active && data.systemAddress != null && String(active.systemAddress) !== String(data.systemAddress)) {
+      guardianLiveState.clear();
+    }
   });
 
   // Guardian sites (see engine/services/guardianSitesService.js) — caught

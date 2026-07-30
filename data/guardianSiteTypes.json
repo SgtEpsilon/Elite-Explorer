@@ -1,11 +1,25 @@
 {
-  "_readme": "Hand-built mapping from Elite Dangerous journal identifiers to Elite Explorer's own Guardian site-type enum. Sourced independently from the public journal manual (https://elite-journal.readthedocs.io/) and our own CodexEntry cross-checks. Not derived from any third-party tool's source. Extend only from things we've verified ourselves.",
-  "schemaVersion": 1,
+  "_readme": "Hand-built mapping from Elite Dangerous journal identifiers to Elite Explorer's own Guardian site-type enum. Sourced independently from the public journal manual (https://elite-journal.readthedocs.io/), our own CodexEntry cross-checks, and cross-referenced against the journalName field returned by Canonn's public /gstypes and /grtypes endpoints (docs.canonn.tech) to confirm which $Ancient_* prefix belongs to which site category. Not derived from any third-party tool's source — Canonn's *data* (their public API response) is not GPL, only their server software is. Extend only from things we've verified ourselves.",
+  "schemaVersion": 2,
   "prefixes": [
-    { "match": "Ancient",        "siteType": "structure", "label": "Guardian Structure" },
-    { "match": "Ancient_Tiny",   "siteType": "ruins",      "label": "Guardian Ruins (Tiny)" },
-    { "match": "Ancient_Small",  "siteType": "ruins",      "label": "Guardian Ruins (Small)" },
-    { "match": "Ancient_Medium", "siteType": "ruins",      "label": "Guardian Ruins (Medium)" }
+    { "match": "Ancient",        "siteType": "ruins",     "label": "Guardian Ruins" },
+    { "match": "Ancient_Tiny",   "siteType": "structure", "label": "Guardian Structure (Tiny)" },
+    { "match": "Ancient_Small",  "siteType": "structure", "label": "Guardian Structure (Small)" },
+    { "match": "Ancient_Medium", "siteType": "structure", "label": "Guardian Structure (Medium)" }
+  ],
+  "_note_ruins": "Guardian Ruins (Alpha/Beta/Gamma 'broken ground' sites) all share the bare $Ancient journal Name with no size/layout suffix — Canonn's own /grtypes table confirms this by listing an empty journalName for every ruin type. That means the journal alone cannot tell us WHICH ruin layout we're at, only that it's a ruin; matching a specific layout requires cross-referencing our recorded lat/long origin against Canonn's site data for that system.",
+  "_note_structures": "Guardian Structures DO encode their specific layout in the journal Name (the _NNN suffix under Tiny/Small/Medium), and Canonn's /gstypes table gives us the human-readable name for each. Listed here as a courtesy cross-reference — not required for our own siteType classification, which only needs the size prefix.",
+  "structureVariants": [
+    { "variant": "tiny-001",   "canonnJournalName": "ancient_tiny_001",   "canonnTypeName": "Lacrosse" },
+    { "variant": "tiny-002",   "canonnJournalName": "ancient_tiny_002",   "canonnTypeName": "Crossroads" },
+    { "variant": "tiny-003",   "canonnJournalName": "ancient_tiny_003",   "canonnTypeName": "Fistbump" },
+    { "variant": "small-001",  "canonnJournalName": "ancient_small_001",  "canonnTypeName": "Hammerbot" },
+    { "variant": "small-002",  "canonnJournalName": "ancient_small_002",  "canonnTypeName": "Bear" },
+    { "variant": "small-003",  "canonnJournalName": "ancient_small_003",  "canonnTypeName": "Bowl" },
+    { "variant": "small-005",  "canonnJournalName": "ancient_small_005",  "canonnTypeName": "Turtle" },
+    { "variant": "medium-001", "canonnJournalName": "ancient_medium_001", "canonnTypeName": "Robolobster" },
+    { "variant": "medium-002", "canonnJournalName": "ancient_medium_002", "canonnTypeName": "Squid" },
+    { "variant": "medium-003", "canonnJournalName": "ancient_medium_003", "canonnTypeName": "Stickyhand" }
   ],
   "codexFallback": {
     "subCategory": "$Codex_SubCategory_Guardian;",

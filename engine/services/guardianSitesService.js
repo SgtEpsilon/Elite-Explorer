@@ -17,6 +17,8 @@
 const db = require('../db/database');
 const canonnClient = require('./canonnClient');
 const siteTypes = require('../../data/guardianSiteTypes.json');
+const { bearingDistance } = require('../core/geo');
+const guardianLiveState = require('./guardianLiveState');
 
 let _schemaReady = false;
 
@@ -52,6 +54,11 @@ function ensureSchema() {
       FOREIGN KEY(site_id) REFERENCES guardian_sites(id)
     );
   `);
+  // Added after the initial CREATE TABLE above shipped, so a DB created by
+  // an earlier build won't have this column yet — guarded ALTER rather than
+  // baking it into the CREATE TABLE, which only runs once per fresh DB.
+  try { db.run(`ALTER TABLE guardian_sites ADD COLUMN obelisk_groups_json TEXT`); } catch { /* already exists */ }
+  try { db.run(`ALTER TABLE guardian_sites ADD COLUMN planet_radius_m REAL`); } catch { /* already exists */ }
   _schemaReady = true;
 }
 
@@ -165,11 +172,21 @@ function handleApproachSettlementEvent({ name, systemName, systemAddress, bodyId
     timestamp,
   });
 
+  // Mark this as the commander's current site immediately (even before any
+  // Canonn POI data has loaded) so the live map has something to draw —
+  // the origin/heading marker doesn't need POI data to be useful.
+  guardianLiveState.setActive(site);
+
   if (systemName) {
-    // Errors here (network down, Canonn unreachable, or the still-pending
-    // mapCanonnResponseToSite() throwing) must never break journal
-    // processing — this is a background enrichment, not the source of truth.
-    getOrFetchSite({ systemAddress, bodyId, siteType: classified.siteType, systemName }).catch(() => {});
+    // Errors here (network down, Canonn unreachable, or a bad response
+    // shape from mapCanonnResponseToSite) must never break journal
+    // processing — this is a background enrichment, not the source of
+    // truth. getOrFetchSite() re-pushes guardianLiveState itself once (if)
+    // it resolves with real POI data.
+    getOrFetchSite({
+      systemAddress, bodyId, siteType: classified.siteType, systemName,
+      bodyName, variant: classified.variant,
+    }).catch(() => {});
   }
 
   return site;
@@ -207,6 +224,10 @@ function getCachedSite(systemAddress, bodyId, siteType) {
 }
 
 function rowsToSiteRecord(row, poiRows) {
+  let obeliskGroups = [];
+  if (row.obelisk_groups_json) {
+    try { obeliskGroups = JSON.parse(row.obelisk_groups_json); } catch { obeliskGroups = []; }
+  }
   return {
     systemAddress: row.system_address,
     bodyId: row.body_id,
@@ -223,25 +244,152 @@ function rowsToSiteRecord(row, poiRows) {
       label: p.label,
       notes: p.notes,
     })),
-    obeliskGroups: [], // populated once obelisk-group mapping is confirmed against real Canonn data
+    obeliskGroups,
     source: row.source,
     canonnSiteId: row.canonn_site_id,
     fetchedAt: row.fetched_at,
     schemaVersion: row.schema_version,
+    planetRadiusM: row.planet_radius_m ?? null,
   };
 }
 
 /**
- * PLACEHOLDER — intentionally not implemented yet.
- *
- * Once canonnClient.probeSystem() has been run against a real Guardian
- * system and we've confirmed the actual field names Canonn returns, this
- * function maps that raw shape into our schema (docs/guardian-sites-schema.md)
- * and calls saveSite() below. Left unimplemented rather than guessing so we
- * don't cache wrong data under our own schema version.
+ * Returns every cached site (across all systems), most-recently-fetched
+ * first, for the site picker's "previously discovered sites" list. Each
+ * entry is the same shape getCachedSite() returns.
  */
-function mapCanonnResponseToSite(/* raw, systemAddress, bodyId, siteType, variant */) {
-  throw new Error('mapCanonnResponseToSite: pending live Canonn response shape — see canonnClient.js header');
+function getAllSites() {
+  ensureSchema();
+  const rows = db.all(`SELECT * FROM guardian_sites ORDER BY fetched_at DESC, id DESC`);
+  return rows.map((row) => {
+    const pois = db.all(`SELECT * FROM guardian_site_pois WHERE site_id = ?`, [row.id]);
+    return rowsToSiteRecord(row, pois);
+  });
+}
+
+/**
+ * Picks the single best-matching Canonn record out of the array returned
+ * for a system (a system can have several sites of the same siteType —
+ * e.g. multiple ruins). Preference order:
+ *   1. nearest to an origin we already have (from our own journal sighting)
+ *   2. exact body-name match
+ *   3. first record, as a last resort
+ */
+function pickBestMatch(records, { existingOrigin, bodyName }) {
+  if (!records.length) return null;
+  if (existingOrigin && existingOrigin.latitude != null && existingOrigin.longitude != null) {
+    let best = null, bestDist = Infinity;
+    for (const rec of records) {
+      if (rec.latitude == null || rec.longitude == null) continue;
+      const dLat = rec.latitude - existingOrigin.latitude;
+      const dLon = rec.longitude - existingOrigin.longitude;
+      const d = dLat * dLat + dLon * dLon; // squared, comparison only — no need to unscale
+      if (d < bestDist) { bestDist = d; best = rec; }
+    }
+    if (best) return best;
+  }
+  if (bodyName) {
+    const norm = (s) => (s || '').trim().toUpperCase();
+    const exact = records.find((rec) => norm(rec.body && rec.body.bodyName) === norm(bodyName));
+    if (exact) return exact;
+  }
+  return records[0];
+}
+
+/**
+ * Best-effort extraction of per-POI data from a GS record's activeObelisks/
+ * activeGroups relations. Their exact internal shape is unconfirmed (see
+ * canonnClient.js header) — this tries a few plausible field names for
+ * each item and silently skips anything it can't place, rather than
+ * throwing. Never blocks the site-level record (origin/type/etc.) from
+ * being cached even if this comes back empty.
+ */
+function extractPois(rec, origin, planetRadiusM) {
+  const pois = [];
+  const items = Array.isArray(rec.activeObelisks) ? rec.activeObelisks : [];
+  for (const item of items) {
+    if (!item || typeof item !== 'object') continue;
+    let bearingDeg = item.bearingDeg ?? item.bearing ?? null;
+    let distanceM  = item.distanceM  ?? item.distance ?? null;
+    if ((bearingDeg == null || distanceM == null) && item.latitude != null && item.longitude != null
+        && origin && origin.latitude != null && planetRadiusM) {
+      const bd = bearingDistance(origin.latitude, origin.longitude, item.latitude, item.longitude, planetRadiusM);
+      if (bd) { bearingDeg = bd.bearingDeg; distanceM = bd.distanceM; }
+    }
+    if (bearingDeg == null || distanceM == null) continue; // can't place it — skip rather than guess
+    pois.push({
+      id: item.id != null ? `poi-${item.id}` : `poi-${pois.length + 1}`,
+      type: 'obelisk',
+      bearingDeg, distanceM,
+      label: item.label || item.name || null,
+      notes: null,
+    });
+  }
+  return pois;
+}
+
+/**
+ * Best-effort extraction of obeliskGroups from a GS record's activeGroups
+ * relation. Same caveats as extractPois() above.
+ */
+function extractObeliskGroups(rec, origin, planetRadiusM) {
+  const groups = [];
+  const items = Array.isArray(rec.activeGroups) ? rec.activeGroups : [];
+  for (const item of items) {
+    if (!item || typeof item !== 'object') continue;
+    let bearingDeg = item.bearingDeg ?? item.bearing ?? null;
+    let distanceM  = item.distanceM  ?? item.distance ?? null;
+    if ((bearingDeg == null || distanceM == null) && item.latitude != null && item.longitude != null
+        && origin && origin.latitude != null && planetRadiusM) {
+      const bd = bearingDistance(origin.latitude, origin.longitude, item.latitude, item.longitude, planetRadiusM);
+      if (bd) { bearingDeg = bd.bearingDeg; distanceM = bd.distanceM; }
+    }
+    if (bearingDeg == null || distanceM == null) continue;
+    groups.push({
+      id: item.id != null ? `group-${item.id}` : `group-${groups.length + 1}`,
+      label: item.label || item.name || `Group ${groups.length + 1}`,
+      bearingDeg, distanceM,
+      obeliskCount: Array.isArray(item.obelisks) ? item.obelisks.length : (item.obeliskCount ?? null),
+    });
+  }
+  return groups;
+}
+
+/**
+ * Maps a raw Canonn API response (see canonnClient.js header for the
+ * confirmed shape) into our own schema (docs/guardian-sites-schema.md) and
+ * returns a record ready for saveSite(). Never throws on unexpected/missing
+ * nested fields — a site with just an origin + type is still useful; a
+ * site with zero matching records returns null.
+ */
+function mapCanonnResponseToSite(canonnResult, { systemAddress, bodyId, bodyName, siteType, variant, existingOrigin }) {
+  if (!canonnResult || !Array.isArray(canonnResult.raw) || !canonnResult.raw.length) return null;
+
+  const rec = pickBestMatch(canonnResult.raw, { existingOrigin, bodyName });
+  if (!rec) return null;
+
+  // Prefer our own journal-observed origin (we were physically there) over
+  // Canonn's site-center coordinate — but fall back to Canonn's if we
+  // don't have one yet (e.g. Codex-only sighting with no lat/long).
+  const origin = (existingOrigin && existingOrigin.latitude != null)
+    ? existingOrigin
+    : (rec.latitude != null ? { latitude: rec.latitude, longitude: rec.longitude } : null);
+
+  const planetRadiusM = guardianLiveState.getPlanetRadius();
+
+  return {
+    systemAddress, bodyId, bodyName,
+    siteType,
+    variant: variant || null,
+    origin: origin || { latitude: null, longitude: null },
+    scale: { widthM: null, heightM: null }, // unknown until we have real POI spread to derive it from
+    pois: extractPois(rec, origin, planetRadiusM),
+    obeliskGroups: extractObeliskGroups(rec, origin, planetRadiusM),
+    source: 'canonn',
+    canonnSiteId: rec.siteID != null ? String(rec.siteID) : (rec.id != null ? String(rec.id) : null),
+    fetchedAt: new Date().toISOString(),
+    schemaVersion: 1,
+  };
 }
 
 function saveSite(site) {
@@ -249,13 +397,15 @@ function saveSite(site) {
   db.run(
     `INSERT OR REPLACE INTO guardian_sites
       (system_address, body_id, body_name, site_type, variant, origin_lat, origin_lon,
-       scale_width_m, scale_height_m, source, canonn_site_id, fetched_at, schema_version)
-     VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)`,
+       scale_width_m, scale_height_m, source, canonn_site_id, fetched_at, schema_version,
+       obelisk_groups_json, planet_radius_m)
+     VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
     [
       String(site.systemAddress), site.bodyId, site.bodyName, site.siteType, site.variant,
       site.origin?.latitude ?? null, site.origin?.longitude ?? null,
       site.scale?.widthM ?? null, site.scale?.heightM ?? null,
       site.source, site.canonnSiteId, site.fetchedAt, site.schemaVersion ?? 1,
+      JSON.stringify(site.obeliskGroups || []), site.planetRadiusM ?? null,
     ]
   );
   const row = db.get(
@@ -275,27 +425,47 @@ function saveSite(site) {
 }
 
 /**
- * Main entry point (Phase 2 will call this from the journal handler):
- * returns a cached site if we have one, otherwise fetches from Canonn,
- * maps it, caches it, and returns it. Returns null if Canonn has nothing
- * for this site (shows the "no data yet" placeholder in the UI).
+ * Main entry point, called from handleApproachSettlementEvent below (and
+ * safe to call again later to re-sync): returns a cached site if we
+ * already have POI data for it, otherwise fetches from Canonn, maps it,
+ * caches it, and returns the result. Returns null if Canonn has nothing
+ * for this site (the UI shows the "no data yet" placeholder) — the bare
+ * journal-sighting record (origin only, no POIs) from recordSighting()
+ * still exists in that case and is what getCachedSite() will keep
+ * returning until a future fetch succeeds.
  */
-async function getOrFetchSite({ systemAddress, bodyId, siteType, systemName }) {
+async function getOrFetchSite({ systemAddress, bodyId, siteType, systemName, bodyName, variant }) {
   const cached = getCachedSite(systemAddress, bodyId, siteType);
-  if (cached) return cached;
+  if (cached && cached.pois.length) return cached; // already have real POI data — don't re-fetch
 
-  const result = await canonnClient.fetchGuardianSitesForSystem(systemName);
-  if (!result) return null;
+  const result = await canonnClient.fetchGuardianSitesForSystem(systemName, siteType);
+  if (!result) return cached; // Canonn has nothing (yet) — keep whatever journal-only record we have
 
-  // See mapCanonnResponseToSite() above — deliberately not wired up until
-  // we've confirmed the real response shape together.
-  return null;
+  const mapped = mapCanonnResponseToSite(result, {
+    systemAddress, bodyId, bodyName,
+    siteType, variant: variant || (cached && cached.variant),
+    existingOrigin: cached ? cached.origin : null,
+  });
+  if (!mapped) return cached;
+
+  mapped.planetRadiusM = guardianLiveState.getPlanetRadius();
+  saveSite(mapped);
+  const saved = getCachedSite(systemAddress, bodyId, siteType);
+  // If the commander is still at this site, refresh the live-active push
+  // with the now-populated POI data (the first push, from
+  // handleApproachSettlementEvent, only had the bare origin).
+  const active = guardianLiveState.getActive();
+  if (active && String(active.systemAddress) === String(systemAddress) && active.bodyId === bodyId && active.siteType === siteType) {
+    guardianLiveState.setActive(saved);
+  }
+  return saved;
 }
 
 module.exports = {
   ensureSchema,
   parseApproachSettlementName,
   getCachedSite,
+  getAllSites,
   getSiteRowByLocation,
   recordSighting,
   saveSite,

@@ -28,6 +28,7 @@ const capiService      = require('./engine/services/capiService');
 const capiProvider     = require('./engine/providers/capiProvider');
 const updaterService   = require('./engine/services/updaterService');
 const inaraService     = require('./engine/services/inaraService');
+const guardianSitesService = require('./engine/services/guardianSitesService');
 const engine           = require('./engine/core/engine');
 const eventBus         = require('./engine/core/eventBus');
 const api              = require('./engine/api/server');
@@ -441,6 +442,16 @@ ipcMain.handle('get-network-info', () => {
 });
 
 // ── Scan triggers ─────────────────────────────────────────────────────────────
+// ── Guardian Sites ────────────────────────────────────────────────────────────
+ipcMain.handle('guardian-get-sites', () => {
+  try { return guardianSitesService.getAllSites(); }
+  catch (err) { logger.error('GUARDIAN', 'guardian-get-sites failed', err.message); return []; }
+});
+ipcMain.handle('guardian-get-site', (_e, key) => {
+  try { return guardianSitesService.getCachedSite(key.systemAddress, key.bodyId, key.siteType); }
+  catch (err) { logger.error('GUARDIAN', 'guardian-get-site failed', err.message); return null; }
+});
+
 ipcMain.handle('trigger-scan-all', () => { journalProvider.scanAll(); return true; });
 ipcMain.handle('trigger-history-scan', () => { historyProvider.scan(); return true; });
 ipcMain.handle('trigger-profile-refresh', () => { journalProvider.refreshProfile(); return true; });

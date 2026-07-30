@@ -96,6 +96,12 @@ contextBridge.exposeInMainWorld('electronAPI', {
     ipcRenderer.on('open-preferences', function () { cb(); });
   },
 
+  // Guardian Sites
+  onGuardianSiteActive:   (cb) => on('guardian-site-active',    cb),
+  onGuardianLivePosition: (cb) => on('guardian-live-position',  cb),
+  getGuardianSites:       ()   => ipcRenderer.invoke('guardian-get-sites'),
+  getGuardianSite:        (key) => ipcRenderer.invoke('guardian-get-site', key),
+
   // Debug log
   getDebugLog:         ()        => ipcRenderer.invoke('debug-get-log'),
   getDebugEntries:     ()        => ipcRenderer.invoke('debug-get-entries'),

@@ -4,6 +4,8 @@ const path = require('path');
 const { Worker } = require('worker_threads');
 const eventBus = require('../core/eventBus');
 const logger   = require('../core/logger');
+const guardianLiveState = require('../services/guardianLiveState');
+const { bearingDistance } = require('../core/geo');
 
 const { app: electronApp } = (() => { try { return require('electron'); } catch { return {}; } })();
 const userDataDir = (electronApp && electronApp.getPath) ? electronApp.getPath('userData') : path.join(__dirname, '../..');
@@ -45,7 +47,18 @@ const _cache = {
   profileData:  null,   // last profile-data payload
   bodiesData:   null,   // last bodies-data payload
   missionsData: null,   // last missions-data payload
+  guardianSite: null,   // last guardian-site-active payload (site record or null)
 };
+
+// Pushes guardian-site-active to the renderer whenever guardianLiveState
+// changes — set up once at module load (not inside start()) since
+// guardianLiveState's eventBus listener needs to exist even before the
+// journal watcher itself starts, and setMainWindow()/start() can happen in
+// either order depending on app startup timing.
+eventBus.on('guardian.siteActive', (site) => {
+  _cache.guardianSite = site;
+  send('guardian-site-active', site);
+});
 
 // Raw keyed maps behind the last bodies-data payload (the worker sends both
 // the display-shaped arrays above AND these — see postBodiesData() in
@@ -74,6 +87,10 @@ function replayToPage() {
   if (_cache.profileData)  send('profile-data',  _cache.profileData);
   if (_cache.bodiesData)   send('bodies-data',   _cache.bodiesData);
   if (_cache.missionsData) send('missions-data', _cache.missionsData);
+  // Always send guardian-site-active, even when null — a freshly-loaded
+  // guardian.html needs to know definitively "no active site" rather than
+  // sitting in a loading state waiting for a push that'll never come.
+  send('guardian-site-active', _cache.guardianSite);
 }
 
 function send(channel, data) {
@@ -452,6 +469,45 @@ function start() {
     }
   }
 
+  // ── Status.json → Guardian live position ──────────────────────────────
+  // Elite writes Latitude/Longitude/Heading/PlanetRadius into Status.json
+  // whenever the commander is on a body's surface (on foot or in an SRV;
+  // Heading is degrees, 0 = north, matching our own bearing convention in
+  // engine/core/geo.js). We only bother computing/pushing anything when
+  // guardianLiveState has an active site — otherwise this is just wasted
+  // work on every single Status.json tick during normal ship flight.
+  function readStatusGuardianPosition() {
+    const active = guardianLiveState.getActive();
+    try {
+      const raw    = fs.readFileSync(statusPath, 'utf8');
+      const status = JSON.parse(raw);
+
+      if (status.PlanetRadius != null) guardianLiveState.setPlanetRadius(status.PlanetRadius);
+
+      if (!active) return; // nothing to draw a live marker against
+      if (status.Latitude == null || status.Longitude == null) return; // not on a surface
+
+      const origin = active.origin;
+      const planetRadiusM = status.PlanetRadius ?? guardianLiveState.getPlanetRadius();
+      if (!origin || origin.latitude == null || !planetRadiusM) return;
+
+      const offset = bearingDistance(origin.latitude, origin.longitude, status.Latitude, status.Longitude, planetRadiusM);
+      if (!offset) return;
+
+      send('guardian-live-position', {
+        latitude:  status.Latitude,
+        longitude: status.Longitude,
+        headingDeg: status.Heading != null ? status.Heading : null,
+        bearingDeg: offset.bearingDeg,
+        distanceM:  offset.distanceM,
+        timestamp:  new Date().toISOString(),
+      });
+    } catch {
+      // Status.json transiently locked, or the commander isn't on a body
+      // surface right now (fields simply absent) — either way, skip quietly.
+    }
+  }
+
   const statusWatcher = chokidar.watch(statusPath, {
     persistent:       true,
     ignoreInitial:    false,   // read once on start so the bar is correct immediately
@@ -459,6 +515,8 @@ function start() {
   });
   statusWatcher.on('add',    readStatusFuel);
   statusWatcher.on('change', readStatusFuel);
+  statusWatcher.on('add',    readStatusGuardianPosition);
+  statusWatcher.on('change', readStatusGuardianPosition);
 }
 
 // ── refreshProfile: re-scan profile data on demand (used by 2-min poll) ──────

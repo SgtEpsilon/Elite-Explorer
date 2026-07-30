@@ -1,0 +1,77 @@
+/* guardian-styles.css — Guardian Sites map view.
+   Uses only the existing theme's CSS custom properties (--gold, --cyan,
+   --purple and their -rgb/-dim/-glow variants, --bg/--panel/--border, etc.)
+   so it automatically follows whichever theme swatch the commander picked
+   elsewhere in the app. No new colors are hardcoded. */
+
+#view-guardian { display: flex; flex-direction: column; height: 100%; min-height: 0; }
+
+#gdn-toolbar {
+  display: flex; flex-wrap: wrap; align-items: center; gap: 8px 10px;
+  padding: 8px 14px; border-bottom: 1px solid var(--border);
+  background: rgba(0,0,0,0.15); flex-shrink: 0;
+}
+#gdn-toolbar select {
+  background: var(--bg); border: 1px solid var(--border); color: var(--text);
+  padding: 4px 8px; font-size: 0.75em; border-radius: 2px; font-family: var(--mono);
+  max-width: min(260px, 60vw);
+}
+#gdn-toolbar button {
+  background: var(--panel2); border: 1px solid var(--border2); color: var(--text);
+  padding: 4px 10px; font-size: 0.72em; border-radius: 2px; cursor: pointer;
+  font-family: var(--mono); letter-spacing: 0.03em; transition: border-color 0.2s, background 0.2s;
+}
+#gdn-toolbar button:hover { border-color: var(--gold); background: var(--gold-glow); }
+
+.gdn-live-badge {
+  font-family: var(--mono); font-size: 0.68em; letter-spacing: 0.1em;
+  color: var(--gold); background: rgba(var(--gold-rgb),0.1);
+  border: 1px solid rgba(var(--gold-rgb),0.35); border-radius: 2px;
+  padding: 2px 8px; animation: gdn-pulse 2.2s ease-in-out infinite;
+}
+@keyframes gdn-pulse { 0%,100% { opacity: 1; } 50% { opacity: 0.55; } }
+
+#gdn-body { position: relative; flex: 1; min-height: 0; overflow: hidden; background: var(--bg); }
+#gdn-canvas { position: absolute; inset: 0; width: 100%; height: 100%; display: block; cursor: grab; }
+#gdn-canvas:active { cursor: grabbing; }
+
+.gdn-empty {
+  position: absolute; inset: 0; display: flex; flex-direction: column;
+  align-items: center; justify-content: center; text-align: center; gap: 8px;
+  pointer-events: none; padding: 24px;
+}
+.gdn-empty-title {
+  font-family: var(--display); font-size: 0.85em; letter-spacing: 0.1em;
+  color: var(--text-dim); text-transform: uppercase;
+}
+.gdn-empty-sub { font-size: 0.78em; color: var(--text-mute); max-width: 360px; line-height: 1.5; }
+
+.gdn-legend, .gdn-info {
+  position: absolute; background: var(--panel); border: 1px solid var(--border2);
+  border-radius: 3px; padding: 10px 12px; font-size: 0.75em;
+  box-shadow: 0 6px 24px rgba(0,0,0,0.4); max-width: calc(100vw - 24px);
+}
+.gdn-legend { top: 12px; right: 12px; min-width: min(190px, calc(100vw - 24px)); }
+.gdn-legend-title {
+  font-family: var(--display); font-size: 0.85em; letter-spacing: 0.15em;
+  color: var(--gold); text-transform: uppercase; margin-bottom: 8px;
+  padding-bottom: 5px; border-bottom: 1px solid var(--border);
+}
+.gdn-legend-row { display: flex; align-items: center; gap: 8px; padding: 3px 0; color: var(--text-dim); }
+.gdn-swatch { width: 9px; height: 9px; border-radius: 50%; flex-shrink: 0; }
+.gdn-swatch-square { border-radius: 1px; }
+.gdn-swatch-ring {
+  width: 9px; height: 9px; border-radius: 50%; background: transparent;
+  border: 1.5px solid var(--cyan);
+}
+.gdn-swatch-live {
+  width: 9px; height: 9px; border-radius: 50%; background: var(--text);
+  box-shadow: 0 0 5px var(--text);
+}
+
+.gdn-info { top: 12px; left: 12px; max-width: 260px; }
+.gdn-info-title {
+  font-family: var(--display); font-size: 0.8em; letter-spacing: 0.08em;
+  color: var(--gold); text-transform: uppercase; margin-bottom: 3px;
+}
+.gdn-info-sub { color: var(--text-mute); font-family: var(--mono); font-size: 0.85em; margin-top: 2px; }

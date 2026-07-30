@@ -223,3 +223,14 @@ if (resetBtn) resetBtn.addEventListener('click', function() {
 })();
 
 loadDisplaySettings();
+
+// ── Guardian Sites live nav indicator (app-wide) ────────────────────────
+// guardian-script.js handles its own copy of this on guardian.html itself;
+// this lets the little dot on the nav tab light up while browsing any
+// other page too, since display-settings.js is loaded everywhere.
+if (window.electronAPI && window.electronAPI.onGuardianSiteActive) {
+  window.electronAPI.onGuardianSiteActive(function (site) {
+    var dot = document.getElementById('gdn-live-dot');
+    if (dot) dot.hidden = !site;
+  });
+}

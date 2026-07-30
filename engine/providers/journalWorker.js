@@ -153,6 +153,7 @@ async function run() {
           liveData = liveData || {};
           liveData._pendingLocation = {
             system:      entry.StarSystem,
+            systemAddress: entry.SystemAddress != null ? entry.SystemAddress : null,
             timestamp:   entry.timestamp,
             coords:      entry.StarPos || null,
             security:    entry.SystemSecurity_Localised || entry.SystemSecurity || null,

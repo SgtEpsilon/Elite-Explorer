@@ -1,0 +1,111 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>Elite Explorer — Guardian Sites</title>
+<link rel="stylesheet" href="styles.css">
+<link rel="stylesheet" href="guardian-styles.css">
+</head>
+<body>
+
+<div id="space-nebula"></div>
+<canvas id="space-stars"></canvas>
+
+<div id="topbar">
+  <span class="tb-logo">&#9672; Explorer</span>
+  <div class="tb-sep"></div>
+  <span class="tb-cmdr" id="tb-cmdr">&#8212;</span>
+  <div class="tb-sep"></div>
+  <span class="tb-sys" id="tb-sys">&#8212;</span><span id="tb-discovery-star" title="First Discovery!" style="display:none;color:var(--gold);margin-left:4px;font-size:0.85em;">&#9733;</span>
+  <div class="tab-nav">
+    <a class="tab-btn" href="index.html">Live</a>
+    <a class="tab-btn" href="ship.html">Ship</a>
+    <a class="tab-btn" href="profile.html">Profile</a>
+    <a class="tab-btn" href="carrier.html">Carrier</a>
+    <a class="tab-btn" href="history.html">History</a>
+    <a class="tab-btn" href="spansh.html">Spansh</a>
+    <a class="tab-btn active" href="guardian.html">Guardian Sites<span id="gdn-live-dot" class="gdn-live-dot" title="Currently at a Guardian site" hidden></span></a>
+  </div>
+  <span class="tb-credits" id="tb-credits"></span>
+  <span id="eddn-dot" title="EDDN: disabled" style="width:6px;height:6px;border-radius:50%;background:var(--border2);display:inline-block;margin-right:4px;transition:background 0.4s;"></span>
+  <span id="edsm-dot" title="EDSM: disabled" style="width:6px;height:6px;border-radius:50%;background:var(--border2);display:inline-block;margin-right:8px;transition:background 0.4s;"></span>
+  <button id="options-btn" title="Options">&#9881;</button>
+</div>
+
+<div id="app-wrapper">
+
+  <div id="view-guardian" class="active">
+
+    <!-- Toolbar -->
+    <div id="gdn-toolbar">
+      <span style="font-family:var(--display);font-size:0.7em;letter-spacing:0.2em;color:var(--text-dim)">GUARDIAN SITES</span>
+      <span id="gdn-live-badge" class="gdn-live-badge" hidden>&#9679; ON SITE</span>
+      <div style="flex:1"></div>
+      <select id="gdn-site-picker" title="Previously discovered sites">
+        <option value="">Select a discovered site&hellip;</option>
+      </select>
+      <button id="gdn-legend-btn" title="Toggle legend">Legend</button>
+      <button id="gdn-recenter-btn" title="Recenter / reset view">&#8982; Recenter</button>
+    </div>
+
+    <div id="gdn-body">
+      <canvas id="gdn-canvas"></canvas>
+
+      <!-- Empty / placeholder state -->
+      <div id="gdn-empty" class="gdn-empty">
+        <div class="gdn-empty-title">No Guardian site selected</div>
+        <div class="gdn-empty-sub">Approach a Guardian ruin or structure in-game, or pick a previously discovered
+          site above.</div>
+      </div>
+
+      <!-- Legend -->
+      <div id="gdn-legend" class="gdn-legend" hidden>
+        <div class="gdn-legend-title">Legend</div>
+        <div class="gdn-legend-row"><span class="gdn-swatch" style="background:var(--gold)"></span>Relic Tower</div>
+        <div class="gdn-legend-row"><span class="gdn-swatch" style="background:var(--cyan)"></span>Obelisk</div>
+        <div class="gdn-legend-row"><span class="gdn-swatch" style="background:var(--purple)"></span>Casket / Tablet / Orb / Urn / Totem</div>
+        <div class="gdn-legend-row"><span class="gdn-swatch gdn-swatch-square" style="background:var(--text-dim)"></span>Pylon</div>
+        <div class="gdn-legend-row"><span class="gdn-swatch gdn-swatch-ring"></span>Obelisk Group</div>
+        <div class="gdn-legend-row"><span class="gdn-swatch gdn-swatch-live"></span>Commander (live)</div>
+      </div>
+
+      <!-- Site info card -->
+      <div id="gdn-info" class="gdn-info" hidden>
+        <div id="gdn-info-title" class="gdn-info-title">&#8212;</div>
+        <div id="gdn-info-sub" class="gdn-info-sub">&#8212;</div>
+        <div id="gdn-info-poi-count" class="gdn-info-sub"></div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- OPTIONS PANEL -->
+<div id="options-overlay"></div>
+<div id="options-panel">
+  <div id="options-header">
+    <span style="font-family:var(--display);font-size:0.75em;letter-spacing:0.25em;color:var(--gold)">OPTIONS</span>
+    <button id="options-close">&#10005;</button>
+  </div>
+  <div id="options-body">
+    <div class="opt-section">
+      <div class="opt-section-title">Data Sources &amp; Credits</div>
+      <div style="font-size:0.75em;color:var(--text-dim);line-height:1.5;padding:2px 2px 4px;">
+        Guardian site point-of-interest coordinates (relic towers, obelisks, caskets,
+        tablets, orbs, urns, totems, and pylons) are sourced from
+        <a href="#" id="gdn-canonn-link" style="color:var(--cyan);">Canonn Research's</a>
+        public API (<span style="font-family:var(--mono);">docs.canonn.tech</span>) —
+        our thanks to Canonn and the commanders who contributed that data.
+        Site backgrounds are procedurally drawn from those coordinates; no
+        third-party artwork or code is used.
+      </div>
+    </div>
+  </div>
+</div>
+
+<script src="starfield.js"></script>
+<script src="display-settings.js"></script>
+<script src="guardian-script.js"></script>
+<script src="update-modal.js"></script>
+<script src="prefs-modal.js"></script>
+</body>
+</html>
