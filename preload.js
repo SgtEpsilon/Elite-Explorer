@@ -48,6 +48,10 @@ contextBridge.exposeInMainWorld('electronAPI', {
   triggerHistoryScan:()          => ipcRenderer.invoke('trigger-history-scan'),
   triggerProfileRefresh: ()      => ipcRenderer.invoke('trigger-profile-refresh'),
 
+  // Multi-commander
+  listCommanders:      ()        => ipcRenderer.invoke('list-commanders'),
+  setViewingCommander: (fid)     => ipcRenderer.invoke('set-viewing-commander', fid),
+
   openExternal:      (url)       => ipcRenderer.invoke('open-external',          url),
 
   // EDSM

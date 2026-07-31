@@ -468,6 +468,17 @@ ipcMain.handle('trigger-scan-all', () => { journalProvider.scanAll(); return tru
 ipcMain.handle('trigger-history-scan', () => { historyProvider.scan(); return true; });
 ipcMain.handle('trigger-profile-refresh', () => { journalProvider.refreshProfile(); return true; });
 
+// Multi-commander: list known CMDRs (by FID) in the journal folder, and
+// switch which one the app is scoped to (Profile + History pages). The
+// Live page always tracks whoever is actually flying right now, regardless
+// of which CMDR is selected here.
+ipcMain.handle('list-commanders', () => journalProvider.listCommanders());
+ipcMain.handle('set-viewing-commander', async (_e, fid) => {
+  const ok = await journalProvider.setViewingCommander(fid);
+  if (ok) historyProvider.scan();
+  return ok;
+});
+
 // ── External links ────────────────────────────────────────────────────────────
 ipcMain.handle('open-external', (_e, url) => {
   if (url && (url.startsWith('https://') || url.startsWith('http://'))) {

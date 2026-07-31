@@ -11,6 +11,7 @@
 const fs   = require('fs');
 const path = require('path');
 const { Worker } = require('worker_threads');
+const commanderRegistry = require('../services/commanderRegistry');
 
 const { app: electronApp } = (() => { try { return require('electron'); } catch { return {}; } })();
 
@@ -78,6 +79,8 @@ function scan() {
     return;
   }
 
+  commanderRegistry.setJournalDir(journalPath);
+
   // Collect all journal files, oldest first so the jump list ends up chronological
   let files;
   try {
@@ -90,6 +93,16 @@ function scan() {
     console.error('[history] Failed to list journal files:', err.message);
     isScanning = false;
     return;
+  }
+
+  // Scope to whichever commander is currently being viewed, so an alt's
+  // jump history doesn't get mixed into another commander's History page.
+  // Falls back to the unfiltered list if the registry hasn't populated yet.
+  const viewingFid = commanderRegistry.getViewingFid();
+  if (viewingFid) {
+    const scoped = new Set(commanderRegistry.getFilesForFid(viewingFid));
+    const filtered = files.filter(f => scoped.has(f));
+    if (filtered.length) files = filtered;
   }
 
   if (!files.length) {

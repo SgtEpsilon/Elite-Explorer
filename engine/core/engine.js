@@ -3,24 +3,29 @@ const eventBus = require('./eventBus');
 const journalProvider = require('../providers/journalProvider');
 const guardianSitesService = require('../services/guardianSitesService');
 const guardianLiveState = require('../services/guardianLiveState');
+const commanderRegistry = require('../services/commanderRegistry');
 const logger = require('./logger');
 
 function start() {
   logger.info('ENGINE', 'Engine core starting — wiring eventBus listeners');
   eventBus.on('journal.scan', (data) => {
     db.run(
-      `INSERT INTO personal_scans (system_name, body_name, body_type, timestamp)
-       VALUES (?, ?, ?, ?)`,
-      [data.system ?? null, data.body ?? null, data.bodyType ?? null, data.timestamp ?? null]
+      `INSERT INTO personal_scans (system_name, body_name, body_type, timestamp, cmdr_fid)
+       VALUES (?, ?, ?, ?, ?)`,
+      [data.system ?? null, data.body ?? null, data.bodyType ?? null, data.timestamp ?? null, commanderRegistry.getViewingFid()]
     );
   });
 
   eventBus.on('journal.location', (data) => {
-    db.run(
-      `INSERT OR REPLACE INTO commander_state (id, current_system, updated_at)
-       VALUES (1, ?, ?)`,
-      [data.system ?? null, data.timestamp ?? null]
-    );
+    const fid = commanderRegistry.getViewingFid();
+    if (fid) {
+      db.run(
+        `INSERT INTO commander_state (fid, cmdr_name, current_system, updated_at)
+         VALUES (?, ?, ?, ?)
+         ON CONFLICT(fid) DO UPDATE SET current_system = excluded.current_system, updated_at = excluded.updated_at`,
+        [fid, commanderRegistry.getCommanderName(fid), data.system ?? null, data.timestamp ?? null]
+      );
+    }
 
     // A Location/FSDJump event means the commander has left (or re-entered
     // via load) a system — if a Guardian site was marked active for a

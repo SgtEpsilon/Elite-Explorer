@@ -5,6 +5,7 @@ const { Worker } = require('worker_threads');
 const eventBus = require('../core/eventBus');
 const logger   = require('../core/logger');
 const guardianLiveState = require('../services/guardianLiveState');
+const commanderRegistry = require('../services/commanderRegistry');
 const { bearingDistance } = require('../core/geo');
 
 const { app: electronApp } = (() => { try { return require('electron'); } catch { return {}; } })();
@@ -238,9 +239,21 @@ async function readLiveJournal(journalPath) {
 }
 
 // ── PROFILE: scan backwards until all 5 key event types are found ─────────────
+// Scoped to whichever commander the app is currently VIEWING (see
+// commanderRegistry) — not necessarily whoever is actually flying right now.
+// That lets the user pick an alt CMDR and see that alt's rank/stats without
+// them bleeding together in the same journal folder.
 async function readProfileData(journalPath) {
-  const files = getSortedJournalFiles(journalPath);
+  commanderRegistry.setJournalDir(journalPath);
+  let files = getSortedJournalFiles(journalPath);
   if (!files.length) return;
+
+  const viewingFid = commanderRegistry.getViewingFid();
+  if (viewingFid) {
+    const scoped = new Set(commanderRegistry.getFilesForFid(viewingFid));
+    const filtered = files.filter(f => scoped.has(f.fullPath));
+    if (filtered.length) files = filtered;
+  }
 
   const REQUIRED = new Set(['LoadGame', 'Rank', 'Progress', 'Reputation', 'Statistics']);
   const found    = new Set();
@@ -301,6 +314,12 @@ function start() {
     send('journal-path-missing', journalPath);
     return;
   }
+
+  // Build the FID -> files map before anything else reads the journal
+  // folder, so readProfileData()'s viewing-FID scoping below has data to
+  // filter against on this very first pass.
+  commanderRegistry.setJournalDir(journalPath);
+  commanderRegistry.refresh();
 
   // Boot: profile is independent, fine to fire separately. Live is NOT —
   // see the lock note below, so it's started via runLiveWorker() instead of
@@ -390,6 +409,12 @@ function start() {
   });
 
   const handleFileEvent = (filePath) => {
+    // A new file may belong to a different commander than the one currently
+    // being watched (e.g. switching alts in-game, or Frontier rolling the
+    // journal at a session boundary) — keep the registry current so profile
+    // scoping and the switcher UI reflect it.
+    commanderRegistry.refresh();
+
     const nowLatest = getLatestJournalFile(journalPath);
     if (nowLatest && nowLatest.fullPath !== watchedPath) {
       logger.info('JOURNAL', 'New game session detected — switching to new journal file', { file: nowLatest.file });
@@ -529,4 +554,25 @@ async function refreshProfile() {
 
 function getCache() { return { ..._cache }; }
 
-module.exports = { start, scanAll, refreshProfile, setMainWindow, getJournalPath, replayToPage, getCache };
+// ── Multi-commander switching ─────────────────────────────────────────────
+function listCommanders() {
+  return commanderRegistry.list().map(c => ({
+    ...c,
+    isActive:  c.fid === commanderRegistry.getActiveFid(),
+    isViewing: c.fid === commanderRegistry.getViewingFid(),
+  }));
+}
+
+async function setViewingCommander(fid) {
+  const ok = commanderRegistry.setViewingFid(fid);
+  if (!ok) return false;
+  let journalPath;
+  try { journalPath = getJournalPath(); } catch { return true; }
+  if (fs.existsSync(journalPath)) await readProfileData(journalPath);
+  return true;
+}
+
+module.exports = {
+  start, scanAll, refreshProfile, setMainWindow, getJournalPath, replayToPage, getCache,
+  listCommanders, setViewingCommander,
+};

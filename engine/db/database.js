@@ -23,6 +23,53 @@ let _db = null;
 const _queue = [];
 let _ready = false;
 
+function _columnNames(table) {
+  const res = _db.exec(`PRAGMA table_info(${table})`);
+  if (!res.length) return [];
+  return res[0].values.map(row => row[1]);
+}
+
+function _tableExists(table) {
+  const res = _db.exec(
+    `SELECT name FROM sqlite_master WHERE type='table' AND name='${table}'`
+  );
+  return res.length > 0 && res[0].values.length > 0;
+}
+
+function _migrateForMultiCommander() {
+  if (!_columnNames('personal_scans').includes('cmdr_fid')) {
+    _db.run('ALTER TABLE personal_scans ADD COLUMN cmdr_fid TEXT');
+  }
+
+  const needsRecreate = _tableExists('commander_state') && !_columnNames('commander_state').includes('fid');
+
+  if (needsRecreate) {
+    let legacyRow = null;
+    try {
+      const res = _db.exec('SELECT current_system, updated_at FROM commander_state WHERE id = 1');
+      if (res.length && res[0].values.length) {
+        const row = res[0].values[0];
+        legacyRow = { current_system: row[0], updated_at: row[1] };
+      }
+    } catch (e) { /* old table may not even have rows */ }
+
+    _db.run('DROP TABLE commander_state');
+    _db.run(
+      'CREATE TABLE commander_state (fid TEXT PRIMARY KEY, cmdr_name TEXT, current_system TEXT, updated_at TEXT);'
+    );
+    if (legacyRow) {
+      _db.run(
+        'INSERT INTO commander_state (fid, cmdr_name, current_system, updated_at) VALUES (?, ?, ?, ?)',
+        ['legacy-unknown', null, legacyRow.current_system, legacyRow.updated_at]
+      );
+    }
+  } else {
+    _db.run(
+      'CREATE TABLE IF NOT EXISTS commander_state (fid TEXT PRIMARY KEY, cmdr_name TEXT, current_system TEXT, updated_at TEXT);'
+    );
+  }
+}
+
 async function init() {
   const SQL = await initSqlJs();
   const dbPath = getDbPath();
@@ -44,12 +91,9 @@ async function init() {
       estimated_value INTEGER,
       timestamp TEXT
     );
-    CREATE TABLE IF NOT EXISTS commander_state (
-      id INTEGER PRIMARY KEY CHECK (id = 1),
-      current_system TEXT,
-      updated_at TEXT
-    );
   `);
+
+  _migrateForMultiCommander();
 
   _ready = true;
   // Flush any writes that arrived before we were ready
