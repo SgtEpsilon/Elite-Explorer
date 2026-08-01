@@ -1123,9 +1123,9 @@
       if (!s) return;
       var isCurrent = currentId != null && String(s.id) === String(currentId);
       html += '<div class="eng-card' + (isCurrent ? ' progress-Unlocked' : '') + '">';
-      html += '<div class="eng-name">' + esc(s.shipName || s.name || 'Unnamed') +
+      html += '<div class="eng-name">' + esc(s.shipName || (s.name ? formatShipType(s.name) : 'Unnamed')) +
               (isCurrent ? ' <span style="color:var(--green);">&#9679; current</span>' : '') + '</div>';
-      html += '<div class="eng-status">' + esc(s.name || '') + '</div>';
+      html += '<div class="eng-status">' + esc(s.name ? formatShipType(s.name) : '') + '</div>';
       if (s.station && s.station.name) {
         html += '<div style="font-size:0.72em;color:var(--text-mute);margin-top:4px;">at ' + esc(s.station.name) + '</div>';
       }
@@ -1222,7 +1222,7 @@
         ? Object.values(shipyard.ships.shipyard_list) : [];
       var html2 = '';
       list.forEach(function (s) {
-        html2 += statRow(s.name, fmtCr(s.basevalue));
+        html2 += statRow(s.name ? formatShipType(s.name) : '', fmtCr(s.basevalue));
       });
       shipEl.innerHTML = html2 || '<div style="color:var(--text-mute);font-size:0.78em;">No ships for sale.</div>';
     }

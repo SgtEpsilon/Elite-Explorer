@@ -599,9 +599,9 @@
       // switches, repairs, fuel changes, and hull damage without a full reload.
       if (data.ship || data.shipName) {
         var nameEl = document.getElementById('ship-name');
-        if (nameEl) nameEl.textContent = data.shipName || data.ship || '—';
+        if (nameEl) nameEl.textContent = data.shipName || (data.ship ? formatShipType(data.ship) : '—');
         var typeEl = document.getElementById('ship-type');
-        if (typeEl) typeEl.textContent = data.ship || '';
+        if (typeEl) typeEl.textContent = data.ship ? formatShipType(data.ship) : '';
         var identEl = document.getElementById('ship-ident');
         if (identEl) {
           identEl.textContent   = data.shipIdent || '';
