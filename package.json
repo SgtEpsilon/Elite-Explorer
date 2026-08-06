@@ -40,6 +40,7 @@
       ".env",
       "ui/**/*",
       "engine/**/*",
+      "data/**/*",
       "node_modules/**/*",
       "!node_modules/.cache/**/*",
       "!**/*.map"
