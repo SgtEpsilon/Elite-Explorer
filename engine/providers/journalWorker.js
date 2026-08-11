@@ -42,6 +42,37 @@ function getRankName(ranks, level) {
   return ELITE_TIERS[tierIndex] || ('Elite ' + (tierIndex + 1));
 }
 
+// ── Material inventory helpers (live delta tracking) ──────────────────────────
+// Some material events don't carry a Category (EngineerCraft's Ingredients and
+// Synthesis's Materials omit it) — when it's missing, search all three buckets
+// for an existing entry with that Name instead. Material symbols are unique
+// across Raw/Manufactured/Encoded, so this is a safe way to locate them.
+function findMatCategory(materials, name) {
+  const lname = String(name || '').toLowerCase();
+  const cats = ['Raw', 'Manufactured', 'Encoded'];
+  for (let i = 0; i < cats.length; i++) {
+    const arr = materials[cats[i]] || [];
+    if (arr.some(m => (m.Name || '').toLowerCase() === lname)) return cats[i];
+  }
+  return null;
+}
+
+function adjustMaterial(materials, category, name, nameLocalised, delta) {
+  if (!materials || !name || !delta) return;
+  const lname = String(name).toLowerCase();
+  const cat = (category && materials[category]) ? category : findMatCategory(materials, name);
+  if (!cat) return; // unknown material with no category info — can't safely bucket it
+  const arr = materials[cat];
+  const idx = arr.findIndex(m => (m.Name || '').toLowerCase() === lname);
+  if (idx === -1) {
+    if (delta > 0) arr.push({ Name: name, Name_Localised: nameLocalised || name, Count: delta });
+    return;
+  }
+  arr[idx].Count = (arr[idx].Count || 0) + delta;
+  if (nameLocalised) arr[idx].Name_Localised = nameLocalised;
+  if (arr[idx].Count <= 0) arr.splice(idx, 1);
+}
+
 async function run() {
   const totalFiles            = files.length;
   const updatedLastProcessed  = { ...lastProcessed };
@@ -69,6 +100,19 @@ async function run() {
 
   // Live missions accumulator — keyed by MissionID so updates overwrite cleanly.
   let liveMissions = (liveSeed && liveSeed.liveMissions) ? { ...liveSeed.liveMissions } : {};  // missionID → mission object
+
+  // Live materials accumulator — seeded from the last known full Materials
+  // snapshot (via journalProvider's cache), then kept current in real time by
+  // MaterialCollected/Discarded/Trade/EngineerCraft/Synthesis/etc below. Any
+  // later 'Materials' full-snapshot event (fires once per login) replaces it
+  // wholesale, which self-corrects any drift from an event type not handled.
+  let liveMaterials = (liveSeed && liveSeed.liveMaterials)
+    ? {
+        Raw:          (liveSeed.liveMaterials.Raw          || []).map(m => ({ ...m })),
+        Manufactured: (liveSeed.liveMaterials.Manufactured || []).map(m => ({ ...m })),
+        Encoded:      (liveSeed.liveMaterials.Encoded      || []).map(m => ({ ...m })),
+      }
+    : null; // { Raw: [], Manufactured: [], Encoded: [] } once first populated
 
   // Records every time liveBodies/liveStations/liveSignals get wiped, and why.
   // journalProvider.js now runs live mode incrementally (only new lines since
@@ -590,6 +634,67 @@ async function run() {
             parentPort.postMessage({ type: 'missions-data', missions: liveMissions });
           }
 
+          // ── Materials — real-time inventory tracking ───────────────────
+          // 'Materials' itself is a full-snapshot event (fires once, at
+          // login) — treat it as ground truth and replace wholesale. Every
+          // other event here only ever fires mid-session and is applied as
+          // a delta on top of that baseline, so the Materials tab stays
+          // current without waiting for the next login/profile rescan.
+          if (ev === 'Materials') {
+            liveMaterials = {
+              Raw:          entry.Raw          || [],
+              Manufactured: entry.Manufactured || [],
+              Encoded:      entry.Encoded      || [],
+            };
+          }
+
+          if (ev === 'MaterialCollected') {
+            if (!liveMaterials) liveMaterials = { Raw: [], Manufactured: [], Encoded: [] };
+            adjustMaterial(liveMaterials, entry.Category, entry.Name, entry.Name_Localised, entry.Count || 1);
+          }
+
+          if (ev === 'MaterialDiscarded') {
+            if (!liveMaterials) liveMaterials = { Raw: [], Manufactured: [], Encoded: [] };
+            adjustMaterial(liveMaterials, entry.Category, entry.Name, entry.Name_Localised, -(entry.Count || 1));
+          }
+
+          if (ev === 'MaterialTrade') {
+            if (!liveMaterials) liveMaterials = { Raw: [], Manufactured: [], Encoded: [] };
+            if (entry.Paid)     adjustMaterial(liveMaterials, entry.Paid.Category,     entry.Paid.Material,     null, -(entry.Paid.Quantity     || 0));
+            if (entry.Received) adjustMaterial(liveMaterials, entry.Received.Category, entry.Received.Material, null,  (entry.Received.Quantity || 0));
+          }
+
+          if (ev === 'EngineerContribution' && entry.Type === 'Materials') {
+            if (!liveMaterials) liveMaterials = { Raw: [], Manufactured: [], Encoded: [] };
+            adjustMaterial(liveMaterials, entry.Category, entry.Name, null, -(entry.Quantity || 1));
+          }
+
+          if (ev === 'ScientificResearch') {
+            if (!liveMaterials) liveMaterials = { Raw: [], Manufactured: [], Encoded: [] };
+            adjustMaterial(liveMaterials, entry.Category, entry.Name, null, -(entry.Count || 1));
+          }
+
+          if (ev === 'EngineerCraft') {
+            if (!liveMaterials) liveMaterials = { Raw: [], Manufactured: [], Encoded: [] };
+            (entry.Ingredients || []).forEach(ing => {
+              adjustMaterial(liveMaterials, ing.Category || null, ing.Name, null, -(ing.Count || 1));
+            });
+          }
+
+          if (ev === 'Synthesis') {
+            if (!liveMaterials) liveMaterials = { Raw: [], Manufactured: [], Encoded: [] };
+            (entry.Materials || []).forEach(m => {
+              adjustMaterial(liveMaterials, m.Category || null, m.Name, null, -(m.Count || 1));
+            });
+          }
+
+          if (ev === 'MissionCompleted' && Array.isArray(entry.MaterialsReward)) {
+            if (!liveMaterials) liveMaterials = { Raw: [], Manufactured: [], Encoded: [] };
+            entry.MaterialsReward.forEach(m => {
+              adjustMaterial(liveMaterials, m.Category, m.Name, m.Name_Localised, m.Count || 1);
+            });
+          }
+
         }
 
         // ── PROFILE DATA ──────────────────────────────────────────────
@@ -709,6 +814,14 @@ async function run() {
       delete liveData._pendingLocation;
     }
     parentPort.postMessage({ type: 'live-data', data: liveData });
+  }
+
+  // ── Emit live materials (real-time inventory) ─────────────────────────────
+  // Sent as its own message (not folded into live-data above) since it needs
+  // to fire even on a pass where liveData never got set (e.g. a run whose
+  // only new lines were material events, with no Location/FSDJump in them).
+  if (doLive && liveMaterials) {
+    parentPort.postMessage({ type: 'materials-live', data: liveMaterials });
   }
 
   // ── Emit bodies-clear summary ─────────────────────────────────────────────
