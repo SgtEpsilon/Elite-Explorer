@@ -1001,6 +1001,47 @@
     abnormalcompactedrelativitysupport:'Abnormal Compact Relativity Support',
   };
 
+  // Category lookup so we can render the FULL known catalogue of materials
+  // (including ones the commander currently holds none of), not just the
+  // subset present in the live Materials journal event.
+  var MATERIAL_CATEGORY = {
+    // RAW
+    carbon:'Raw', iron:'Raw', lead:'Raw', nickel:'Raw', phosphorus:'Raw', rhenium:'Raw', sulphur:'Raw',
+    arsenic:'Raw', chromium:'Raw', germanium:'Raw', manganese:'Raw', vanadium:'Raw', zinc:'Raw', zirconium:'Raw',
+    boron:'Raw', cadmium:'Raw', mercury:'Raw', molybdenum:'Raw', niobium:'Raw', tin:'Raw', tungsten:'Raw',
+    antimony:'Raw', polonium:'Raw', ruthenium:'Raw', selenium:'Raw', technetium:'Raw', tellurium:'Raw', yttrium:'Raw',
+    // MANUFACTURED
+    basicconductors:'Manufactured', chemicalstorageunits:'Manufactured', compactcomposites:'Manufactured', crystalshards:'Manufactured',
+    gridresistors:'Manufactured', heatconductionwiring:'Manufactured', mechanicalscrap:'Manufactured', salvagedalloys:'Manufactured',
+    temperedalloys:'Manufactured', wornshieldemitters:'Manufactured',
+    chemicalprocessors:'Manufactured', conductivecomponents:'Manufactured', filamentcomposites:'Manufactured', flawedfocuscrystals:'Manufactured',
+    galvanisingalloys:'Manufactured', heatdispersionplate:'Manufactured', heatresistanttoughcomposite:'Manufactured',
+    mechanicalequipment:'Manufactured', shieldemitters:'Manufactured', uncutfocuscrystals:'Manufactured',
+    chemicaldistillery:'Manufactured', conductiveceramics:'Manufactured', conductiveceramic:'Manufactured', electrochemicalarrays:'Manufactured',
+    focuscrystals:'Manufactured', heatexchangers:'Manufactured', highdensitycomposites:'Manufactured', mechanicalcomponents:'Manufactured',
+    phasealloys:'Manufactured', precipitatedalloys:'Manufactured', refinedfocuscrystals:'Manufactured', shieldingsensors:'Manufactured',
+    unknownfragment:'Manufactured',
+    chemicalmanipulators:'Manufactured', compoundshielding:'Manufactured', conductivepolymers:'Manufactured', configurablecomponents:'Manufactured',
+    heatvanes:'Manufactured', polymercapacitors:'Manufactured', protoheatradiators:'Manufactured', militarygradealloys:'Manufactured',
+    militarysupercapacitors:'Manufactured', pharmaceuticalisolators:'Manufactured', thermicalloys:'Manufactured',
+    bioelectricchemicals:'Manufactured', biotechconductors:'Manufactured', corrosionresistantcargoracks:'Manufactured',
+    exquisitefocuscrystals:'Manufactured', exquisitecystalshards:'Manufactured', improvisedcomponents:'Manufactured',
+    magneticemittercoupling:'Manufactured', mutatingcatalyst:'Manufactured', protolightalloys:'Manufactured',
+    protoradiolicalloys:'Manufactured', rareexoticcrystals:'Manufactured', unknownenergysource:'Manufactured', unknownorganiccircuitry:'Manufactured',
+    // ENCODED
+    legacyfirmware:'Encoded', disruptedwakeechoes:'Encoded', anomalousbulkscandata:'Encoded',
+    unusualencryptedfiles:'Encoded', unidentifiedscanarchives:'Encoded', classifiedscandata:'Encoded',
+    consumerfirmware:'Encoded', fsdtelemetry:'Encoded', inconsistentshieldsoakanalysis:'Encoded',
+    encryptedfiles:'Encoded', encrytpedfiles:'Encoded', scanarchives:'Encoded', encodedscandata:'Encoded',
+    industrialfirmware:'Encoded', wakesolutions:'Encoded', symmetrickeys:'Encoded', embeddedfirmware:'Encoded',
+    securityfirmwarepatch:'Encoded', scannedemissiondata:'Encoded', adaptiveencryptors:'Encoded',
+    modifiedconsumerfirmware:'Encoded', hyperspacetrajectories:'Encoded', dataminedwake:'Encoded',
+    accessiblelogs:'Encoded', encryptionarchives:'Encoded', classifiedscanarchives:'Encoded',
+    classifiedfirmware:'Encoded', dataminedwakeexceptions:'Encoded', adaptiveencryptorsuite:'Encoded',
+    divergentscansensors:'Encoded', modifiedembeddedfirmware:'Encoded', securityfirmware:'Encoded',
+    abnormalcompactedrelativitysupport:'Encoded',
+  };
+
   var GRADE_MAX   = {1:300, 2:250, 3:200, 4:150, 5:100};
   var GRADE_COLOR = {1:'#a0b880', 2:'#7ecfcf', 3:'#d4b84a', 4:'#c080d0', 5:'#e07060'};
   var GRADE_CLS   = {1:'g1', 2:'g2', 3:'g3', 4:'g4', 5:'g5'};
@@ -1014,17 +1055,40 @@
     var CATS = ['Raw','Manufactured','Encoded'];
     var CAT_CLS_MAP = {Raw:'raw', Manufactured:'manufactured', Encoded:'encoded'};
 
-    // Build lookup: cat → grade → [items]
-    var byGroup = {};
+    // Build a name-based count lookup from the live inventory data. Keyed by
+    // "cat|displayName" (rather than the raw journal key) so that any known
+    // spelling alias for the same material (the game's Materials event has
+    // a couple of inconsistent symbols) still sums into the right total.
+    var nameCounts = {};
     CATS.forEach(function(cat) {
-      byGroup[cat] = {1:[],2:[],3:[],4:[],5:[]};
       (materials[cat] || []).forEach(function(m) {
         var key   = (m.Name || '').toLowerCase().replace(/[^a-z0-9]/g,'');
-        var grade = MATERIAL_GRADES[key] || null;
         var name  = m.Name_Localised || MATERIAL_FULL_NAMES[key] || m.Name || '?';
-        if (grade) byGroup[cat][grade].push({name:name, count:m.Count||0});
+        var lookupKey = cat + '|' + name;
+        nameCounts[lookupKey] = (nameCounts[lookupKey] || 0) + (m.Count || 0);
       });
-      // Sort each cell alphabetically
+    });
+
+    // Build lookup: cat → grade → [items], from the FULL known material
+    // catalogue (not just what's currently in the inventory), so every
+    // material shows even when the commander is holding 0 of it.
+    var byGroup = {};
+    CATS.forEach(function(cat) { byGroup[cat] = {1:[],2:[],3:[],4:[],5:[]}; });
+
+    var seen = {}; // dedup on cat|grade|name, since a couple of raw keys share a display name
+    Object.keys(MATERIAL_CATEGORY).forEach(function(key) {
+      var cat = MATERIAL_CATEGORY[key];
+      var grade = MATERIAL_GRADES[key];
+      if (!cat || !grade) return;
+      var name = MATERIAL_FULL_NAMES[key] || key;
+      var dedupKey = cat + '|' + grade + '|' + name;
+      if (seen[dedupKey]) return;
+      seen[dedupKey] = true;
+      byGroup[cat][grade].push({ name: name, count: nameCounts[cat + '|' + name] || 0 });
+    });
+
+    // Sort each cell alphabetically
+    CATS.forEach(function(cat) {
       [1,2,3,4,5].forEach(function(g) {
         byGroup[cat][g].sort(function(a,b){ return a.name.localeCompare(b.name); });
       });

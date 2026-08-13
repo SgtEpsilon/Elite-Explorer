@@ -49,20 +49,7 @@ const _cache = {
   bodiesData:   null,   // last bodies-data payload
   missionsData: null,   // last missions-data payload
   guardianSite: null,   // last guardian-site-active payload (site record or null)
-  materialsData:null,   // last real-time materials snapshot (live worker), see buildLiveSeed()
 };
-
-// Deep-ish clone of a { Raw, Manufactured, Encoded } materials object — each
-// bucket's items are cloned too, since journalWorker mutates Count in place
-// on the object it's handed and we don't want that touching the cache.
-function cloneMaterials(materials) {
-  if (!materials) return null;
-  return {
-    Raw:          (materials.Raw          || []).map(m => ({ ...m })),
-    Manufactured: (materials.Manufactured || []).map(m => ({ ...m })),
-    Encoded:      (materials.Encoded      || []).map(m => ({ ...m })),
-  };
-}
 
 // Pushes guardian-site-active to the renderer whenever guardianLiveState
 // changes — set up once at module load (not inside start()) since
@@ -93,11 +80,6 @@ function buildLiveSeed() {
     liveSignals:    _cache.bodiesData ? { ...(_cache.bodiesData.signals || {}) } : {},
     liveStations:   { ..._liveSeedMaps.stations },
     liveMissions:   _cache.missionsData ? { ...(_cache.missionsData.missions || {}) } : {},
-    // Prefer the last real-time-tracked materials state (materialsData) —
-    // it's always at least as fresh as the profile scan's snapshot, since
-    // the live tail sees the same 'Materials' login event too. Only fall
-    // back to the profile scan's snapshot before any live pass has run yet.
-    liveMaterials:  cloneMaterials(_cache.materialsData || (_cache.profileData && _cache.profileData.materials)),
   };
 }
 
@@ -201,18 +183,6 @@ function runWorker(files, { mode = 'all', useLastProcessed = false, updateLastPr
           _cache.profileData = msg.data;
           send('profile-data', msg.data);
           eventBus.emit('journal.profile', msg.data);
-          break;
-
-        case 'materials-live':
-          // Real-time inventory update from the live journal tail (material
-          // collected/discarded/traded/crafted/etc — see journalWorker.js).
-          // Merged into the existing profile-data payload and re-sent on the
-          // same channel so profile.html's current onProfileData handler
-          // (which already renders p.materials) picks this up with no new
-          // IPC channel needed.
-          _cache.materialsData = msg.data;
-          _cache.profileData = { ...(_cache.profileData || {}), materials: msg.data };
-          send('profile-data', _cache.profileData);
           break;
 
         case 'bodies-clear-summary': {
