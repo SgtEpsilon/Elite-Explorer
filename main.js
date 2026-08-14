@@ -21,6 +21,7 @@ if (!gotLock) {
 const logger           = require('./engine/core/logger');
 const journalProvider  = require('./engine/providers/journalProvider');
 const historyProvider  = require('./engine/providers/historyProvider');
+const exobiologyProvider = require('./engine/providers/exobiologyProvider');
 const edsmClient       = require('./engine/services/edsmClient');
 const eddnRelay        = require('./engine/services/eddnRelay');
 const edsmSyncService  = require('./engine/services/edsmSyncService');
@@ -171,6 +172,7 @@ function createWindow() {
   // ── Wire mainWindow into every service that sends to the renderer ─────────
   journalProvider .setMainWindow(mainWindow);
   historyProvider .setMainWindow(mainWindow);
+  exobiologyProvider.setMainWindow(mainWindow);
   edsmClient      .setMainWindow(mainWindow);
   eddnRelay       .setMainWindow(mainWindow);
   edsmSyncService .setMainWindow(mainWindow);
@@ -184,6 +186,7 @@ function createWindow() {
   // appears immediately without re-scanning.
   mainWindow.webContents.on('did-finish-load', () => {
     historyProvider.replayToPage();      // → history-data
+    exobiologyProvider.replayToPage();   // → exobiology-data
     journalProvider.replayToPage();      // → live-data, profile-data, bodies-data
     edsmClient.replayToPage();           // → edsm-system, edsm-bodies
     capiProvider.replayToPage();         // → capi-profile-data, capi-market-data, capi-shipyard-data, capi-fleetcarrier-data, capi-communitygoals-data
@@ -229,6 +232,18 @@ app.whenReady().then(async () => {
   eventBus.on('journal.raw.FSDJump', (entry) => {
     historyProvider.appendJump(entry);
   });
+
+  // ── Auto-update exobiology catalog on every organic scan/sale ────────────
+  // ScanOrganic and SellOrganicData update the cache directly; FSDJump/
+  // Location/Touchdown just keep the provider's "where am I" context current
+  // so a ScanOrganic entry (which carries no system/body name of its own)
+  // can still be attributed correctly. See exobiologyProvider.js.
+  eventBus.on('journal.raw.FSDJump',       (entry) => exobiologyProvider.noteLocation(entry));
+  eventBus.on('journal.raw.Location',      (entry) => exobiologyProvider.noteLocation(entry));
+  eventBus.on('journal.raw.Touchdown',     (entry) => exobiologyProvider.noteBody(entry));
+  eventBus.on('journal.raw.ScanOrganic',   (entry) => exobiologyProvider.appendEvent('ScanOrganic', entry));
+  eventBus.on('journal.raw.CodexEntry',    (entry) => exobiologyProvider.appendEvent('CodexEntry', entry));
+  eventBus.on('journal.raw.SellOrganicData', (entry) => exobiologyProvider.appendEvent('SellOrganicData', entry));
   const cfg = readConfig();
   const apiPort = cfg.apiPort || 3721;
   api.start(apiPort);  // REST API, port from live config (fallback 3721)
@@ -243,6 +258,7 @@ app.whenReady().then(async () => {
       mainWindow,
       journalProvider,
       historyProvider,
+      exobiologyProvider,
       edsmSyncService,
       edsmClient,
       capiService,
@@ -266,6 +282,11 @@ app.whenReady().then(async () => {
   // historyProvider.scan() spawns a Worker Thread that reads ALL journal files
   // for FSDJump entries and emits history-data when done.
   historyProvider.scan();
+
+  // exobiologyProvider.scan() spawns a Worker Thread that reads ALL journal
+  // files for ScanOrganic/CodexEntry/SellOrganicData entries and emits
+  // exobiology-data when done.
+  exobiologyProvider.scan();
 
   await capiService.start();
   capiProvider.start();
@@ -466,6 +487,7 @@ ipcMain.handle('guardian-get-site', (_e, key) => {
 
 ipcMain.handle('trigger-scan-all', () => { journalProvider.scanAll(); return true; });
 ipcMain.handle('trigger-history-scan', () => { historyProvider.scan(); return true; });
+ipcMain.handle('trigger-exobiology-scan', () => { exobiologyProvider.scan(); return true; });
 ipcMain.handle('trigger-profile-refresh', () => { journalProvider.refreshProfile(); return true; });
 
 // Multi-commander: list known CMDRs (by FID) in the journal folder, and
@@ -475,7 +497,7 @@ ipcMain.handle('trigger-profile-refresh', () => { journalProvider.refreshProfile
 ipcMain.handle('list-commanders', () => journalProvider.listCommanders());
 ipcMain.handle('set-viewing-commander', async (_e, fid) => {
   const ok = await journalProvider.setViewingCommander(fid);
-  if (ok) historyProvider.scan();
+  if (ok) { historyProvider.scan(); exobiologyProvider.scan(); }
   return ok;
 });
 

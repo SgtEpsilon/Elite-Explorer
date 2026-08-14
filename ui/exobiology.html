@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
 <meta charset="UTF-8">
-<title>Elite Explorer — History</title>
+<title>Elite Explorer — Exobiology</title>
 <link rel="stylesheet" href="styles.css">
 </head>
 <body>
@@ -21,8 +21,8 @@
     <a class="tab-btn" href="ship.html">Ship</a>
     <a class="tab-btn" href="profile.html">Profile</a>
     <a class="tab-btn" href="carrier.html">Carrier</a>
-    <a class="tab-btn active" href="history.html">History</a>
-    <a class="tab-btn" href="exobiology.html">Exobiology</a>
+    <a class="tab-btn" href="history.html">History</a>
+    <a class="tab-btn active" href="exobiology.html">Exobiology</a>
     <a class="tab-btn" href="spansh.html">Spansh</a>
     <a class="tab-btn" href="guardian.html">Guardian Sites<span id="gdn-live-dot" class="gdn-live-dot" title="Currently at a Guardian site" hidden></span></a>
   </div>
@@ -34,76 +34,60 @@
 
 <div id="app-wrapper">
 
-  <div id="view-history" class="active">
+  <div id="view-exobiology" class="active">
 
     <!-- Toolbar -->
-    <div id="hist-toolbar">
-      <span style="font-family:var(--display);font-size:0.7em;letter-spacing:0.2em;color:var(--text-dim)">TRAVEL LOG</span>
-      <span id="hist-count" style="font-size:0.75em;color:var(--text-mute)">&#8212;</span>
-      <span id="hist-scan-status" style="font-size:0.72em;color:var(--text-mute);font-family:var(--mono);"></span>
+    <div id="exo-toolbar">
+      <span style="font-family:var(--display);font-size:0.7em;letter-spacing:0.2em;color:var(--text-dim)">EXOBIOLOGY LOG</span>
+      <span id="exo-count" style="font-size:0.75em;color:var(--text-mute)">&#8212;</span>
+      <span id="exo-scan-status" style="font-size:0.72em;color:var(--text-mute);font-family:var(--mono);"></span>
       <div style="flex:1"></div>
       <label style="display:flex;align-items:center;gap:6px;font-size:0.75em;color:var(--text-dim);cursor:pointer;">
-        <input type="checkbox" id="hist-filter-disco" style="accent-color:var(--gold)"> First Discoveries Only
+        <input type="checkbox" id="exo-filter-disco" style="accent-color:var(--gold)"> First Discoveries Only
       </label>
-      <input id="hist-search" type="text" placeholder="Filter systems&hellip;" spellcheck="false"
-        style="background:var(--bg);border:1px solid var(--border);color:var(--text);padding:4px 8px;font-size:0.75em;width:160px;border-radius:2px;font-family:var(--mono);">
-      <button id="hist-rescan-btn" title="Re-scan all journals">&#8635; Rescan</button>
+      <label style="display:flex;align-items:center;gap:6px;font-size:0.75em;color:var(--text-dim);cursor:pointer;">
+        <input type="checkbox" id="exo-filter-sold" style="accent-color:var(--cyan)"> Sold Only
+      </label>
+      <input id="exo-search" type="text" placeholder="Filter genus / species&hellip;" spellcheck="false"
+        style="background:var(--bg);border:1px solid var(--border);color:var(--text);padding:4px 8px;font-size:0.75em;width:180px;border-radius:2px;font-family:var(--mono);">
+      <button id="exo-rescan-btn" title="Re-scan all journals">&#8635; Rescan</button>
     </div>
 
     <!-- Progress bar (journal scan) -->
-    <div id="hist-progress-wrap">
-      <div id="hist-progress-track"><div id="hist-progress-bar"></div></div>
-    </div>
-
-    <!-- EDSM progress bar (discovery check + star/body enrichment) -->
-    <div id="edsm-progress-wrap" style="display:none;align-items:center;gap:10px;padding:3px 12px;background:rgba(0,0,0,0.2);border-bottom:1px solid var(--border);">
-      <span id="edsm-check-status" style="font-family:var(--mono);font-size:0.68em;color:var(--text-mute);letter-spacing:0.05em;white-space:nowrap;"></span>
-      <div style="flex:1;height:2px;background:var(--border2);border-radius:1px;">
-        <div id="edsm-progress-bar-inner" style="height:100%;width:0%;background:var(--cyan);border-radius:1px;transition:width 0.4s;"></div>
-      </div>
+    <div id="exo-progress-wrap">
+      <div id="exo-progress-track"><div id="exo-progress-bar"></div></div>
     </div>
 
     <!-- Scrollable content -->
     <div style="flex:1;overflow-y:auto;">
 
       <!-- Empty / scanning state -->
-      <div id="hist-scanning">
-        <div style="font-size:2em;opacity:0.4">&#11041;</div>
+      <div id="exo-scanning">
+        <div style="font-size:2em;opacity:0.4">&#10048;</div>
         <div style="font-family:var(--display);letter-spacing:0.15em;">SCANNING JOURNALS&hellip;</div>
-        <div style="font-size:0.8em;" id="hist-scanning-sub">Reading journal files</div>
+        <div style="font-size:0.8em;" id="exo-scanning-sub">Reading journal files</div>
       </div>
 
-      <div id="hist-empty" style="display:flex;flex-direction:column;align-items:center;justify-content:center;height:60vh;gap:12px;color:var(--text-mute);">
-        <div style="font-size:2.5em;opacity:0.25">&#128336;</div>
-        <div style="font-family:var(--display);letter-spacing:0.15em;">NO HISTORY YET</div>
-        <div style="font-size:0.8em;">Journal data will appear here automatically on startup</div>
+      <div id="exo-empty" style="display:none;flex-direction:column;align-items:center;justify-content:center;height:60vh;gap:12px;color:var(--text-mute);">
+        <div style="font-size:2.5em;opacity:0.25">&#10048;</div>
+        <div style="font-family:var(--display);letter-spacing:0.15em;">NO ORGANISMS LOGGED YET</div>
+        <div style="font-size:0.8em;">Scan a biological signal with the Genetic Sampler and it'll show up here</div>
       </div>
 
-      <table id="hist-table" style="display:none;">
-        <thead>
-          <tr>
-            <th></th>
-            <th>SYSTEM</th>
-            <th>TIMESTAMP</th>
-            <th style="text-align:right">JUMP DIST</th>
-            <th>STAR CLASS</th>
-            <th style="text-align:right">BODIES</th>
-          </tr>
-        </thead>
-        <tbody id="hist-tbody"></tbody>
-      </table>
+      <div id="exo-genus-list" style="display:none;padding:14px 16px 24px;"></div>
 
     </div><!-- /scroll -->
 
     <!-- Stats bar -->
-    <div id="hist-stats-bar" style="display:none;">
-      <div><span style="color:var(--text-dim)">Total Jumps&nbsp;</span><span id="hstat-jumps" style="color:var(--cyan);font-family:var(--mono)">0</span></div>
-      <div><span style="color:var(--text-dim)">First Discoveries&nbsp;</span><span id="hstat-disco" style="color:var(--gold);font-family:var(--mono)">0</span></div>
-      <div><span style="color:var(--text-dim)">Distance Traveled&nbsp;</span><span id="hstat-dist" style="color:var(--cyan2);font-family:var(--mono)">0 ly</span></div>
-      <div><span style="color:var(--text-dim)">Farthest Single Jump&nbsp;</span><span id="hstat-farthest" style="color:var(--text);font-family:var(--mono)">0 ly</span></div>
+    <div id="exo-stats-bar" style="display:none;">
+      <div><span style="color:var(--text-dim)">Species Logged&nbsp;</span><span id="estat-species" style="color:var(--cyan);font-family:var(--mono)">0</span></div>
+      <div><span style="color:var(--text-dim)">Genera Represented&nbsp;</span><span id="estat-genera" style="color:var(--cyan2);font-family:var(--mono)">0</span></div>
+      <div><span style="color:var(--text-dim)">First Discoveries&nbsp;</span><span id="estat-disco" style="color:var(--gold);font-family:var(--mono)">0</span></div>
+      <div><span style="color:var(--text-dim)">Individuals Scanned&nbsp;</span><span id="estat-individuals" style="color:var(--text);font-family:var(--mono)">0</span></div>
+      <div><span style="color:var(--text-dim)">Credits Earned&nbsp;</span><span id="estat-credits" style="color:var(--gold);font-family:var(--mono)">0 CR</span></div>
     </div>
 
-  </div><!-- /view-history -->
+  </div><!-- /view-exobiology -->
 
 </div><!-- /app-wrapper -->
 
@@ -148,24 +132,13 @@
       </div>
       <button class="sl-reset" id="sl-reset-all">&#8635; Reset All Display Settings</button>
     </div>
-    <div class="opt-section">
-      <div class="opt-section-title">EDSM &#8212; Flight Log</div>
-      <button class="opt-action-btn" id="opt-edsm-sync-btn">
-        <span class="opt-btn-icon">&#11015;</span>
-        <div><div class="opt-btn-label">Pull Data from EDSM</div><div class="opt-btn-sub" id="opt-edsm-sync-hint">Pull your EDSM history &amp; merge with local journals</div></div>
-      </button>
-      <button class="opt-action-btn" id="opt-import-stars-btn" style="margin-top:6px;">
-        <span class="opt-btn-icon">&#9733;</span>
-        <div><div class="opt-btn-label">Import First Discoveries (ImportStars.txt)</div><div class="opt-btn-sub" id="opt-import-stars-hint">Import your EDSM first-discovery list</div></div>
-      </button>
-    </div>
   </div>
 </div>
 
 <script src="starfield.js"></script>
 <script src="display-settings.js"></script>
 <script src="commander-switcher.js"></script>
-<script src="history-script.js"></script>
+<script src="exobiology-script.js"></script>
 <script src="update-modal.js"></script>
 <script src="prefs-modal.js"></script>
 </body>

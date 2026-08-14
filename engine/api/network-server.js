@@ -38,6 +38,7 @@ const networkBus = require('./networkBus');
 let _mainWindow         = null;
 let _journalProvider    = null;
 let _historyProvider    = null;
+let _exobiologyProvider = null;
 let _edsmSyncService    = null;
 let _edsmClient         = null;
 let _capiService        = null;
@@ -125,6 +126,9 @@ function buildApp() {
     if (_historyProvider && typeof _historyProvider.replayToPage === 'function') {
       try { _historyProvider.replayToPage(); } catch {}
     }
+    if (_exobiologyProvider && typeof _exobiologyProvider.replayToPage === 'function') {
+      try { _exobiologyProvider.replayToPage(); } catch {}
+    }
 
     req.on('close', () => {
       clearInterval(hb);
@@ -139,15 +143,17 @@ function buildApp() {
   app.get('/api/state', (_req, res) => {
     try {
       const journal = _journalProvider ? _journalProvider.getCache() : {};
-      const history = _historyProvider ? _historyProvider.getCache() : {};
-      const edsm    = _edsmClient      ? _edsmClient.getCache()      : {};
+      const history    = _historyProvider    ? _historyProvider.getCache()    : {};
+      const exobiology = _exobiologyProvider ? _exobiologyProvider.getCache() : {};
+      const edsm       = _edsmClient         ? _edsmClient.getCache()        : {};
       res.json({
-        liveData:    journal.liveData    || null,
-        profileData: journal.profileData || null,
-        bodiesData:  journal.bodiesData  || null,
-        historyData: history.jumps       || null,
-        edsmSystem:  edsm.system         || null,
-        edsmBodies:  edsm.bodies         || null,
+        liveData:      journal.liveData    || null,
+        profileData:   journal.profileData || null,
+        bodiesData:    journal.bodiesData  || null,
+        historyData:   history.jumps       || null,
+        exobiologyData: exobiology.species || null,
+        edsmSystem:    edsm.system         || null,
+        edsmBodies:    edsm.bodies         || null,
         ts: Date.now(),
       });
     } catch (e) { res.status(500).json({ error: e.message }); }
@@ -206,6 +212,11 @@ function buildApp() {
 
   app.post('/api/trigger-history-scan', (_req, res) => {
     try { _historyProvider.scan(); res.json({ ok: true }); }
+    catch (e) { res.status(500).json({ error: e.message }); }
+  });
+
+  app.post('/api/trigger-exobiology-scan', (_req, res) => {
+    try { _exobiologyProvider.scan(); res.json({ ok: true }); }
     catch (e) { res.status(500).json({ error: e.message }); }
   });
 
@@ -366,11 +377,12 @@ function buildApp() {
 }
 
 // ── Public API ────────────────────────────────────────────────────────────────
-function start({ mainWindow, journalProvider, historyProvider, edsmSyncService,
+function start({ mainWindow, journalProvider, historyProvider, exobiologyProvider, edsmSyncService,
                  edsmClient, capiService, readConfig, writeConfig, logger, port = 3722 }) {
   _mainWindow      = mainWindow;
   _journalProvider = journalProvider;
   _historyProvider = historyProvider;
+  _exobiologyProvider = exobiologyProvider;
   _edsmSyncService = edsmSyncService;
   _edsmClient      = edsmClient;
   _capiService     = capiService;

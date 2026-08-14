@@ -34,6 +34,12 @@ contextBridge.exposeInMainWorld('electronAPI', {
   onHistoryData:        (cb) => on('history-data',          cb),
   onHistoryPathMissing: (cb) => on('history-path-missing',  cb),
 
+  // Exobiology
+  onExobiologyScanStart:   (cb) => on('exobiology-scan-start',   cb),
+  onExobiologyProgress:    (cb) => on('exobiology-progress',     cb),
+  onExobiologyData:        (cb) => on('exobiology-data',         cb),
+  onExobiologyPathMissing: (cb) => on('exobiology-path-missing', cb),
+
   // ── Outbound: renderer → main (invoke / request) ─────────────────────────
   getJournalPath:    ()          => ipcRenderer.invoke('get-journal-path'),
   saveJournalPath:   (p)         => ipcRenderer.invoke('save-journal-path',      p),
@@ -46,6 +52,7 @@ contextBridge.exposeInMainWorld('electronAPI', {
 
   triggerScanAll:    ()          => ipcRenderer.invoke('trigger-scan-all'),
   triggerHistoryScan:()          => ipcRenderer.invoke('trigger-history-scan'),
+  triggerExobiologyScan: ()      => ipcRenderer.invoke('trigger-exobiology-scan'),
   triggerProfileRefresh: ()      => ipcRenderer.invoke('trigger-profile-refresh'),
 
   // Multi-commander

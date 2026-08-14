@@ -66,6 +66,7 @@
       if (stateChanged('profile', s.profileData)) fireChannel('profile-data', s.profileData);
       if (stateChanged('bodies',  s.bodiesData))  fireChannel('bodies-data',  s.bodiesData);
       if (stateChanged('history', s.historyData)) fireChannel('history-data', s.historyData);
+      if (stateChanged('exobiology', s.exobiologyData)) fireChannel('exobiology-data', s.exobiologyData);
       if (stateChanged('esystem', s.edsmSystem))  fireChannel('edsm-system',  s.edsmSystem);
       if (stateChanged('ebodies', s.edsmBodies))  fireChannel('edsm-bodies',  s.edsmBodies);
     } catch {}
@@ -107,6 +108,11 @@
     onHistoryData:        cb => onChannel('history-data',        cb),
     onHistoryPathMissing: cb => onChannel('history-path-missing', cb),
 
+    onExobiologyScanStart:   cb => onChannel('exobiology-scan-start',   cb),
+    onExobiologyProgress:    cb => onChannel('exobiology-progress',     cb),
+    onExobiologyData:        cb => onChannel('exobiology-data',         cb),
+    onExobiologyPathMissing: cb => onChannel('exobiology-path-missing', cb),
+
     onUpdateStatus:       cb => onChannel('update-status',       cb),
     onOpenPreferences:    cb => onChannel('open-preferences',    cb),
 
@@ -125,6 +131,7 @@
 
     triggerScanAll:        ()   => api('/api/trigger-scan-all',     {}),
     triggerHistoryScan:    ()   => api('/api/trigger-history-scan', {}),
+    triggerExobiologyScan: ()   => api('/api/trigger-exobiology-scan', {}),
     triggerProfileRefresh: ()   => api('/api/trigger-profile-refresh', {}),
 
     // In network mode the browser handles external links natively

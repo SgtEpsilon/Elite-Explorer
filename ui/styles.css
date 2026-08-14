@@ -980,6 +980,82 @@ tr.body-section-header td {
 #hist-rescan-btn:hover { color: var(--cyan); border-color: var(--cyan-dim); }
 
 /* ═══════════════════════════════════════════════════════
+   EXOBIOLOGY PAGE — toolbar, genus sections, species cards
+═══════════════════════════════════════════════════════ */
+
+#view-exobiology { display: flex; flex-direction: column; }
+
+#exo-toolbar {
+  display: flex; flex-wrap: wrap; align-items: center; gap: 12px;
+  padding: 8px 16px; border-bottom: 1px solid var(--border);
+  background: var(--bg2); flex-shrink: 0;
+}
+#exo-progress-wrap {
+  display: none; align-items: center; gap: 8px;
+  padding: 4px 16px; background: var(--bg); border-bottom: 1px solid var(--border); flex-shrink: 0;
+}
+#exo-progress-track { flex: 1; height: 3px; background: var(--border2); border-radius: 2px; overflow: hidden; }
+#exo-progress-bar   { height: 100%; width: 0%; background: var(--gold); transition: width 0.15s ease; }
+#exo-scanning {
+  display: flex; flex-direction: column; align-items: center;
+  justify-content: center; height: 60vh; gap: 12px; color: var(--text-mute);
+}
+#exo-rescan-btn {
+  font-family: var(--mono); font-size: 0.75em; letter-spacing: 0.1em;
+  text-transform: uppercase; color: var(--text-dim);
+  background: transparent; border: 1px solid var(--border2);
+  padding: 3px 10px; cursor: pointer; transition: all 0.15s;
+}
+#exo-rescan-btn:hover { color: var(--cyan); border-color: var(--cyan-dim); }
+#exo-stats-bar { flex-shrink: 0; display: flex; align-items: center; gap: 24px; padding: 7px 16px; border-top: 1px solid var(--border); background: var(--bg2); font-size: 0.75em; }
+
+.exo-genus-section { margin-bottom: 22px; }
+.exo-genus-header {
+  display: flex; align-items: baseline; gap: 10px;
+  padding: 4px 2px 8px; border-bottom: 1px solid var(--border2);
+  margin-bottom: 10px;
+}
+.exo-genus-name {
+  font-family: var(--display); font-size: 0.85em; letter-spacing: 0.12em;
+  color: var(--gold); text-transform: uppercase;
+}
+.exo-genus-count { font-family: var(--mono); font-size: 0.7em; color: var(--text-mute); }
+
+.exo-species-grid {
+  display: grid; grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
+  gap: 10px;
+}
+.exo-species-card {
+  background: var(--panel); border: 1px solid var(--border);
+  border-radius: 3px; padding: 10px 12px; transition: border-color 0.15s;
+}
+.exo-species-card:hover { border-color: var(--cyan-dim); }
+.exo-card-top { display: flex; align-items: flex-start; justify-content: space-between; gap: 6px; }
+.exo-species-name { font-family: var(--mono); font-size: 0.8em; color: var(--text); line-height: 1.3; }
+.exo-disco-star { color: var(--gold); font-size: 1em; line-height: 1; flex-shrink: 0; animation: discoveryPulse 2.4s ease-in-out infinite; }
+.exo-card-row { margin-top: 6px; }
+.exo-sold-badge {
+  font-family: var(--mono); font-size: 0.62em; letter-spacing: 0.08em;
+  color: var(--cyan2); border: 1px solid var(--cyan-dim); border-radius: 2px;
+  padding: 1px 6px; display: inline-block;
+}
+.exo-unsold-badge {
+  font-family: var(--mono); font-size: 0.62em; letter-spacing: 0.08em;
+  color: var(--text-mute); border: 1px solid var(--border2); border-radius: 2px;
+  padding: 1px 6px; display: inline-block; opacity: 0.7;
+}
+.exo-card-stats {
+  display: flex; justify-content: space-between; gap: 8px;
+  margin-top: 8px; padding-top: 8px; border-top: 1px solid rgba(255,255,255,0.05);
+}
+.exo-card-stats > div { display: flex; flex-direction: column; align-items: flex-start; }
+.exo-stat-label { font-family: var(--mono); font-size: 0.55em; letter-spacing: 0.06em; color: var(--text-mute); text-transform: uppercase; }
+.exo-stat-val { font-family: var(--display); font-size: 0.85em; font-weight: 700; color: var(--text); }
+.exo-stat-credits { color: var(--gold); }
+.exo-card-first { margin-top: 8px; font-family: var(--mono); font-size: 0.6em; color: var(--text-mute); line-height: 1.4; }
+
+
+/* ═══════════════════════════════════════════════════════
    SPANSH PAGE — sub-tabs, form, results table
 ═══════════════════════════════════════════════════════ */
 

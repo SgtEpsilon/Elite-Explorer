@@ -167,7 +167,20 @@ async function run() {
         // ── Raw event forwarding for EDDN relay (live watcher only) ──
         // Location and CarrierJump are needed so eddnRelay can track
         // StarPos from the moment the session starts (not just on jumps).
-        if (doLive && (ev === 'FSDJump' || ev === 'Docked' || ev === 'Location' || ev === 'CarrierJump')) {
+        if (doLive && (ev === 'FSDJump' || ev === 'Docked' || ev === 'Location' || ev === 'CarrierJump' || ev === 'Touchdown')) {
+          parentPort.postMessage({ type: 'raw', event: ev, entry });
+        }
+
+        // ── Raw event forwarding for exobiologyProvider (live watcher only) ──
+        // ScanOrganic fires once per genetic sample taken; CodexEntry fires
+        // for every Codex-eligible discovery (we only care about the Biology
+        // category here — the provider filters that down further) and tells
+        // us whether this is the commander's first-ever log of that trait;
+        // SellOrganicData fires once per organism handed in to Vista Genomics
+        // and carries the actual credits paid, which is more reliable ground
+        // truth than trying to hardcode a per-species value table that drifts
+        // out of date whenever Frontier rebalances exobiology payouts.
+        if (doLive && (ev === 'ScanOrganic' || ev === 'CodexEntry' || ev === 'SellOrganicData')) {
           parentPort.postMessage({ type: 'raw', event: ev, entry });
         }
 
