@@ -68,6 +68,10 @@
   width: 9px; height: 9px; border-radius: 50%; background: var(--text);
   box-shadow: 0 0 5px var(--text);
 }
+.gdn-swatch-footprint {
+  width: 9px; height: 9px; border-radius: 1px; background: rgba(var(--cyan-rgb),0.15);
+  border: 1px dashed var(--cyan);
+}
 
 .gdn-info { top: 12px; left: 12px; max-width: 260px; }
 .gdn-info-title {

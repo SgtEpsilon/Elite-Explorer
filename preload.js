@@ -110,6 +110,10 @@ contextBridge.exposeInMainWorld('electronAPI', {
   // Guardian Sites
   onGuardianSiteActive:   (cb) => on('guardian-site-active',    cb),
   onGuardianLivePosition: (cb) => on('guardian-live-position',  cb),
+
+  // Exobiology live sample-distance HUD
+  onExoSampleProgress: (cb) => on('exo-sample-progress', cb),
+  onExoSampleComplete: (cb) => on('exo-sample-complete', cb),
   getGuardianSites:       ()   => ipcRenderer.invoke('guardian-get-sites'),
   getGuardianSite:        (key) => ipcRenderer.invoke('guardian-get-site', key),
 

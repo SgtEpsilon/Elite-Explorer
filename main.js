@@ -25,6 +25,7 @@ const exobiologyProvider = require('./engine/providers/exobiologyProvider');
 const edsmClient       = require('./engine/services/edsmClient');
 const eddnRelay        = require('./engine/services/eddnRelay');
 const edsmSyncService  = require('./engine/services/edsmSyncService');
+const edsmSystemCache  = require('./engine/services/edsmSystemCache');
 const capiService      = require('./engine/services/capiService');
 const capiProvider     = require('./engine/providers/capiProvider');
 const updaterService   = require('./engine/services/updaterService');
@@ -125,8 +126,13 @@ function createWindow() {
     // styles.css) so the topbar always has comfortable room. At this width
     // the page-name tabs will wrap onto a second row if they don't all fit,
     // which is the desired behavior, not a bug.
-    minWidth:  960,
-    minHeight: 620,
+    // Also needs to comfortably fit the Materials page's 5-column grade
+    // grid (.mat-table, min-width: 900px in styles.css) — that table can
+    // scroll horizontally if forced to, but at the old 960 minWidth it was
+    // basically always forced to, once page padding/scrollbar are
+    // accounted for. 1080 gives it real breathing room.
+    minWidth:  1080,
+    minHeight: 640,
     icon: path.join(__dirname, 'icon.png'),
     backgroundColor: '#090e18',
     webPreferences: {
@@ -278,6 +284,22 @@ app.whenReady().then(async () => {
   //   2. readProfileData()  → emits profile-data to renderer
   //   3. chokidar watcher   → tails latest journal for real-time updates
   journalProvider.start();
+
+  // Profile refresh poll — moved here from ui/script.js, which only ran
+  // this while index.html/Live happened to be the loaded page (so Profile/
+  // Materials silently went stale on every other tab). Owning it here
+  // means it fires regardless of what page is currently open; send()
+  // inside journalProvider is a no-op-safe fire at the single window
+  // either way. Rank/stats/materials-adjacent fields (Overview sub-tab)
+  // change infrequently and each pass scans journal files + spins up a
+  // Worker thread, so this still isn't real-time — the Materials page
+  // itself no longer depends on this at all now that Materials journal
+  // events are live-forwarded directly (see journalProvider.js's
+  // 'journal.raw.Materials' handler). 3 minutes balances "more regularly"
+  // against not burning CPU on a Worker spawn every few seconds; tune via
+  // PROFILE_REFRESH_INTERVAL_MS below if it's still too slow or too heavy.
+  const PROFILE_REFRESH_INTERVAL_MS = 3 * 60 * 1000;
+  setInterval(() => { journalProvider.refreshProfile(); }, PROFILE_REFRESH_INTERVAL_MS);
 
   // historyProvider.scan() spawns a Worker Thread that reads ALL journal files
   // for FSDJump entries and emits history-data when done.
@@ -533,9 +555,17 @@ ipcMain.handle('check-edsm-discovery-bulk', async (_e, systemNames) => {
 // Takes [{system, index}] for rows that are missing starClass or bodyCount.
 // Uses EDSM /api-system-v1/bodies which returns primary star + body list in one
 // call. Rate-limited to 250ms between requests to respect EDSM's policy.
+// Backed by the same edsm_system_cache table historyProvider's background
+// enrichMissing() uses, so a manual call here and the automatic background
+// pass never fetch the same system twice.
 ipcMain.handle('enrich-history-bulk', async (_e, systems) => {
   const results = [];
   for (const { system, index } of systems) {
+    const cached = edsmSystemCache.getCached(system);
+    if (cached && (cached.starClass || cached.bodyCount != null)) {
+      results.push({ system, index, starClass: cached.starClass, bodyCount: cached.bodyCount, ok: true });
+      continue;
+    }
     try {
       const url = `https://www.edsm.net/api-system-v1/bodies?systemName=${encodeURIComponent(system)}`;
       const res = await fetch(url, { signal: AbortSignal.timeout(8000) });
@@ -548,6 +578,7 @@ ipcMain.handle('enrich-history-bulk', async (_e, systems) => {
         const starClass  = primaryStar ? (primaryStar.subType || primaryStar.spectralClass || null) : null;
         // bodyCount from API meta field, or count the bodies array
         const bodyCount  = data.bodyCount != null ? data.bodyCount : (bodies.length > 0 ? bodies.length : null);
+        edsmSystemCache.setCached(system, starClass, bodyCount);
         results.push({ system, index, starClass, bodyCount, ok: true });
       } else {
         results.push({ system, index, starClass: null, bodyCount: null, ok: false });

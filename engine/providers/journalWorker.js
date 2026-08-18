@@ -184,6 +184,16 @@ async function run() {
           parentPort.postMessage({ type: 'raw', event: ev, entry });
         }
 
+        // ── Raw event forwarding for the Materials page (live watcher only) ──
+        // The Materials journal event is a full inventory snapshot (Raw/
+        // Manufactured/Encoded), not a delta — so journalProvider can patch
+        // the cached profile-data payload directly from this single event
+        // and push it straight to the renderer, without spawning a whole
+        // profile-mode Worker pass just to pick up a materials change.
+        if (doLive && ev === 'Materials') {
+          parentPort.postMessage({ type: 'raw', event: ev, entry });
+        }
+
         // ── LIVE DATA ─────────────────────────────────────────────────
         if (doLive) {
           if (ev === 'Location') {

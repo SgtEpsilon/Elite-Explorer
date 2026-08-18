@@ -12,6 +12,7 @@ const fs   = require('fs');
 const path = require('path');
 const { Worker } = require('worker_threads');
 const commanderRegistry = require('../services/commanderRegistry');
+const edsmSystemCache = require('../services/edsmSystemCache');
 
 const { app: electronApp } = (() => { try { return require('electron'); } catch { return {}; } })();
 
@@ -147,6 +148,7 @@ function scan() {
         }
 
         send('history-data', cachedJumps);
+        enrichMissing();
         break;
 
       case 'error':
@@ -169,6 +171,95 @@ function scan() {
 }
 
 function getCache() { return { jumps: cachedJumps }; }
+
+// ── EDSM background enrichment ──────────────────────────────────────────────
+// Runs automatically after every scan/append — entirely independent of
+// whether history.html happens to be the page currently loaded in the
+// window. Checks the local edsm_system_cache first (instant, no network)
+// and only falls back to EDSM's bodies API for systems genuinely never
+// resolved before, so a fresh install pays the network cost once per
+// system and every later launch (or app restart) is instant from then on.
+let _enriching = false;
+let _enrichQueued = false;
+const _failedThisSession = new Set(); // system_lower — systems EDSM has no data for, don't hammer it every append
+
+async function fetchEdsmBodies(system) {
+  try {
+    const url = `https://www.edsm.net/api-system-v1/bodies?systemName=${encodeURIComponent(system)}`;
+    const res = await fetch(url, { signal: AbortSignal.timeout(8000) });
+    if (!res.ok) return null;
+    const data = await res.json();
+    const bodies = Array.isArray(data.bodies) ? data.bodies : [];
+    const primaryStar = bodies.find(b => b.type === 'Star' && b.distanceToArrival === 0)
+                     || bodies.find(b => b.type === 'Star');
+    const starClass = primaryStar ? (primaryStar.subType || primaryStar.spectralClass || null) : null;
+    const bodyCount = data.bodyCount != null ? data.bodyCount : (bodies.length > 0 ? bodies.length : null);
+    return { starClass, bodyCount };
+  } catch {
+    return null;
+  }
+}
+
+function enrichMissing() {
+  if (!cachedJumps || !cachedJumps.length) return;
+  if (_enriching) { _enrichQueued = true; return; } // coalesce a burst of appendJump calls into one pass
+  _enriching = true;
+
+  (async () => {
+    const seen = new Set();
+    const targets = [];
+    for (const j of cachedJumps) {
+      if (j.starClass && j.bodyCount != null) continue;
+      const key = j.system.toLowerCase();
+      if (seen.has(key) || _failedThisSession.has(key)) continue;
+      seen.add(key);
+      targets.push(j.system);
+    }
+
+    let patchedAny = false;
+    let sinceSend  = 0;
+
+    for (const system of targets) {
+      const key = system.toLowerCase();
+
+      // 1. Local cache first — no network, no rate-limit cost.
+      let result = edsmSystemCache.getCached(system);
+
+      // 2. Cache miss — ask EDSM once, then persist so every future
+      //    launch skips the network for this system entirely.
+      if (!result) {
+        const fetched = await fetchEdsmBodies(system);
+        if (!fetched || (!fetched.starClass && fetched.bodyCount == null)) {
+          _failedThisSession.add(key);
+          await new Promise(r => setTimeout(r, 250));
+          continue;
+        }
+        edsmSystemCache.setCached(system, fetched.starClass, fetched.bodyCount);
+        result = fetched;
+        await new Promise(r => setTimeout(r, 250)); // respect EDSM's rate limit — only paid on actual network hits
+      }
+
+      // A commander may have jumped to the same system many times across
+      // the log — patch every row, not just the first match.
+      for (const j of cachedJumps) {
+        if (j.system.toLowerCase() !== key) continue;
+        if (!j.starClass && result.starClass)      j.starClass = result.starClass;
+        if (j.bodyCount == null && result.bodyCount != null) j.bodyCount = result.bodyCount;
+      }
+      patchedAny = true;
+      sinceSend++;
+
+      // Push in small batches (not once per system, not once at the end)
+      // so a History page that's open sees it fill in progressively.
+      if (sinceSend >= 5) { send('history-data', cachedJumps); sinceSend = 0; }
+    }
+
+    if (patchedAny) send('history-data', cachedJumps);
+
+    _enriching = false;
+    if (_enrichQueued) { _enrichQueued = false; enrichMissing(); }
+  })();
+}
 
 // ── Internal: build a jump object from a raw journal FSDJump entry ────────────
 function _makeJump(entry) {
@@ -202,6 +293,7 @@ function _doAppendJump(entry) {
   cachedJumps = [newJump, ...(cachedJumps || [])];
   console.log('[history] FSDJump appended:', newJump.system, '— total', cachedJumps.length);
   send('history-data', cachedJumps);
+  enrichMissing();
 }
 
 // ── Public: called by main.js on every journal.raw.FSDJump event ──────────────
@@ -222,4 +314,4 @@ function appendJump(entry) {
   _doAppendJump(entry);
 }
 
-module.exports = { scan, replayToPage, setMainWindow, getCache, appendJump };
+module.exports = { scan, replayToPage, setMainWindow, getCache, appendJump, enrichMissing };

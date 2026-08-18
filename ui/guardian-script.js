@@ -157,6 +157,83 @@
     legendPanel.hidden = !legendPanel.hidden;
   });
 
+  // ── Convex hull (monotonic chain) ────────────────────────────────────
+  // Used to derive an actual site *footprint* shape from the POI/group
+  // coordinates we already have, rather than showing them as floating dots
+  // with no sense of the structure's physical outline. Pure geometry over
+  // our own bearing/distance data — no external asset or template involved.
+  function cross2(o, a, b) { return (a.x - o.x) * (b.y - o.y) - (a.y - o.y) * (b.x - o.x); }
+  function convexHull(points) {
+    var pts = points.slice().sort(function (a, b) { return a.x - b.x || a.y - b.y; });
+    if (pts.length < 3) return pts;
+    var lower = [];
+    for (var i = 0; i < pts.length; i++) {
+      while (lower.length >= 2 && cross2(lower[lower.length - 2], lower[lower.length - 1], pts[i]) <= 0) lower.pop();
+      lower.push(pts[i]);
+    }
+    var upper = [];
+    for (var j = pts.length - 1; j >= 0; j--) {
+      while (upper.length >= 2 && cross2(upper[upper.length - 2], upper[upper.length - 1], pts[j]) <= 0) upper.pop();
+      upper.push(pts[j]);
+    }
+    upper.pop(); lower.pop();
+    return lower.concat(upper);
+  }
+
+  // ── Site footprint (derived shape + radial walkways) ────────────────────
+  function drawSiteFootprint(project) {
+    var pts = [];
+    var pois = state.site.pois || [];
+    for (var i = 0; i < pois.length; i++) pts.push(bearingDistanceToXY(pois[i].bearingDeg, pois[i].distanceM));
+    var groups = state.site.obeliskGroups || [];
+    for (var g = 0; g < groups.length; g++) pts.push(bearingDistanceToXY(groups[g].bearingDeg, groups[g].distanceM));
+    if (pts.length < 3) return; // not enough known points yet to imply a shape
+
+    pts.push({ x: 0, y: 0 }); // anchor point always counts toward the footprint
+
+    var hull = convexHull(pts);
+    if (hull.length >= 3) {
+      ctx.beginPath();
+      var p0 = project(hull[0].x, hull[0].y);
+      ctx.moveTo(p0.x, p0.y);
+      for (var h = 1; h < hull.length; h++) {
+        var ph = project(hull[h].x, hull[h].y);
+        ctx.lineTo(ph.x, ph.y);
+      }
+      ctx.closePath();
+      ctx.fillStyle = resolveColor('var(--cyan)');
+      ctx.globalAlpha = 0.055;
+      ctx.fill();
+      ctx.globalAlpha = 0.4;
+      ctx.strokeStyle = resolveColor('var(--cyan)');
+      ctx.lineWidth = 1;
+      ctx.setLineDash([4, 3]);
+      ctx.stroke();
+      ctx.setLineDash([]);
+      ctx.globalAlpha = 1;
+    }
+
+    // Radial "walkway" lines from the site centroid out to each known POI —
+    // Guardian structures and ruins are physically laid out radially around
+    // a central point, so this reads as the site's actual paths rather than
+    // an arbitrary connect-the-dots.
+    var cx = 0, cy = 0;
+    for (var k = 0; k < pts.length; k++) { cx += pts[k].x; cy += pts[k].y; }
+    cx /= pts.length; cy /= pts.length;
+    var cp = project(cx, cy);
+    ctx.strokeStyle = resolveColor('var(--border2)');
+    ctx.globalAlpha = 0.3;
+    ctx.lineWidth = 1;
+    for (var s = 0; s < pts.length; s++) {
+      var sp = project(pts[s].x, pts[s].y);
+      ctx.beginPath();
+      ctx.moveTo(cp.x, cp.y);
+      ctx.lineTo(sp.x, sp.y);
+      ctx.stroke();
+    }
+    ctx.globalAlpha = 1;
+  }
+
   // ── Drawing ───────────────────────────────────────────────────────────
   function draw() {
     var W = canvas.width / DPR, H = canvas.height / DPR;
@@ -191,6 +268,7 @@
     }
 
     drawSchematicBackground(project, rotationRad);
+    drawSiteFootprint(project);
 
     // POIs
     var pois = state.site.pois || [];

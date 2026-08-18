@@ -110,6 +110,42 @@ body {
   font-size: 1.1em;
   line-height: 1;
 }
+
+/* ── Live: exobiology sample-distance HUD (below topbar/fuel strip) ── */
+/* Driven by exo-sample-progress pushed from exoLiveState.js. Amber while
+   still inside the colony range (not far enough yet), green once the next
+   sample would count — same traffic-light logic as the fuel/hull alerts,
+   just inverted (green = go, not amber = warning). */
+.exo-sample-hud {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-shrink: 0;
+  padding: 6px 14px;
+  font-family: var(--display);
+  font-size: 0.7em;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: var(--text);
+  background: var(--bg2);
+  border-bottom: 1px solid var(--border);
+}
+.exo-sample-hud[hidden] { display: none !important; }
+.exo-sample-hud__icon { font-size: 1.1em; line-height: 1; color: var(--gold); flex-shrink: 0; }
+.exo-sample-hud__label { flex-shrink: 0; color: var(--text-dim); white-space: nowrap; }
+.exo-sample-hud__track {
+  flex: 1; max-width: 260px; height: 5px;
+  background: var(--border2); border-radius: 3px; overflow: hidden;
+}
+.exo-sample-hud__bar {
+  height: 100%; width: 0%; border-radius: 3px;
+  background: var(--gold);
+  transition: width 0.2s ease, background 0.2s ease;
+}
+.exo-sample-hud--met .exo-sample-hud__bar { background: var(--cyan); }
+.exo-sample-hud--met .exo-sample-hud__icon { color: var(--cyan); }
+.exo-sample-hud__dist { flex-shrink: 0; font-family: var(--mono); color: var(--text); }
+
 #app-wrapper {
   display: flex;
   flex-direction: column;
@@ -824,8 +860,16 @@ tr.body-section-header td {
 .eng-progress-fill { height: 100%; border-radius: 1px; background: var(--cyan); transition: width 0.8s ease; }
 .eng-no-data { padding: 32px 24px; font-family: var(--mono); font-size: 0.75em; color: var(--text-mute); opacity: 0.5; }
 
-/* Materials grid */
+/* Materials grid — 90px label column + 5 grade columns. Each grade column
+   needs ~150-170px to show an item name plus its count/max without the
+   name ellipsis eating the whole cell, so the table gets an explicit
+   min-width and its container scrolls horizontally rather than letting
+   the columns compress into an unreadable smear if the window is ever
+   narrower than that (see also main.js BrowserWindow minWidth, sized to
+   comfortably fit this without ever needing the scrollbar in practice). */
+#prof-materials-by-grade { overflow-x: auto; }
 .mat-table {
+  min-width: 900px;
   display: grid; grid-template-columns: 90px repeat(5, 1fr);
   border-top: 1px solid var(--border);
 }
@@ -983,7 +1027,7 @@ tr.body-section-header td {
    EXOBIOLOGY PAGE — toolbar, genus sections, species cards
 ═══════════════════════════════════════════════════════ */
 
-#view-exobiology { display: flex; flex-direction: column; }
+#view-exobiology { display: flex; flex-direction: column; flex: 1; min-height: 0; overflow: hidden; }
 
 #exo-toolbar {
   display: flex; flex-wrap: wrap; align-items: center; gap: 12px;

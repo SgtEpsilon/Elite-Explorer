@@ -93,6 +93,18 @@ async function init() {
     );
   `);
 
+  // See engine/db/schema.sql for the comment on why this exists —
+  // persistent local cache for History-page EDSM enrichment.
+  _db.run(`
+    CREATE TABLE IF NOT EXISTS edsm_system_cache (
+      system_name_lower TEXT PRIMARY KEY,
+      system_name TEXT,
+      star_class TEXT,
+      body_count INTEGER,
+      fetched_at TEXT
+    );
+  `);
+
   _migrateForMultiCommander();
 
   _ready = true;

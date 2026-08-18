@@ -5,6 +5,7 @@ const { Worker } = require('worker_threads');
 const eventBus = require('../core/eventBus');
 const logger   = require('../core/logger');
 const guardianLiveState = require('../services/guardianLiveState');
+const exoLiveState = require('../services/exoLiveState');
 const commanderRegistry = require('../services/commanderRegistry');
 const { bearingDistance } = require('../core/geo');
 
@@ -59,6 +60,38 @@ const _cache = {
 eventBus.on('guardian.siteActive', (site) => {
   _cache.guardianSite = site;
   send('guardian-site-active', site);
+});
+
+// Same pattern for the exobiology sample-distance HUD: exoLiveState owns
+// the session logic, journalProvider just relays whatever it reports to
+// the renderer. journal.raw.ScanOrganic already exists — journalWorker.js
+// forwards it live for the EDDN relay — so recordScan() just piggybacks on
+// that same live stream rather than needing a new journal-parsing path.
+eventBus.on('journal.raw.ScanOrganic', (entry) => {
+  exoLiveState.recordScan(entry);
+});
+eventBus.on('exo.sessionChanged', (progress) => {
+  send('exo-sample-progress', progress);
+});
+eventBus.on('exo.sampleComplete', (session) => {
+  send('exo-sample-complete', session);
+});
+
+// Materials page: patch the cached profile-data payload in place from the
+// live Materials event (a full snapshot already, see journalWorker.js) and
+// re-push it immediately — the Materials page updates as fast as the game
+// writes the journal, no waiting on the periodic full profile refresh.
+eventBus.on('journal.raw.Materials', (entry) => {
+  if (!_cache.profileData) return; // no full scan yet this session — next scan will pick it up
+  _cache.profileData = {
+    ..._cache.profileData,
+    materials: {
+      Raw:          entry.Raw          || [],
+      Manufactured: entry.Manufactured || [],
+      Encoded:      entry.Encoded      || [],
+    },
+  };
+  send('profile-data', _cache.profileData);
 });
 
 // Raw keyed maps behind the last bodies-data payload (the worker sends both
@@ -533,6 +566,36 @@ function start() {
     }
   }
 
+  // ── Status.json → exobiology live sample-distance tracking ────────────
+  // Mirrors readStatusGuardianPosition above, but feeds exoLiveState
+  // instead: every tick we hand it the current fix (if any) and, if a
+  // sampling session is active, ask it to recompute distance-to-nearest-
+  // sample and push that to the renderer. Unlike the Guardian path this
+  // runs on every tick unconditionally (not gated on "is a site active")
+  // since exoLiveState itself is cheap and needs a live position ready
+  // the instant a ScanOrganic event arrives — the distance calc gate is
+  // inside getProgress() instead.
+  function readStatusExoPosition() {
+    try {
+      const raw    = fs.readFileSync(statusPath, 'utf8');
+      const status = JSON.parse(raw);
+
+      if (status.Latitude == null || status.Longitude == null) {
+        exoLiveState.clearPosition();
+        return; // not on a surface — nothing to track against
+      }
+
+      exoLiveState.updatePosition(status.Latitude, status.Longitude, status.PlanetRadius ?? null);
+
+      if (exoLiveState.getSession()) {
+        send('exo-sample-progress', exoLiveState.getProgress());
+      }
+    } catch {
+      // Status.json transiently locked, or the commander isn't on a body
+      // surface right now (fields simply absent) — either way, skip quietly.
+    }
+  }
+
   const statusWatcher = chokidar.watch(statusPath, {
     persistent:       true,
     ignoreInitial:    false,   // read once on start so the bar is correct immediately
@@ -542,6 +605,8 @@ function start() {
   statusWatcher.on('change', readStatusFuel);
   statusWatcher.on('add',    readStatusGuardianPosition);
   statusWatcher.on('change', readStatusGuardianPosition);
+  statusWatcher.on('add',    readStatusExoPosition);
+  statusWatcher.on('change', readStatusExoPosition);
 }
 
 // ── refreshProfile: re-scan profile data on demand (used by 2-min poll) ──────

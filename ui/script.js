@@ -1475,6 +1475,57 @@ if (window.electronAPI) {
     }
   });
 
+  // ── Exobiology sample-distance HUD ──────────────────────────────────────
+  // Fed by exoLiveState.js on the main process: fires on every ScanOrganic
+  // event (new/updated session) and on every Status.json tick while a
+  // session is active (so the bar/distance move as you drive, not just
+  // when a sample lands). requiredM/distanceM can be null — genus not in
+  // our colony-range table yet, or no position fix — so this renders a
+  // "raw distance, unknown target" state rather than guessing.
+  function genusShortName(p) {
+    var name = p.genusName || p.genus || 'Unknown';
+    return String(name).replace(/^\$Codex_Ent_/, '').replace(/_Genus_Name;?$/, '').replace(/;$/, '');
+  }
+
+  function renderExoSampleHud(p) {
+    var hud = document.getElementById('exo-sample-hud');
+    if (!hud) return;
+
+    if (!p) { hud.hidden = true; hud.classList.remove('exo-sample-hud--met'); return; }
+
+    hud.hidden = false;
+    hud.classList.toggle('exo-sample-hud--met', p.met === true);
+
+    var label = document.getElementById('exo-hud-label');
+    if (label) label.textContent = genusShortName(p) + ' \u2014 sample ' + (p.samplesTaken + 1) + '/3';
+
+    var bar = document.getElementById('exo-hud-bar');
+    var dist = document.getElementById('exo-hud-dist');
+    if (p.requiredM != null && p.distanceM != null) {
+      var pct = Math.max(0, Math.min(100, Math.round((p.distanceM / p.requiredM) * 100)));
+      if (bar) bar.style.width = pct + '%';
+      if (dist) dist.textContent = Math.round(p.distanceM) + 'm / ' + p.requiredM + 'm' + (p.met ? ' \u2713' : '');
+    } else {
+      if (bar) bar.style.width = '0%';
+      if (dist) dist.textContent = p.distanceM != null ? (Math.round(p.distanceM) + 'm (req. unknown)') : 'awaiting fix\u2026';
+    }
+  }
+
+  if (window.electronAPI.onExoSampleProgress) {
+    window.electronAPI.onExoSampleProgress(function(p) { renderExoSampleHud(p); });
+  }
+  if (window.electronAPI.onExoSampleComplete) {
+    window.electronAPI.onExoSampleComplete(function() {
+      // Canister just completed (3rd sample, 'Analyse') — flash the "met"
+      // state briefly, then let the next Log event (or nothing) take over.
+      var hud = document.getElementById('exo-sample-hud');
+      if (hud) {
+        hud.classList.add('exo-sample-hud--met');
+        setTimeout(function() { hud.hidden = true; }, 2500);
+      }
+    });
+  }
+
   window.electronAPI.onScanAll(function() { log('Full journal scan triggered', 'warn'); });
 
   window.electronAPI.onJournalPathMissing(function(p) {
@@ -1759,16 +1810,11 @@ log('Journal watcher active', 'info');
 log('API connected on :3721', 'info');
 setInterval(refreshStats, 30000);
 
-// ── Profile refresh poll (every 10 minutes) ─────────────────────────
-// Keeps profile.html accurate without requiring a manual rescan.
-// FIX: interval raised from 2m → 10m: rank/stats change infrequently
-// and each refresh scans journal files + spawns a Worker thread, so
-// running it too often wastes CPU for no visible benefit.
-if (window.electronAPI && window.electronAPI.triggerProfileRefresh) {
-  setInterval(function() {
-    window.electronAPI.triggerProfileRefresh();
-  }, 10 * 60 * 1000);
-}
+// Profile refresh poll moved to main.js (see journalProvider.start() call
+// site) — it now runs from the main process on a timer independent of
+// which page is currently loaded in the window, instead of only firing
+// while index.html/Live happened to be open. See main.js for the interval
+// and rationale.
 
 // Inara, Network UI Server, EDDN, EDSM, Frontier cAPI and Journal Folder
 // settings/actions now live in the Preferences popup — see prefs-modal.js.
