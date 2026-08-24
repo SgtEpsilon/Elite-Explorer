@@ -109,6 +109,7 @@ contextBridge.exposeInMainWorld('electronAPI', {
 
   // Guardian Sites
   onGuardianSiteActive:   (cb) => on('guardian-site-active',    cb),
+  onGuardianSystemSites:  (cb) => on('guardian-system-sites',   cb),
   onGuardianLivePosition: (cb) => on('guardian-live-position',  cb),
 
   // Exobiology live sample-distance HUD

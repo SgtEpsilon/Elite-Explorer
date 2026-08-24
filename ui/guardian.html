@@ -42,8 +42,8 @@
       <span style="font-family:var(--display);font-size:0.7em;letter-spacing:0.2em;color:var(--text-dim)">GUARDIAN SITES</span>
       <span id="gdn-live-badge" class="gdn-live-badge" hidden>&#9679; ON SITE</span>
       <div style="flex:1"></div>
-      <select id="gdn-site-picker" title="Previously discovered sites">
-        <option value="">Select a discovered site&hellip;</option>
+      <select id="gdn-site-picker" title="All known Guardian sites — including ones you haven't visited yet">
+        <option value="">Select a site&hellip;</option>
       </select>
       <button id="gdn-legend-btn" title="Toggle legend">Legend</button>
       <button id="gdn-recenter-btn" title="Recenter / reset view">&#8982; Recenter</button>
@@ -92,13 +92,18 @@
     <div class="opt-section">
       <div class="opt-section-title">Data Sources &amp; Credits</div>
       <div style="font-size:0.75em;color:var(--text-dim);line-height:1.5;padding:2px 2px 4px;">
-        Guardian site point-of-interest coordinates (relic towers, obelisks, caskets,
-        tablets, orbs, urns, totems, and pylons) are sourced from
-        <a href="#" id="gdn-canonn-link" style="color:var(--cyan);">Canonn Research's</a>
-        public API (<span style="font-family:var(--mono);">docs.canonn.tech</span>) —
-        our thanks to Canonn and the commanders who contributed that data.
-        Site backgrounds are procedurally drawn from those coordinates; no
-        third-party artwork or code is used.
+        Guardian site point-of-interest layouts (relic towers, obelisks, caskets,
+        tablets, orbs, urns, totems, and pylons) are built from surveyed geometry
+        originally published by the
+        <a href="#" id="gdn-srvsurvey-link" style="color:var(--cyan);">SrvSurvey</a>
+        project (GPL-3.0 — same license as Elite Explorer), converted into our
+        own schema and rendering pipeline. Known site locations are seeded from
+        the same source and refined by your own journal sightings as you visit
+        them. <a href="#" id="gdn-canonn-link" style="color:var(--cyan);">Canonn
+        Research's</a> public API (<span style="font-family:var(--mono);">docs.canonn.tech</span>)
+        is used as a fallback for site types not yet in our local dataset. Our
+        thanks to both projects and the commanders who contributed that data.
+        See <span style="font-family:var(--mono);">ATTRIBUTION.md</span> for full details.
       </div>
     </div>
   </div>

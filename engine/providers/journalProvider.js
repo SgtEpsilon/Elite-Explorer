@@ -50,6 +50,7 @@ const _cache = {
   bodiesData:   null,   // last bodies-data payload
   missionsData: null,   // last missions-data payload
   guardianSite: null,   // last guardian-site-active payload (site record or null)
+  guardianSystemSites: null, // last guardian-system-sites payload ({systemAddress, systemName, sites} or null)
 };
 
 // Pushes guardian-site-active to the renderer whenever guardianLiveState
@@ -60,6 +61,15 @@ const _cache = {
 eventBus.on('guardian.siteActive', (site) => {
   _cache.guardianSite = site;
   send('guardian-site-active', site);
+});
+
+// Same pattern for the "known sites in the system I just jumped into"
+// pre-load (see engine/core/engine.js's journal.location handler) — pushed
+// on every system change, independent of whether the commander ever
+// physically approaches a settlement.
+eventBus.on('guardian.systemSites', (payload) => {
+  _cache.guardianSystemSites = payload;
+  send('guardian-system-sites', payload);
 });
 
 // Same pattern for the exobiology sample-distance HUD: exoLiveState owns
@@ -125,6 +135,7 @@ function replayToPage() {
   // guardian.html needs to know definitively "no active site" rather than
   // sitting in a loading state waiting for a push that'll never come.
   send('guardian-site-active', _cache.guardianSite);
+  if (_cache.guardianSystemSites) send('guardian-system-sites', _cache.guardianSystemSites);
 }
 
 function send(channel, data) {

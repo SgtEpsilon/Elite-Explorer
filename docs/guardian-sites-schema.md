@@ -1,23 +1,38 @@
-# Guardian Sites — data schema (original design)
+# Guardian Sites — data schema
 
-This is our own schema, designed from scratch for Elite Explorer. It does not
-reuse SrvSurvey's field names or structure. Anywhere our shape happens to
-converge with theirs it's because both are constrained by the same underlying
-geometry (bearing/distance from an origin point) and by Canonn's own field
-names — not because anything was copied.
+**Update:** as of the template-data integration, the POI *geometry* itself
+(which obelisk sits where, relative to a site's origin) is no longer
+independently sourced — it's converted from SrvSurvey's surveyed data
+(GPL-3.0, same license as this project; see `ATTRIBUTION.md` and
+`scripts/convert-guardian-templates.js`). The *schema* below — field names,
+POI taxonomy, obelisk-grouping, and the SQLite cache shape — remains our own
+design, reshaped from SrvSurvey's file format rather than reusing it, and
+Canonn's live API is now a secondary fallback rather than the primary data
+path (see `engine/services/guardianTemplateService.js`).
 
 ## Files
 
 - `data/guardianSiteTypes.json` — **static, hand-authored** reference table
   mapping known `$Ancient_*` journal identifiers to a site type + variant.
   Small and fully ours; not fetched from anywhere.
+- `data/guardianSiteTemplates.json` — **static** per-`(siteType, variant)`
+  POI layout (obelisks, relic towers, caskets, etc. as bearing/distance from
+  a site origin), converted from SrvSurvey's surveyed geometry. See
+  `ATTRIBUTION.md`.
+- `data/guardianKnownSites.json` — **static** bootstrap list of known site
+  instances (system, body, lat/long, real-world heading), also converted
+  from SrvSurvey's community-contributed location data. Seeds
+  `guardian_sites` on first launch via `bootstrapKnownSites()`; a real
+  journal sighting always takes priority over this bootstrap data.
 - `guardian_sites` / `guardian_site_pois` (SQLite tables, in the existing
-  `explorer.db`) — **dynamic cache** of what Canonn's API has told us about
-  sites we've actually visited, keyed by `(systemAddress, bodyId, siteType)`.
-  This is the runtime equivalent of a `data/guardianSites.json` file — we
-  cache into the existing db instead of a flat file so it survives alongside
-  everything else the app already persists, but the *shape* of each cached
-  record is the schema below.
+  `explorer.db`) — **dynamic cache**, keyed by
+  `(systemAddress, bodyId, siteType)`, filled primarily from the local
+  template dataset above (via `applyTemplate()`) and secondarily from
+  Canonn's API for anything the template dataset doesn't cover. This is the
+  runtime equivalent of a `data/guardianSites.json` file — we cache into the
+  existing db instead of a flat file so it survives alongside everything
+  else the app already persists, but the *shape* of each cached record is
+  the schema below.
 
 ## Per-site record shape
 
@@ -55,8 +70,9 @@ names — not because anything was copied.
       "obeliskCount": 4
     }
   ],
-  "source": "canonn",                    // "canonn" | "manual" — provenance, not a license marker
-  "canonnSiteId": "12345",               // Canonn's own record id, kept so we can re-sync/refresh a single site
+  "source": "template",                  // "template" | "community-dataset" | "canonn" | "journal" | "manual"
+  "canonnSiteId": "12345",               // Canonn's own record id, if this site was ever Canonn-enriched
+  "siteHeadingDeg": 332,                 // real-world rotation of the template into this site instance
   "fetchedAt": "2026-07-29T18:04:00Z",
   "schemaVersion": 1
 }
@@ -121,14 +137,16 @@ we take the `Name`/`Name_Localised` pair as a secondary label and the
 `origin` if `ApproachSettlement` wasn't seen (e.g. player scanned a Codex
 entry without an approach-settlement trigger, which can happen at range).
 
-## Open question before Phase 2 (flagging per your instructions)
+## Resolved: Canonn field-shape uncertainty is no longer load-bearing
 
-Canonn's own `/sites`-family GET endpoints (per their docs at
-docs.canonn.tech) return POI data, but the docs site is explicitly
-work-in-progress and I haven't been able to pin down the *exact* current
-field names for individual POI bearing/distance-style data from the public
-docs alone. Before I write `canonnClient.js`'s field-mapping logic in Phase 2,
-I want to do one live introspection call against the real API and show you
-the raw shape, rather than guess at field names and risk silently mis-mapping
-something. This is purely an API-shape question, not a licensing one —
-nothing about it touches SrvSurvey.
+The earlier open question here was about pinning down Canonn's exact
+`activeObelisks`/`activeGroups` field names before `guardianSitesService.js`
+could render a real site. That's no longer on the critical path: the local
+template dataset (`data/guardianSiteTemplates.json`, converted from
+SrvSurvey — see `ATTRIBUTION.md`) now supplies full POI geometry for the 13
+known site types with no API call at all. `canonnClient.js` and
+`extractPois()`/`extractObeliskGroups()` in `guardianSitesService.js` are
+kept as-is and still run as a fallback for any site type the local dataset
+doesn't cover, but `probe-guardian.js`'s live-verification step is no longer
+a blocker for the renderer — it's only useful now if you want to firm up
+the Canonn fallback path for its own sake.

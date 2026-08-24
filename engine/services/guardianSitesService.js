@@ -19,6 +19,7 @@ const canonnClient = require('./canonnClient');
 const siteTypes = require('../../data/guardianSiteTypes.json');
 const { bearingDistance } = require('../core/geo');
 const guardianLiveState = require('./guardianLiveState');
+const guardianTemplateService = require('./guardianTemplateService');
 
 let _schemaReady = false;
 
@@ -59,6 +60,15 @@ function ensureSchema() {
   // baking it into the CREATE TABLE, which only runs once per fresh DB.
   try { db.run(`ALTER TABLE guardian_sites ADD COLUMN obelisk_groups_json TEXT`); } catch { /* already exists */ }
   try { db.run(`ALTER TABLE guardian_sites ADD COLUMN planet_radius_m REAL`); } catch { /* already exists */ }
+  // Real-world rotation of this site instance vs. our template's local
+  // frame — see guardianTemplateService.js's local->world convention.
+  // Null until known (bootstrap dataset match, or future in-app calibration).
+  try { db.run(`ALTER TABLE guardian_sites ADD COLUMN site_heading_deg REAL`); } catch { /* already exists */ }
+  // Human-readable system name, for the site picker — the table was
+  // originally keyed by system_address alone (fine for lookups, useless
+  // for a 700+ entry dropdown label), so this is filled in lazily by
+  // healGeometry() for any pre-existing row that predates this column.
+  try { db.run(`ALTER TABLE guardian_sites ADD COLUMN system_name TEXT`); } catch { /* already exists */ }
   _schemaReady = true;
 }
 
@@ -118,7 +128,7 @@ function getSiteRowByLocation(systemAddress, bodyId) {
  * point at the old id). This does a targeted UPDATE instead, and never
  * downgrades a field that's already populated.
  */
-function recordSighting({ systemAddress, bodyId, bodyName, siteType, variant, origin, source, timestamp }) {
+function recordSighting({ systemAddress, systemName, bodyId, bodyName, siteType, variant, origin, source, timestamp }) {
   ensureSchema();
   const existing = db.get(
     `SELECT * FROM guardian_sites WHERE system_address = ? AND body_id = ? AND site_type = ?`,
@@ -126,28 +136,42 @@ function recordSighting({ systemAddress, bodyId, bodyName, siteType, variant, or
   );
 
   if (existing) {
-    const nextBodyName = existing.body_name || bodyName || null;
-    const nextVariant  = existing.variant    || variant  || null;
+    const nextBodyName   = existing.body_name   || bodyName   || null;
+    const nextVariant    = existing.variant     || variant    || null;
+    const nextSystemName = existing.system_name || systemName || null;
     const nextLat      = existing.origin_lat != null ? existing.origin_lat : (origin ? origin.latitude  : null);
     const nextLon      = existing.origin_lon != null ? existing.origin_lon : (origin ? origin.longitude : null);
     db.run(
-      `UPDATE guardian_sites SET body_name = ?, variant = ?, origin_lat = ?, origin_lon = ? WHERE id = ?`,
-      [nextBodyName, nextVariant, nextLat, nextLon, existing.id]
+      `UPDATE guardian_sites SET body_name = ?, variant = ?, origin_lat = ?, origin_lon = ?, system_name = ? WHERE id = ?`,
+      [nextBodyName, nextVariant, nextLat, nextLon, nextSystemName, existing.id]
     );
   } else {
     db.run(
       `INSERT INTO guardian_sites
-        (system_address, body_id, body_name, site_type, variant, origin_lat, origin_lon,
+        (system_address, system_name, body_id, body_name, site_type, variant, origin_lat, origin_lon,
          scale_width_m, scale_height_m, source, canonn_site_id, fetched_at, schema_version)
-       VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)`,
+       VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
       [
-        String(systemAddress), bodyId, bodyName || null, siteType, variant || null,
+        String(systemAddress), systemName || null, bodyId, bodyName || null, siteType, variant || null,
         origin ? origin.latitude : null, origin ? origin.longitude : null,
         null, null, source || 'journal', null, timestamp || null, 1,
       ]
     );
   }
-  return getCachedSite(systemAddress, bodyId, siteType);
+
+  // Try filling real geometry straight from our own template dataset —
+  // no network round-trip needed, so a brand-new sighting can render a
+  // full site plot immediately instead of showing "no data yet" until
+  // Canonn enrichment (getOrFetchSite) resolves later.
+  const site = getCachedSite(systemAddress, bodyId, siteType);
+  if (site && !(site.pois && site.pois.length)) {
+    applyTemplate(site); // resolves variant itself for ruins (see applyTemplate)
+    if (site.pois && site.pois.length) {
+      saveSite(site);
+      return getCachedSite(systemAddress, bodyId, siteType);
+    }
+  }
+  return site;
 }
 
 /**
@@ -164,7 +188,7 @@ function handleApproachSettlementEvent({ name, systemName, systemAddress, bodyId
 
   const origin = (latitude != null && longitude != null) ? { latitude, longitude } : null;
   const site = recordSighting({
-    systemAddress, bodyId, bodyName,
+    systemAddress, systemName, bodyId, bodyName,
     siteType: classified.siteType,
     variant:  classified.variant,
     origin,
@@ -220,7 +244,48 @@ function getCachedSite(systemAddress, bodyId, siteType) {
   );
   if (!row) return null;
   const pois = db.all(`SELECT * FROM guardian_site_pois WHERE site_id = ?`, [row.id]);
-  return rowsToSiteRecord(row, pois);
+  return healGeometry(rowsToSiteRecord(row, pois));
+}
+
+/**
+ * Self-heals a site record read from the DB that predates (or otherwise
+ * missed) template-filling — e.g. a row created by an old build, or by
+ * recordSighting() before the known-sites bootstrap existed. Any read path
+ * (getCachedSite, getAllSites) runs records through this rather than only
+ * relying on write-time paths (recordSighting/getOrFetchSite) to have
+ * applied the template, so a stale empty-POI row fixes itself the next
+ * time it's looked at instead of staying stuck showing "no POI data yet".
+ * Persists the fix via saveSite() so future reads don't redo the work.
+ */
+function healGeometry(site) {
+  if (!site) return site;
+  try {
+    let dirty = false;
+
+    // Lazily fill systemName for rows written before that column existed —
+    // check the known-sites dataset by systemAddress rather than leaving it
+    // blank forever.
+    if (!site.systemName) {
+      const known = guardianTemplateService.findKnownSite({ systemAddress: site.systemAddress });
+      if (known && known.systemName) { site.systemName = known.systemName; dirty = true; }
+    }
+
+    if (!(site.pois && site.pois.length)) {
+      const before = site.pois ? site.pois.length : 0;
+      applyTemplate(site);
+      if (site.pois && site.pois.length && site.pois.length !== before) dirty = true;
+    }
+
+    if (dirty) saveSite(site);
+  } catch (err) {
+    // A single malformed/unhealable row must never take down the entire
+    // list it's part of — getAllSites()/getSitesForSystem() map every row
+    // through this function, and an uncaught throw here used to propagate
+    // all the way up through the IPC handler's catch-all, silently
+    // emptying the whole site picker instead of just this one row.
+    console.error('[guardianSitesService] healGeometry failed for site', site && site.systemAddress, site && site.bodyId, ':', err.message);
+  }
+  return site;
 }
 
 function rowsToSiteRecord(row, poiRows) {
@@ -230,6 +295,7 @@ function rowsToSiteRecord(row, poiRows) {
   }
   return {
     systemAddress: row.system_address,
+    systemName: row.system_name || null,
     bodyId: row.body_id,
     bodyName: row.body_name,
     siteType: row.site_type,
@@ -250,7 +316,53 @@ function rowsToSiteRecord(row, poiRows) {
     fetchedAt: row.fetched_at,
     schemaVersion: row.schema_version,
     planetRadiusM: row.planet_radius_m ?? null,
+    siteHeadingDeg: row.site_heading_deg ?? null,
   };
+}
+
+/**
+ * Fills pois/obeliskGroups/scale (and siteHeadingDeg, if we can find one)
+ * from our own template dataset — see guardianTemplateService.js. This is
+ * now the PRIMARY way a site gets real geometry: deterministic, offline,
+ * and not dependent on Canonn's unconfirmed activeObelisks/activeGroups
+ * shape. Mutates and returns `site`; leaves it untouched if we have no
+ * template for its (siteType, variant), or it already has POIs.
+ */
+function applyTemplate(site) {
+  if (!site || (site.pois && site.pois.length)) return site;
+
+  // Ruins carry no size/layout suffix in the journal (see
+  // docs/guardian-sites-schema.md) — `variant` (alpha/beta/gamma) is
+  // genuinely unknown until matched against a known-site record by
+  // location. Structures already know their variant from the journal Name.
+  let variant = site.variant;
+  let siteHeadingDeg = site.siteHeadingDeg;
+  if (variant == null || siteHeadingDeg == null) {
+    const known = guardianTemplateService.findKnownSite({
+      systemAddress: site.systemAddress,
+      bodyName: site.bodyName,
+    });
+    if (known) {
+      if (variant == null && known.variant) variant = known.variant;
+      if (siteHeadingDeg == null && known.siteHeadingDeg != null) siteHeadingDeg = known.siteHeadingDeg;
+    }
+  }
+  if (!variant) return site;
+
+  const built = guardianTemplateService.buildSitePois({
+    siteType: site.siteType,
+    variant,
+    siteHeadingDeg,
+  });
+  if (!built) return site;
+
+  site.pois = built.pois;
+  site.obeliskGroups = built.obeliskGroups;
+  if (!site.scale || site.scale.widthM == null) site.scale = built.scale;
+  if (siteHeadingDeg != null) site.siteHeadingDeg = siteHeadingDeg;
+  if (!site.variant) site.variant = variant;
+  site.source = site.source === 'journal' ? 'template' : site.source;
+  return site;
 }
 
 /**
@@ -261,10 +373,39 @@ function rowsToSiteRecord(row, poiRows) {
 function getAllSites() {
   ensureSchema();
   const rows = db.all(`SELECT * FROM guardian_sites ORDER BY fetched_at DESC, id DESC`);
-  return rows.map((row) => {
+  return rows.map((row) => safeSiteRecord(row)).filter(Boolean);
+}
+
+/**
+ * Every known Guardian site in a given system (by systemAddress), for
+ * auto-loading a browsable view the moment the commander jumps in — before
+ * they've physically approached anything. Sorted by bodyName so a system
+ * with multiple sites shows them in a stable, sensible order.
+ */
+function getSitesForSystem(systemAddress) {
+  if (!systemAddress) return [];
+  ensureSchema();
+  const rows = db.all(
+    `SELECT * FROM guardian_sites WHERE system_address = ? ORDER BY body_name ASC`,
+    [String(systemAddress)]
+  );
+  return rows.map((row) => safeSiteRecord(row)).filter(Boolean);
+}
+
+/**
+ * Builds one site record from a DB row, isolated so a single bad row
+ * (corrupt JSON column, unexpected data, etc.) can only drop that one
+ * entry instead of throwing and wiping out the whole list it's part of —
+ * see healGeometry()'s own try/catch for why that guarantee matters here.
+ */
+function safeSiteRecord(row) {
+  try {
     const pois = db.all(`SELECT * FROM guardian_site_pois WHERE site_id = ?`, [row.id]);
-    return rowsToSiteRecord(row, pois);
-  });
+    return healGeometry(rowsToSiteRecord(row, pois));
+  } catch (err) {
+    console.error('[guardianSitesService] Skipping unreadable guardian_sites row', row && row.id, ':', err.message);
+    return null;
+  }
 }
 
 /**
@@ -396,16 +537,17 @@ function saveSite(site) {
   ensureSchema();
   db.run(
     `INSERT OR REPLACE INTO guardian_sites
-      (system_address, body_id, body_name, site_type, variant, origin_lat, origin_lon,
+      (system_address, system_name, body_id, body_name, site_type, variant, origin_lat, origin_lon,
        scale_width_m, scale_height_m, source, canonn_site_id, fetched_at, schema_version,
-       obelisk_groups_json, planet_radius_m)
-     VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
+       obelisk_groups_json, planet_radius_m, site_heading_deg)
+     VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
     [
-      String(site.systemAddress), site.bodyId, site.bodyName, site.siteType, site.variant,
+      String(site.systemAddress), site.systemName || null, site.bodyId, site.bodyName, site.siteType, site.variant,
       site.origin?.latitude ?? null, site.origin?.longitude ?? null,
       site.scale?.widthM ?? null, site.scale?.heightM ?? null,
       site.source, site.canonnSiteId, site.fetchedAt, site.schemaVersion ?? 1,
       JSON.stringify(site.obeliskGroups || []), site.planetRadiusM ?? null,
+      site.siteHeadingDeg ?? null,
     ]
   );
   const row = db.get(
@@ -438,6 +580,17 @@ async function getOrFetchSite({ systemAddress, bodyId, siteType, systemName, bod
   const cached = getCachedSite(systemAddress, bodyId, siteType);
   if (cached && cached.pois.length) return cached; // already have real POI data — don't re-fetch
 
+  // Template dataset is primary and needs no network call — try it before
+  // ever bothering Canonn. Canonn (below) only ever runs now as a fallback
+  // for site types our template dataset doesn't cover yet.
+  if (cached) {
+    const withTemplate = applyTemplate({ ...cached, variant: variant || cached.variant });
+    if (withTemplate.pois && withTemplate.pois.length) {
+      saveSite(withTemplate);
+      return getCachedSite(systemAddress, bodyId, siteType);
+    }
+  }
+
   const result = await canonnClient.fetchGuardianSitesForSystem(systemName, siteType);
   if (!result) return cached; // Canonn has nothing (yet) — keep whatever journal-only record we have
 
@@ -461,15 +614,56 @@ async function getOrFetchSite({ systemAddress, bodyId, siteType, systemName, bod
   return saved;
 }
 
+/**
+ * One-time (idempotent) import of data/guardianKnownSites.json into
+ * guardian_sites, so the site picker/map has entries for known sites the
+ * commander hasn't personally visited yet. Never overwrites a row that
+ * already exists (a journal sighting or Canonn fetch always wins over the
+ * bootstrap dataset), and always fills in geometry via applyTemplate() so
+ * imported sites are immediately fully rendered.
+ */
+function bootstrapKnownSites() {
+  ensureSchema();
+  const known = guardianTemplateService.loadKnownSites();
+  let inserted = 0;
+  for (const k of known) {
+    if (!k.systemAddress || !k.variant) continue;
+    const existing = db.get(
+      `SELECT id FROM guardian_sites WHERE system_address = ? AND body_id = ? AND site_type = ?`,
+      [String(k.systemAddress), k.bodyId ?? null, k.siteType]
+    );
+    if (existing) continue;
+
+    const site = {
+      systemAddress: k.systemAddress, systemName: k.systemName || null,
+      bodyId: k.bodyId ?? null, bodyName: k.bodyName || null,
+      siteType: k.siteType, variant: k.variant,
+      origin: k.origin || { latitude: null, longitude: null },
+      scale: { widthM: null, heightM: null },
+      pois: [], obeliskGroups: [],
+      source: 'community-dataset', canonnSiteId: null,
+      fetchedAt: new Date().toISOString(), schemaVersion: 1,
+      siteHeadingDeg: k.siteHeadingDeg ?? null,
+    };
+    applyTemplate(site);
+    saveSite(site);
+    inserted++;
+  }
+  return inserted;
+}
+
 module.exports = {
   ensureSchema,
   parseApproachSettlementName,
   getCachedSite,
   getAllSites,
+  getSitesForSystem,
   getSiteRowByLocation,
   recordSighting,
   saveSite,
+  applyTemplate,
   getOrFetchSite,
+  bootstrapKnownSites,
   handleApproachSettlementEvent,
   handleCodexEntryEvent,
 };

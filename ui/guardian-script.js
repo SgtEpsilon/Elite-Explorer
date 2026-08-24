@@ -51,6 +51,15 @@
       }
     });
   }
+  var srvSurveyLink = document.getElementById('gdn-srvsurvey-link');
+  if (srvSurveyLink) {
+    srvSurveyLink.addEventListener('click', function (e) {
+      e.preventDefault();
+      if (window.electronAPI && window.electronAPI.openExternal) {
+        window.electronAPI.openExternal('https://github.com/njthomson/SrvSurvey');
+      }
+    });
+  }
 
   // ── POI styling ─────────────────────────────────────────────────────────
   var POI_STYLE = {
@@ -97,6 +106,7 @@
     panX: 0, panY: 0,       // screen-space pan offset, px
     rotateToHeading: false,
     allSites: [],
+    autoLoaded: false,      // true if state.site came from arriving in-system, not a manual pick
   };
 
   var canvas = document.getElementById('gdn-canvas');
@@ -395,7 +405,10 @@
     info.hidden = false;
     var title = (state.site.bodyName || 'Unknown body') + ' \u2014 ' + labelForSite(state.site);
     set('gdn-info-title', title);
-    set('gdn-info-sub', state.live ? ('Live \u00B7 ' + Math.round(state.live.distanceM) + 'm from origin') : 'Not currently on site');
+    var sub = state.live
+      ? ('Live \u00B7 ' + Math.round(state.live.distanceM) + 'm from origin')
+      : (state.autoLoaded ? 'In system \u2014 not yet approached' : 'Not currently on site');
+    set('gdn-info-sub', sub);
     var poiCount = (state.site.pois || []).length;
     set('gdn-info-poi-count', poiCount ? (poiCount + ' known POI' + (poiCount === 1 ? '' : 's')) : 'No POI data yet');
   }
@@ -419,15 +432,36 @@
 
   function populatePicker(sites) {
     var sel = document.getElementById('gdn-site-picker');
+    var selected = sel.value;
+    var sorted = sites.slice().sort(function (a, b) {
+      var sa = (a.systemName || '').toUpperCase(), sb = (b.systemName || '').toUpperCase();
+      if (sa !== sb) return sa < sb ? -1 : 1;
+      var ba = (a.bodyName || '').toUpperCase(), bb = (b.bodyName || '').toUpperCase();
+      return ba < bb ? -1 : (ba > bb ? 1 : 0);
+    });
     while (sel.options.length > 1) sel.remove(1);
-    for (var i = 0; i < sites.length; i++) {
-      var s = sites[i];
+    // Grouped by system (<optgroup>) rather than a flat 700+-entry list —
+    // still a single dropdown, no separate text filter control, and most
+    // browsers/Electron support type-to-jump within a <select> so you can
+    // still jump straight to a system by typing its name.
+    var currentGroup = null;
+    var currentSystemName = null;
+    for (var i = 0; i < sorted.length; i++) {
+      var s = sorted[i];
+      var sysName = s.systemName || 'Unknown system';
+      if (sysName !== currentSystemName) {
+        currentSystemName = sysName;
+        currentGroup = document.createElement('optgroup');
+        currentGroup.label = sysName;
+        sel.appendChild(currentGroup);
+      }
       var opt = document.createElement('option');
       opt.value = keyFor(s);
       opt.textContent = (s.bodyName || '?') + ' \u2014 ' + labelForSite(s) +
         (s.pois && s.pois.length ? '' : ' (no POI data)');
-      sel.appendChild(opt);
+      currentGroup.appendChild(opt);
     }
+    sel.value = selected && sorted.some(function (s) { return keyFor(s) === selected; }) ? selected : '';
   }
 
   document.getElementById('gdn-site-picker').addEventListener('change', function (e) {
@@ -437,8 +471,10 @@
     if (match) {
       state.site = match;
       state.live = null; // browsing a picked site is never "live" unless it's the active one
+      state.autoLoaded = false; // explicit manual pick — a later system-arrival won't silently replace it
       setLiveIndicator(false);
       draw();
+      updateInfoCard();
     }
   });
 
@@ -465,9 +501,35 @@
     window.electronAPI.onGuardianSiteActive(function (site) {
       state.site = site;
       state.live = null; // fresh site, wait for the next position push
+      state.autoLoaded = false; // physically-confirmed site always outranks an arrival preview
       setLiveIndicator(!!site);
       refreshSitePicker();
       draw();
+    });
+
+    window.electronAPI.onGuardianSystemSites(function (payload) {
+      var sites = (payload && payload.sites) || [];
+      if (sites.length) {
+        // Don't clobber a live (physically-confirmed) site, and don't
+        // clobber a site the commander explicitly picked from the list.
+        if (state.live || (state.site && !state.autoLoaded)) return;
+        state.site = sites[0];
+        state.live = null;
+        state.autoLoaded = true;
+        setLiveIndicator(false);
+        var sel = document.getElementById('gdn-site-picker');
+        if (sel) sel.value = keyFor(sites[0]);
+        draw();
+      } else if (state.autoLoaded) {
+        // Arrived somewhere with no known sites — clear a previous
+        // auto-loaded preview so it doesn't keep showing a stale system's
+        // site. A manual pick (autoLoaded === false) is left alone.
+        state.site = null;
+        state.live = null;
+        state.autoLoaded = false;
+        setLiveIndicator(false);
+        draw();
+      }
     });
 
     window.electronAPI.onGuardianLivePosition(function (pos) {

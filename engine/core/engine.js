@@ -36,6 +36,24 @@ function start() {
     if (active && data.systemAddress != null && String(active.systemAddress) !== String(data.systemAddress)) {
       guardianLiveState.clear();
     }
+
+    // Pre-load any known Guardian site(s) for the system just arrived in,
+    // so guardian.html can show a browsable plot immediately on jump —
+    // not just once the commander physically approaches a settlement
+    // (that's handled separately, below, and always wins once it fires:
+    // it happens after this and sets guardianLiveState "live").
+    if (data.systemAddress != null) {
+      try {
+        const sites = guardianSitesService.getSitesForSystem(data.systemAddress);
+        eventBus.emit('guardian.systemSites', {
+          systemAddress: data.systemAddress,
+          systemName: data.system ?? null,
+          sites,
+        });
+      } catch (err) {
+        logger.error('GUARDIAN', 'getSitesForSystem failed', err.message);
+      }
+    }
   });
 
   // Guardian sites (see engine/services/guardianSitesService.js) — caught

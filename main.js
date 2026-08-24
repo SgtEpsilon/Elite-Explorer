@@ -498,9 +498,20 @@ ipcMain.handle('get-network-info', () => {
 
 // ── Scan triggers ─────────────────────────────────────────────────────────────
 // ── Guardian Sites ────────────────────────────────────────────────────────────
+// One-time (idempotent) seed of known Guardian site locations so the picker
+// has entries before the commander has personally visited anything. Safe to
+// call on every launch — bootstrapKnownSites() never touches a row that
+// already exists from a real journal sighting.
+try {
+  const seeded = guardianSitesService.bootstrapKnownSites();
+  if (seeded) logger.info('GUARDIAN', `Bootstrapped ${seeded} known Guardian site(s) from local dataset`);
+} catch (err) {
+  logger.error('GUARDIAN', 'bootstrapKnownSites failed', err.message);
+}
+
 ipcMain.handle('guardian-get-sites', () => {
   try { return guardianSitesService.getAllSites(); }
-  catch (err) { logger.error('GUARDIAN', 'guardian-get-sites failed', err.message); return []; }
+  catch (err) { logger.error('GUARDIAN', 'guardian-get-sites failed', err); return []; }
 });
 ipcMain.handle('guardian-get-site', (_e, key) => {
   try { return guardianSitesService.getCachedSite(key.systemAddress, key.bodyId, key.siteType); }

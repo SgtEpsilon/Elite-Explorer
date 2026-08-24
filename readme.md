@@ -16,6 +16,7 @@ A community Discord is available at [[FGS] Lazy Songbird Discord](https://discor
 - [Quickstart](#quickstart)
 - [Interface Overview](#interface-overview)
 - [Third-Party Integrations](#third-party-integrations)
+- [Third-Party Data & Attribution](#third-party-data--attribution)
 - [Project Structure](#project-structure)
 - [How It Works](#how-it-works)
 - [Contributing](#contributing)
@@ -176,6 +177,22 @@ Your EDSM API key can be found at [edsm.net](https://www.edsm.net) under your ac
 ### EDDN (Elite Dangerous Data Network)
 
 When enabled in Options, Elite-Explorer relays your live journal events to EDDN, contributing to the community-maintained database of exploration data. Only schema-compliant events are submitted and all personal or private fields are stripped before submission.
+
+---
+
+## Third-Party Data & Attribution
+
+### SrvSurvey
+
+The Guardian Sites feature's point-of-interest layouts (obelisks, relic towers, caskets, tablets, orbs, urns, totems, and pylons) are built from surveyed geometry originally published by the [SrvSurvey](https://github.com/njthomson/SrvSurvey) project by njthomson and contributors, licensed GPL-3.0 — the same license as Elite-Explorer. That shared license is what permits this reuse. The data has been converted (not copied verbatim) into Elite-Explorer's own schema, POI taxonomy, and rendering pipeline; see [`ATTRIBUTION.md`](ATTRIBUTION.md) and [`scripts/convert-guardian-templates.js`](scripts/convert-guardian-templates.js) for the full details of what was converted and how.
+
+### Canonn Research
+
+[Canonn Research's](https://docs.canonn.tech) public API is used as a secondary, fallback data source for Guardian site types not yet covered by the local dataset above. Our thanks to Canonn and the commanders who have contributed to their data over the years.
+
+### Disclaimer
+
+Elite-Explorer is an independent, fan-made tool and is not affiliated with, endorsed by, or associated with Frontier Developments plc, SrvSurvey, Canonn Research, or EDSM. Guardian site geometry is provided on a best-effort basis from community-surveyed data and may be incomplete, outdated, or inaccurate for some sites — always use in-game observation as the final authority. "Elite Dangerous" is a trademark of Frontier Developments plc.
 
 ---
 
@@ -341,4 +358,4 @@ If you find Elite-Explorer useful and want to support its continued development:
 
 ## License
 
-Elite-Explorer is released under the [MIT License](LICENSE). You are free to use, modify, and distribute this software in accordance with the terms of that license.
+Elite-Explorer is released under the [GNU General Public License v3.0](LICENSE). You are free to use, modify, and distribute this software in accordance with the terms of that license. See [`ATTRIBUTION.md`](ATTRIBUTION.md) for licensing details on third-party data included in the project.
